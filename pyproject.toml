@@ -1,12 +1,12 @@
 [project]
 name = "localagent"
 version = "0.2.0"
-description = "本地 AI 个人助手 CLI：多模型对话、分层记忆、文档检索与工作区感知"
+description = "Mac 本地完整运行的 AI 个人助手 CLI — Ollama + qwen3.5:4b 即可对话、记忆、检索与工作区感知，数据留本机、零 API 成本"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "hzh" }]
-keywords = ["ai", "cli", "agent", "memory", "ollama", "langgraph", "personal-assistant"]
+keywords = ["ai", "cli", "agent", "memory", "ollama", "langgraph", "personal-assistant", "local", "mac", "offline"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",

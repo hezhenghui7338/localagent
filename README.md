@@ -1,8 +1,8 @@
 # LocalAgent
 
-> 本地 AI 个人助手 CLI（入口命令 `LA`）——多模型对话、分层记忆、文档检索与工作区感知，数据留在本机。
+> **Mac 本地完整运行**的 AI 个人助手 CLI（`LA`）——Ollama + qwen3.5:4b 即可对话、记忆、文档检索与工作区感知，数据不出本机，普通 Mac 零 API 成本。
 
-LocalAgent 不是又一个 Chat 客户端，而是跨模型、跨会话、跨来源的**个人 AI 中枢**。无论连接本地 Ollama 还是 OpenRouter / Cursor 等线上模型，身份、记忆、工作上下文与审计数据都留在本机，由 LocalAgent 统一编排。
+LocalAgent 不是又一个 Chat 客户端，而是**在 Mac 上即可完整跑通**的个人 AI 中枢：对话、记忆写入、知识检索、工作区感知、审计统计均可只依赖本地 Ollama；可选接入 OpenRouter / Cursor / Tavily，但身份与数据始终留在本机。
 
 ## 特性
 
