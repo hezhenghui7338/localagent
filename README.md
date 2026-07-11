@@ -1,0 +1,206 @@
+# LocalAgent
+
+> 本地 AI 个人助手 CLI（入口命令 `LA`）——多模型对话、分层记忆、文档检索与工作区感知，数据留在本机。
+
+LocalAgent 不是又一个 Chat 客户端，而是跨模型、跨会话、跨来源的**个人 AI 中枢**。无论连接本地 Ollama 还是 OpenRouter / Cursor 等线上模型，身份、记忆、工作上下文与审计数据都留在本机，由 LocalAgent 统一编排。
+
+## 特性
+
+- **多模型对话**：Ollama / OpenRouter / Cursor 统一入口，`auto` 模式按优先级自动降级
+- **分层记忆**：Hot（核心画像）/ Warm（长期记忆）/ Cold（文档原文）三层架构，按需 JIT 召回
+- **文档知识库**：软链导入个人文件，Chroma + BM25 混合检索
+- **ChatGPT 冷启动**：导入历史对话与 ChatGPT「记忆」功能导出，快速建立个人记忆
+- **工作区感知**：Git 状态、最近文件、待办任务快照
+- **联网搜索**：Tavily 集成，支持 `:deepsearch` 深度研究
+- **可审计**：Token 消耗、费用估算、敏感文件扫描，可导出 Markdown 报告
+
+## 要求
+
+- Python 3.10+（Hindsight 记忆引擎需 3.11+）
+- 推荐安装 [Ollama](https://ollama.com/) 作为本地默认模型（如 `qwen3.5:4b`）
+
+## 快速开始
+
+```bash
+git clone git@github.com:hezhenghui7338/localagent.git
+cd LocalAgent
+python3 -m venv .venv && source .venv/bin/activate
+
+# 基础安装（BM25 + 核心 CLI）
+pip install -e ".[dev]"
+
+# 完整安装（LangGraph + Chroma 向量检索）
+pip install -e ".[full,dev]"
+
+# 可选：Hindsight 记忆引擎（Python 3.11+）
+pip install -e ".[hindsight]"
+```
+
+复制环境变量模板并填入你的 API Key：
+
+```bash
+cp .env.example .env
+# 编辑 .env，至少配置 Ollama；可选配置 OpenRouter / Cursor / Tavily
+```
+
+首次运行会自动在 `data/` 下创建运行时目录。可将 `data/core_profile.example.json` 复制为 `data/core_profile.json` 作为核心画像模板。
+
+### Shell 自动补全
+
+```bash
+LA complete-init
+source ~/.zshrc
+```
+
+之后 `LA add` + Tab 会提示 `add` / `add-file` 等子命令。
+
+### Ollama 提示
+
+- 默认模型 `qwen3.5:4b`；若未安装，LA 会尝试匹配已安装的同名 tag
+- Qwen3 系列默认生成大量 thinking token，LocalAgent 默认 `OLLAMA_THINK=0` 关闭思考模式
+- 本地 Ollama 较慢时，`auto` 模式会在 12 秒内降级到 OpenRouter；也可在 chat 中输入 `:provider openrouter` 手动切换
+
+## 配置
+
+详见 [`.env.example`](.env.example)，常用变量：
+
+| 变量 | 说明 |
+|------|------|
+| `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | 本地 Ollama 地址与模型 |
+| `OPENROUTER_API_KEY` / `CURSOR_API_KEY` | 云端模型降级 |
+| `TAVILY_API_KEY` | 联网搜索 |
+| `LA_MODEL_PROVIDER_PRIORITY` | auto 模式优先级，默认 `ollama,openrouter,cursor` |
+| `LA_WORKSPACE` | 工作区根目录（Git / 文件 / 待办上下文） |
+| `LA_DATA_DIR` | 自定义数据目录（测试隔离用） |
+
+## 命令
+
+### 对话
+
+```bash
+LA chat                          # 默认 auto
+LA chat --provider ollama        # 指定模型路径
+LA chat --cwd ~/code/myproject   # 指定工作区
+```
+
+REPL 内命令：
+
+| 命令 | 说明 |
+|------|------|
+| `:provider` | 查看 / 切换模型路径（auto \| ollama \| openrouter \| cursor） |
+| `:deepsearch <主题>` | 深度研究 |
+| `:q` | 退出 |
+
+### 工作区与审计
+
+```bash
+LA workspace                     # 最近文件 + Git + 待办快照
+LA workspace --todos-only
+LA audit                         # 交互式审计摘要
+LA audit --since 7d --report audit.md
+```
+
+### 记忆
+
+```bash
+LA add "决定采用分层记忆架构"
+LA search "记忆架构"             # 结果含记忆 id
+LA forget <id>
+LA rememorize-chat --session s-xxx
+```
+
+### ChatGPT 导出导入
+
+从 ChatGPT **Settings → Data Controls → Export** 下载 ZIP，解压后将 JSON 放入 `data/chatGPTdata/`。
+
+| 文件 | 含义 |
+|------|------|
+| `conversations.json` | 全部对话历史 → LLM 提取个人事实 |
+| `memory.json` / `memories.json` | ChatGPT「记忆」→ 直接写入 |
+
+```bash
+LA import-chatgpt ~/Downloads/conversations.json
+LA import-chatgpt --dir data/chatGPTdata/   # 批量导入
+LA import-chatgpt --force --interactive     # 重新导入 / 逐条确认
+```
+
+### 文件导入与检索
+
+```bash
+LA add-file ~/Documents/notes.md    # 软链 + 索引
+LA add-file notes.md -b             # 后台索引
+LA sync-file                        # 扫描 kb/ 增量同步
+LA search "某文档内容" --knowledge
+LA tasks                            # 查看索引任务
+```
+
+### 记忆维护
+
+```bash
+LA reset-memory      # 清空记忆（保留知识库）
+LA rebuild-memory    # 从知识库重建记忆索引
+```
+
+## 数据目录
+
+运行时数据默认位于 `data/`（已在 `.gitignore` 中排除，不会提交到 Git）：
+
+```
+data/
+├── kb/                        # 软链接的个人文件
+├── core_profile.json          # Hot 层核心事实
+├── sync_index.json            # 已索引文件登记
+├── conversations/             # 对话档案
+├── chatGPTdata/               # ChatGPT 导出归档
+├── chatgpt_import_index.json  # 导入去重登记
+├── sessions.db                # LangGraph 会话
+├── chroma/                    # 向量索引
+├── bm25.pkl                   # BM25 索引
+└── audit/usage.jsonl          # 调用审计日志
+```
+
+## 架构
+
+```
+┌─────────────────────────────────────────┐
+│              LA chat (REPL)             │
+│     Ollama / OpenRouter / Cursor        │
+└─────────────────┬───────────────────────┘
+                  │ LangGraph Agent
+    ┌─────────────┼─────────────┐
+    ▼             ▼             ▼
+  Hot          Warm           Cold
+core_profile  Hindsight/    Chroma + BM25
+              JSON memory   (文档原文)
+```
+
+- **Hot**：`core_profile.json`（Pinned 核心事实）
+- **Warm**：Hindsight / JSON memory（长期记忆）
+- **Cold**：Chroma + BM25 混合检索（文档原文）
+- **Agent**：LangGraph 工具循环，按需 JIT 召回
+
+详见 [docs/PRD.md](docs/PRD.md) 和 [docs/TDD.md](docs/TDD.md)。
+
+## 开发
+
+```bash
+# 单元 + 集成测试（隔离临时目录，不依赖 Ollama）
+pytest
+
+# 端到端：subprocess 调用 LA 命令
+pytest tests/e2e -m e2e
+
+# 含真实 Ollama 对话（需本地已 pull 对话模型）
+pytest tests/e2e -m e2e_live
+```
+
+## 安全与隐私
+
+- **切勿提交** `.env` 或 `data/` 下的运行时数据；仓库已通过 `.gitignore` 排除
+- API Key 仅保存在本机 `.env` 中
+- 记忆与对话档案默认仅存本地，不上传云端
+- 若曾在其他环境泄露过 API Key，请立即在对应平台轮换密钥
+
+## License
+
+MIT

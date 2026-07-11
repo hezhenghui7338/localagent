@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Secrets — copy .env.example to .env locally
+.env
+.env.local
+.env.*
+!.env.example
+
+# Runtime & personal data (never commit)
+data/*
+!data/.gitkeep
+!data/core_profile.example.json
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
