@@ -45,6 +45,36 @@ cp .env.example .env
 
 首次运行会自动在 `data/` 下创建运行时目录。可将 `data/core_profile.example.json` 复制为 `data/core_profile.json` 作为核心画像模板。
 
+## 功能示例
+
+仓库提供完整 walkthrough，覆盖 6 个核心场景：
+
+| # | 场景 | 命令 |
+|---|------|------|
+| 1 | 单条记忆写入与召回 | `LA add` → `LA search` |
+| 2 | Markdown 文件导入与召回 | `LA add-file` → `LA search --knowledge` |
+| 3 | 联网搜索最近新闻 | `LA chat` 或 `:deepsearch`（需 Tavily） |
+| 4 | **纯本地运行** qwen3.5:4b | `LA chat --provider ollama` |
+| 5 | 回答本地工作内容 | `LA workspace` / `LA chat --cwd .` |
+| 6 | 审计报告（Ollama 零费用） | `LA audit --since 7d` |
+
+```bash
+# 纯本地模式：普通 Mac + Ollama，无需付费 API
+cp examples/env.local-only.example .env
+ollama pull qwen3.5:4b
+LA chat --provider ollama
+
+# 按示例文档逐步体验
+open examples/walkthrough.md
+```
+
+示例文件：
+
+- [examples/walkthrough.md](examples/walkthrough.md) — 分步教程与预期输出
+- [examples/sample-project-notes.md](examples/sample-project-notes.md) — `add-file` 演示文档
+- [examples/audit-report-sample.md](examples/audit-report-sample.md) — 审计报告样例（Ollama $0）
+- [examples/env.local-only.example](examples/env.local-only.example) — 纯本地 `.env` 模板
+
 ### Shell 自动补全
 
 ```bash
