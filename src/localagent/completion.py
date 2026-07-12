@@ -163,7 +163,16 @@ def suggest_completions(words: list[str], parser: argparse.ArgumentParser | None
             return []
         return _prefix_match(list(_TASK_ACTIONS) + _task_ids(), current)
 
-    if cmd in ("add-file", "import-chatgpt"):
+    if cmd == "add-file":
+        return _expand_path(current)
+
+    if cmd == "import-chatgpt":
+        if current.startswith("-"):
+            return _completing_option(tail, current, sub)
+        if not tail or tail[-1] in ("--file", "--dir"):
+            return _expand_path(current)
+        if tail[-1].startswith("--"):
+            return _completing_option(tail, current, sub)
         return _expand_path(current)
 
     if cmd == "forget" and not tail:
@@ -175,7 +184,7 @@ def suggest_completions(words: list[str], parser: argparse.ArgumentParser | None
     if cmd == "search" and not tail:
         return _completing_option([], current, sub)
 
-    if cmd in ("rememorize-chat", "import-chatgpt", "sync-file", "reset-memory", "rebuild-memory"):
+    if cmd in ("rememorize-chat", "sync-file", "reset-memory", "rebuild-memory"):
         return _completing_option(tail, current, sub)
 
     if cmd == "config":

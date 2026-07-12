@@ -8,10 +8,16 @@ except ImportError:
     pass
 
 from localagent import config
+from localagent.agent.intent_clarification import (
+    PendingClarification,
+    assess_intent,
+    format_clarification_response,
+    merge_clarified_intent,
+)
 from localagent.agent.runtime import run_agent_turn
 from localagent.memory.core_profile import default_core_profile
 from localagent.memory.exit_extract import schedule_session_memory_extract
-from localagent.models.router import get_model_router
+from localagent.models.router import get_model_router, shutdown_cursor_sdk
 from localagent.persist.conversations import append_message, new_session_id
 from localagent.tools import deep_search
 from localagent.ui.console import ActivityIndicator, prepare_for_input
@@ -22,6 +28,7 @@ class ChatREPL:
         self.session_id = session_id or new_session_id()
         self.history: list[dict[str, str]] = []
         self.provider = config.normalize_provider_choice(provider)
+        self.pending_clarification: PendingClarification | None = None
         default_core_profile()
 
     def run(self) -> int:
@@ -95,6 +102,30 @@ class ChatREPL:
         return 0
 
     def _handle_chat(self, user_input: str) -> None:
+        agent_input = user_input
+        if self.pending_clarification is not None:
+            agent_input = merge_clarified_intent(
+                self.pending_clarification.original_message,
+                user_input,
+            )
+            self.pending_clarification = None
+        elif config.INTENT_CLARIFY_ENABLED:
+            assessment = assess_intent(
+                user_input,
+                self.history,
+                provider=self.provider,
+                session_id=self.session_id,
+            )
+            if assessment.needs_clarification:
+                self.history.append({"role": "user", "content": user_input})
+                response = format_clarification_response(assessment)
+                print(response)
+                self.pending_clarification = PendingClarification(original_message=user_input)
+                append_message(self.session_id, "user", user_input)
+                append_message(self.session_id, "assistant", response)
+                self.history.append({"role": "assistant", "content": response})
+                return
+
         self.history.append({"role": "user", "content": user_input})
         streamed = False
 
@@ -109,7 +140,7 @@ class ChatREPL:
         with ActivityIndicator("chat", "思考中…") as activity:
             try:
                 result = run_agent_turn(
-                    user_input,
+                    agent_input,
                     self.history[:-1],
                     provider=self.provider,
                     session_id=self.session_id,
@@ -184,6 +215,7 @@ class ChatREPL:
 
     def _on_exit(self) -> None:
         schedule_session_memory_extract(self.session_id)
+        shutdown_cursor_sdk()
 
 
 def run_chat(*, session_id: str | None = None, provider: str = "auto") -> int:

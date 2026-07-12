@@ -578,3 +578,30 @@ def get_model_router() -> ModelRouter:
 def reset_model_router() -> None:
     global _router
     _router = None
+
+
+def shutdown_cursor_sdk() -> None:
+    """Close cursor-sdk resources before interpreter shutdown.
+
+    cursor_sdk registers an atexit handler that joins HTTP server threads.
+    After a double Ctrl+C, a pending KeyboardInterrupt can fire during that
+    join and print a noisy traceback. Shut down explicitly while SIGINT is
+    ignored, then unregister the atexit hook.
+    """
+    try:
+        import atexit
+        import signal
+
+        from cursor_sdk import close_default_client
+    except ImportError:
+        return
+
+    atexit.unregister(close_default_client)
+    previous = signal.getsignal(signal.SIGINT)
+    try:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        close_default_client()
+    except BaseException:
+        pass
+    finally:
+        signal.signal(signal.SIGINT, previous)

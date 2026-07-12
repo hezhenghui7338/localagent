@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from typing import Any, Protocol
@@ -15,8 +16,27 @@ from localagent.memory.value_filter import is_valuable
 logger = logging.getLogger(__name__)
 
 
+def _is_hindsight_transient_error(exc: BaseException) -> bool:
+    """True when retain failed due to a dropped daemon/HTTP connection (retryable)."""
+    exc_name = type(exc).__name__
+    if exc_name in (
+        "ServerDisconnectedError",
+        "ClientConnectorError",
+        "ConnectionResetError",
+        "BrokenPipeError",
+    ):
+        return True
+    text = str(exc).lower()
+    return any(
+        marker in text
+        for marker in ("disconnected", "connection reset", "broken pipe", "reset by peer")
+    )
+
+
 def _is_hindsight_retain_error(exc: BaseException) -> bool:
     """True when Hindsight retain failed due to LLM/service issues (recoverable)."""
+    if _is_hindsight_transient_error(exc):
+        return True
     exc_name = type(exc).__name__
     if exc_name in ("ServiceException", "ApiException", "ApiTypeError"):
         return True
@@ -33,6 +53,16 @@ def _is_hindsight_retain_error(exc: BaseException) -> bool:
     return any(marker in text for marker in markers)
 
 
+def _ollama_openai_base_url(base_url: str | None) -> str | None:
+    """Normalize Ollama host URL for Hindsight's OpenAI-compatible client."""
+    if not base_url:
+        return base_url
+    url = base_url.rstrip("/")
+    if url.endswith("/v1"):
+        return url
+    return f"{url}/v1"
+
+
 def resolve_hindsight_llm_settings() -> dict[str, str | None]:
     """Pick LLM settings for Hindsight fact extraction."""
     from localagent.models.router import get_model_router
@@ -45,7 +75,7 @@ def resolve_hindsight_llm_settings() -> dict[str, str | None]:
         base_url = config.HINDSIGHT_LLM_BASE_URL or None
         api_key = config.HINDSIGHT_LLM_API_KEY or None
         if provider == "ollama":
-            base_url = base_url or config.OLLAMA_BASE_URL
+            base_url = _ollama_openai_base_url(base_url or config.OLLAMA_BASE_URL)
             if not config.HINDSIGHT_LLM_MODEL:
                 model = router.resolve_ollama_model()
         elif provider in ("openai", "openrouter") and not api_key:
@@ -64,7 +94,9 @@ def resolve_hindsight_llm_settings() -> dict[str, str | None]:
         }
 
     ollama = config.get_model_server("ollama")
-    ollama_base = ollama.base_url if ollama else config.OLLAMA_BASE_URL
+    ollama_base = _ollama_openai_base_url(
+        ollama.base_url if ollama else config.OLLAMA_BASE_URL
+    )
     if router.is_ollama_available() and router.list_completion_models():
         resolved = router.resolve_ollama_model()
         if resolved:
@@ -213,6 +245,35 @@ def _recall_item_score(item: Any, *, index: int) -> float:
             except (TypeError, ValueError):
                 pass
     return max(0.05, 1.0 - index * 0.04)
+
+
+def _is_hindsight_indexed(fact: MemoryFact) -> bool:
+    """True when this fact was retained into the Hindsight engine."""
+    meta = fact.metadata or {}
+    if meta.get("backend") == "hindsight":
+        return True
+    if meta.get("hindsight_id"):
+        return True
+    hindsight_ids = meta.get("hindsight_ids")
+    return isinstance(hindsight_ids, list) and bool(hindsight_ids)
+
+
+def _local_only_facts() -> list[MemoryFact]:
+    """Facts kept only in the JSON registry (ingest / JSON fallback retain)."""
+    return [fact for fact in get_memory_store().all_facts() if not _is_hindsight_indexed(fact)]
+
+
+def _dedupe_recall_hits(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    merged: list[dict[str, Any]] = []
+    for hit in hits:
+        hit_id = str(hit.get("id") or "")
+        if hit_id:
+            if hit_id in seen:
+                continue
+            seen.add(hit_id)
+        merged.append(hit)
+    return merged
 
 
 def _resolve_store_fact(store: Any, *, memory_id: str, text: str) -> Any | None:
@@ -397,6 +458,27 @@ class JsonMemoryBackend:
         return get_memory_store().count()
 
 
+def _apply_hindsight_reflect_llm_override(client: Any, llm: dict[str, str | None]) -> None:
+    """Send reflect to a cloud LLM when the primary backend is local Ollama."""
+    if llm.get("provider") != "ollama":
+        return
+    from localagent.model_servers import first_usable_openai_server
+
+    cloud = first_usable_openai_server(config.MODEL_SERVERS)
+    if cloud is None:
+        return
+    client.config["HINDSIGHT_API_REFLECT_LLM_PROVIDER"] = "openai"
+    client.config["HINDSIGHT_API_REFLECT_LLM_MODEL"] = cloud.model
+    client.config["HINDSIGHT_API_REFLECT_LLM_BASE_URL"] = cloud.base_url
+    client.config["HINDSIGHT_API_REFLECT_LLM_API_KEY"] = cloud.api_key
+    logger.info(
+        "Hindsight reflect using cloud LLM %s/%s (primary retain LLM: ollama/%s)",
+        "openai",
+        cloud.model,
+        llm.get("model"),
+    )
+
+
 class HindsightBackend:
     """Hindsight embedded client — primary Warm-layer engine when available."""
 
@@ -418,6 +500,10 @@ class HindsightBackend:
         # would keep stale LLM env (e.g. wrong Ollama model name).
         _stop_hindsight_daemon(profile)
         self._client = HindsightEmbedded(**init_kwargs)
+        if llm.get("provider") == "ollama":
+            # qwen3.x thinking tokens can exhaust the reflect budget via OpenAI API.
+            self._client.config["HINDSIGHT_API_LLM_EXTRA_BODY"] = json.dumps({"think": False})
+        _apply_hindsight_reflect_llm_override(self._client, llm)
         self._bank_id = config.default_bank_id()
         self._llm_settings = llm
         self._ensure_bank()
@@ -494,12 +580,28 @@ class HindsightBackend:
         if tags:
             retain_kwargs["tags"] = tags
 
-        try:
-            result = self._client.retain(**retain_kwargs)
-        except Exception as exc:
-            if config.HINDSIGHT_RETAIN_JSON_FALLBACK and _is_hindsight_retain_error(exc):
-                return self._json_fallback_retain(content, metadata=meta, reason=str(exc))
-            raise
+        result = None
+        retain_exc: BaseException | None = None
+        for attempt in range(2):
+            try:
+                result = self._client.retain(**retain_kwargs)
+                retain_exc = None
+                break
+            except Exception as exc:
+                retain_exc = exc
+                if attempt == 0 and _is_hindsight_transient_error(exc):
+                    logger.warning(
+                        "Hindsight retain connection lost, retrying after daemon restart: %s",
+                        exc,
+                    )
+                    continue
+                break
+        if retain_exc is not None:
+            if config.HINDSIGHT_RETAIN_JSON_FALLBACK and _is_hindsight_retain_error(retain_exc):
+                return self._json_fallback_retain(
+                    content, metadata=meta, reason=str(retain_exc)
+                )
+            raise retain_exc
 
         memory_ids = _parse_retain_ids(result)
         primary_id = memory_ids[0] if memory_ids else local_id
@@ -523,30 +625,38 @@ class HindsightBackend:
         return ids
 
     def recall(self, query: str, *, max_results: int = 10) -> list[dict[str, Any]]:
-        from localagent.memory.scoped_recall import rerank_hits_temporally
+        from localagent.memory.scoped_recall import rerank_hits_temporally, scoped_recall
 
+        prefetch = max(max_results * 3, 20)
+        local_only = _local_only_facts()
+
+        hindsight_hits: list[dict[str, Any]] = []
         try:
             results = self._client.recall(
                 bank_id=self._bank_id,
                 query=query,
                 max_tokens=4096,
             )
+            store = get_memory_store()
+            for index, item in enumerate(_iter_recall_results(results)):
+                memory_id = _recall_item_id(item)
+                text = _recall_item_text(item)
+                store_fact = _resolve_store_fact(store, memory_id=memory_id, text=text)
+                hindsight_hits.append(_merge_recall_hit(item, index=index, store_fact=store_fact))
         except Exception as exc:
             logger.warning("Hindsight recall failed (%s), falling back to local registry", exc)
             return JsonMemoryBackend().recall(query, max_results=max_results)
 
-        store = get_memory_store()
-        hits: list[dict[str, Any]] = []
-        for index, item in enumerate(_iter_recall_results(results)):
-            memory_id = _recall_item_id(item)
-            text = _recall_item_text(item)
-            store_fact = _resolve_store_fact(store, memory_id=memory_id, text=text)
-            hits.append(_merge_recall_hit(item, index=index, store_fact=store_fact))
-
-        if not hits:
+        local_hits = (
+            scoped_recall(query, max_results=prefetch, facts=local_only)
+            if local_only
+            else []
+        )
+        merged = _dedupe_recall_hits(hindsight_hits + local_hits)
+        if not merged:
             return JsonMemoryBackend().recall(query, max_results=max_results)
 
-        return rerank_hits_temporally(query, hits, max_results=max_results)
+        return rerank_hits_temporally(query, merged, max_results=max_results)
 
     def reflect(self, query: str) -> str | None:
         try:

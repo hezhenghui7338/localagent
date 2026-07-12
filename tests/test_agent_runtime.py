@@ -6,8 +6,10 @@ from unittest.mock import patch
 
 from localagent.agent.runtime import (
     _build_system_prompt,
+    _needs_file_tool_retry,
     _parse_tool_call,
     _prefetch_personal_context,
+    _prefetch_session_context,
     _prefetch_web_context,
     _strip_tool_blocks,
     run_agent_turn,
@@ -42,10 +44,56 @@ def test_parse_tool_call_rejects_unknown_tool():
     assert _parse_tool_call('{"name": "delete_everything", "arguments": {}}') is None
 
 
+def test_parse_tool_call_accepts_xml_format():
+    text = (
+        "让我搜索记忆库。"
+        "<tool_call>search_memory"
+        "<arg_key>query</arg_key><arg_value>Memory System 研究 去年</arg_value>"
+        "</tool_call>"
+    )
+    assert _parse_tool_call(text) == {
+        "name": "search_memory",
+        "arguments": {"query": "Memory System 研究 去年"},
+    }
+
+
 def test_strip_tool_blocks():
     text = '先说一段\n```tool\n{"name": "query_memories", "arguments": {"since": "2023-01-01"}}\n```'
     assert "query_memories" not in _strip_tool_blocks(text)
     assert "先说一段" in _strip_tool_blocks(text)
+
+
+def test_strip_tool_blocks_removes_xml_tool_call():
+    text = (
+        "让我搜索。"
+        "<tool_call>search_memory"
+        "<arg_key>query</arg_key><arg_value>去年研究</arg_value>"
+        "</tool_call>"
+    )
+    assert _strip_tool_blocks(text) == "让我搜索。"
+
+
+def test_run_agent_turn_executes_xml_tool_call(isolated_data):
+    tool_reply = (
+        "我来查一下。"
+        "<tool_call>search_memory"
+        "<arg_key>query</arg_key><arg_value>Memory System 研究 去年</arg_value>"
+        "</tool_call>"
+    )
+    isolated_data["router"].chat.side_effect = [tool_reply, "你去年研究了 Hindsight 和 Mem0。"]
+
+    with patch(
+        "localagent.tools.search_memory",
+        return_value="[1] Hindsight 记忆系统\n[2] Mem0",
+    ) as search:
+        result = run_agent_turn("我去年研究过哪些 Memory System？", provider="openrouter")
+
+    assert result.response == "你去年研究了 Hindsight 和 Mem0。"
+    assert result.tool_calls == [
+        {"name": "search_memory", "arguments": {"query": "Memory System 研究 去年"}}
+    ]
+    search.assert_called_once_with("Memory System 研究 去年")
+    assert isolated_data["router"].chat.call_count == 2
 
 
 def test_run_agent_turn_returns_final_answer_after_tool(isolated_data):
@@ -146,6 +194,47 @@ def test_prefetch_web_skips_non_time_sensitive_question():
     assert _prefetch_web_context("Python 怎么写装饰器?") == ""
 
 
+def test_prefetch_web_skips_session_recall_question():
+    with patch("localagent.tools.web_search") as search:
+        assert _prefetch_web_context("今天的聊天记录") == ""
+    search.assert_not_called()
+
+
+def test_prefetch_session_context_loads_today_messages(isolated_data):
+    from localagent.persist.conversations import append_message
+
+    session_id = "s-recall-test"
+    append_message(session_id, "user", "介绍一下我的军事策略")
+    append_message(session_id, "assistant", "根据记忆库…")
+
+    ctx = _prefetch_session_context(
+        "今天的聊天记录",
+        history=[{"role": "user", "content": "我今天问了啥?"}],
+        session_id=session_id,
+    )
+    assert "已预加载" in ctx
+    assert "介绍一下我的军事策略" in ctx
+    assert "我今天问了啥?" in ctx
+
+
+def test_run_agent_turn_prefetches_session_recall_without_web(isolated_data):
+    isolated_data["router"].chat.return_value = "你今天问了军事策略等问题。"
+
+    with (
+        patch("localagent.tools.web_search") as search,
+        patch(
+            "localagent.agent.runtime._prefetch_session_context",
+            return_value="[对话记录（已预加载）]\n用户: 介绍一下我的军事策略",
+        ),
+    ):
+        result = run_agent_turn("今天的聊天记录", provider="ollama")
+
+    assert "军事策略" in result.response
+    search.assert_not_called()
+    system_prompt = isolated_data["router"].chat.call_args.args[0][0].content
+    assert "对话记录" in system_prompt
+
+
 def test_build_system_prompt_includes_prefetched_context():
     prompt = _build_system_prompt(
         personal_context="[个人上下文]\n姓名: 测试",
@@ -202,3 +291,115 @@ def test_run_agent_turn_prefetches_web_for_news(isolated_data):
     system_prompt = isolated_data["router"].chat.call_args.args[0][0].content
     assert "联网搜索结果" in system_prompt
     assert "今日要闻" in system_prompt
+
+
+def test_needs_file_tool_retry_detects_hallucinated_write():
+    assert _needs_file_tool_retry(
+        "内容写:这是我的测试文本",
+        "已为你更新 `test.txt` 文件，当前内容为：hello",
+        [],
+    )
+
+
+def test_needs_file_tool_retry_detects_append_hallucination():
+    assert _needs_file_tool_retry(
+        "追加内容:第二行内容是这样的,闲杂时间",
+        '已成功将"第二行内容"追加到 `test.txt` 文件中。当前文件完整内容为：\n\n',
+        [],
+    )
+
+
+def test_needs_file_tool_retry_detects_direct_write_without_claim():
+    assert _needs_file_tool_retry(
+        "追加内容:第二行",
+        "好的。",
+        [],
+    )
+
+
+def test_needs_file_tool_retry_ignores_clarification():
+    assert not _needs_file_tool_retry(
+        "修改根目录下的test.txt文件",
+        "请告诉我具体的修改内容或目标要求。",
+        [],
+    )
+
+
+def test_needs_file_tool_retry_ignores_when_tool_called():
+    assert not _needs_file_tool_retry(
+        "内容写:这是我的测试文本",
+        "已为你更新 test.txt",
+        [{"name": "write_file", "arguments": {"path": "test.txt", "content": "hello"}}],
+    )
+
+
+def test_run_agent_turn_retries_when_file_write_claimed_without_tool(isolated_data):
+    hallucinated = "已为你更新 `test.txt` 文件，当前内容为：新内容"
+    tool_reply = (
+        '```tool\n{"name": "write_file", "arguments": {"path": "test.txt", '
+        '"content": "新内容"}}\n```'
+    )
+    isolated_data["router"].chat.side_effect = [hallucinated, tool_reply, "文件已更新。"]
+
+    with patch(
+        "localagent.tools.write_file",
+        return_value="已写入文件: test.txt\n内容预览:\n新内容",
+    ) as write:
+        result = run_agent_turn("内容写:新内容", provider="ollama")
+
+    assert result.response == "文件已更新。"
+    assert result.tool_calls == [
+        {"name": "write_file", "arguments": {"path": "test.txt", "content": "新内容"}}
+    ]
+    write.assert_called_once_with("test.txt", "新内容", mode="overwrite", cwd=None)
+    assert isolated_data["router"].chat.call_count == 3
+
+
+def test_run_agent_turn_retries_append_hallucination(isolated_data):
+    hallucinated = (
+        '已成功将"第二行"追加到 `test.txt` 文件中。当前文件完整内容为：\n\n'
+    )
+    tool_reply = (
+        '```tool\n{"name": "write_file", "arguments": {"path": "test.txt", '
+        '"content": "第二行内容是这样的,闲杂时间\\n", "mode": "append"}}\n```'
+    )
+    isolated_data["router"].chat.side_effect = [hallucinated, tool_reply, "已追加第二行。"]
+
+    with patch(
+        "localagent.tools.write_file",
+        return_value="已追加文件: test.txt\n内容预览:\n第二行内容是这样的,闲杂时间\n",
+    ) as write:
+        result = run_agent_turn("追加内容:第二行内容是这样的,闲杂时间", provider="ollama")
+
+    assert result.response == "已追加第二行。"
+    assert result.tool_calls[0]["arguments"]["mode"] == "append"
+    write.assert_called_once_with(
+        "test.txt",
+        "第二行内容是这样的,闲杂时间\n",
+        mode="append",
+        cwd=None,
+    )
+
+
+def test_run_agent_turn_fails_gracefully_after_retry_exhausted(isolated_data):
+    hallucinated = (
+        '已成功将"第二行"追加到 `test.txt` 文件中。当前文件完整内容为：\n\n'
+    )
+    isolated_data["router"].chat.side_effect = [hallucinated, hallucinated, hallucinated]
+
+    result = run_agent_turn("追加内容:第二行内容", provider="ollama")
+
+    assert "未能实际写入文件" in result.response
+    assert result.tool_calls == []
+
+
+def test_parse_write_file_tool_call():
+    text = (
+        '```tool\n{"name": "write_file", "arguments": {"path": "test.txt", '
+        '"content": "hello"}}\n```'
+    )
+    assert _parse_tool_call(text) == {
+        "name": "write_file",
+        "arguments": {"path": "test.txt", "content": "hello"},
+    }
+

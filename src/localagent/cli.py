@@ -13,7 +13,7 @@ from localagent.ingest.add_file import add_file, add_file_background, restart_ba
 from localagent.ingest.sync_file import sync_files
 from localagent.ingest.progress import ConsoleProgressReporter
 from localagent.ingest.tasks import TaskStatus, format_task_line, get_task_store
-from localagent.memory.chatgpt_import import import_chatgpt_dir, import_chatgpt_file
+from localagent.memory.chatgpt_import import import_chatgpt_dir, import_chatgpt_file, import_chatgpt_files
 from localagent.memory.hindsight_client import describe_memory_backend, get_memory_backend
 from localagent.memory.query import list_memory_tags, query_memories
 from localagent.memory.rememorize import rememorize_chat
@@ -318,7 +318,18 @@ def cmd_rememorize_chat(args: argparse.Namespace) -> int:
 def cmd_import_chatgpt(args: argparse.Namespace) -> int:
     reporter = ConsoleProgressReporter(prefix="import-chatgpt")
     interactive = args.interactive
-    if args.directory:
+    if args.files and args.path:
+        print("[import-chatgpt] 不能同时指定 path 与 --file")
+        return 1
+    if args.files:
+        summary = import_chatgpt_files(
+            [Path(path) for path in args.files],
+            force=args.force,
+            include_disabled=args.include_disabled,
+            reporter=reporter,
+            interactive=interactive,
+        )
+    elif args.directory:
         summary = import_chatgpt_dir(
             Path(args.directory),
             force=args.force,
@@ -346,7 +357,7 @@ def cmd_import_chatgpt(args: argparse.Namespace) -> int:
                 interactive=interactive,
             )
         else:
-            print("[import-chatgpt] 请指定导出文件路径，或使用 --dir")
+            print("[import-chatgpt] 请指定导出文件路径，或使用 --file / --dir")
             print("  对话历史: conversations.json")
             print("  已保存记忆: memory.json / memories.json")
             return 1
@@ -803,19 +814,27 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_import = sub.add_parser(
         "import-chatgpt",
-        help="[path] [--dir DIR] [--force] [--interactive]  导入 ChatGPT 导出",
+        help="[path] [--file PATH ...] [--dir DIR] [--force]  导入 ChatGPT 导出",
         description=(
             "导入 ChatGPT 数据导出并写入本地记忆。"
             "支持 conversations.json（从对话提取）与 memory.json（已保存记忆，1:1 导入）。"
+            "默认跳过已导入内容；加 --force 可强制重新加载指定文件内的记忆。"
         ),
     )
     p_import.add_argument("path", nargs="?", help="导出 JSON 文件（conversations.json 或 memory.json）")
+    p_import.add_argument(
+        "--file",
+        dest="files",
+        nargs="+",
+        metavar="PATH",
+        help="指定一个或多个导出 JSON 文件（可与 --force 联用强制重载）",
+    )
     p_import.add_argument(
         "--dir",
         dest="directory",
         help="批量导入目录下全部 *.json（默认 data/chatGPTdata/）",
     )
-    p_import.add_argument("--force", action="store_true", help="重新导入已处理过的对话/记忆")
+    p_import.add_argument("--force", action="store_true", help="强制重新导入已处理过的对话/记忆")
     p_import.add_argument(
         "--include-disabled",
         action="store_true",
@@ -996,6 +1015,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.func(args)
     except KeyboardInterrupt:
+        from localagent.models.router import shutdown_cursor_sdk
+
+        shutdown_cursor_sdk()
         print("\n[LA] 已中断")
         return 130
 

@@ -12,6 +12,7 @@ from localagent.cli import main
 from localagent.ingest.progress import ConsoleProgressReporter
 from localagent.memory.chatgpt_import import (
     import_chatgpt_file,
+    import_chatgpt_files,
     import_chatgpt_memories_file,
     reset_chatgpt_import_index,
 )
@@ -381,3 +382,72 @@ def test_cli_import_chatgpt_memory_file(isolated_data, tmp_path: Path, capsys):
     assert "import-chatgpt" in out
     assert "memories=1" in out
     assert get_memory_store().count() == before + 1
+
+
+def test_import_chatgpt_files_multiple(isolated_data, tmp_path: Path):
+    first_path = tmp_path / "conversations-a.json"
+    second_path = tmp_path / "conversations-b.json"
+    first_path.write_text(
+        json.dumps(
+            _sample_export(_make_conversation(conversation_id="conv-a", title="A")),
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    second_path.write_text(
+        json.dumps(
+            _sample_export(_make_conversation(conversation_id="conv-b", title="B")),
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    isolated_data["router"].extract_facts.return_value = ["多文件导入测试"]
+
+    summary = import_chatgpt_files([first_path, second_path])
+    assert summary.files_processed == 2
+    assert summary.imported == 2
+
+
+def test_cli_import_chatgpt_with_file_flag(isolated_data, tmp_path: Path, capsys):
+    export_path = tmp_path / "conversations-file-flag.json"
+    export_path.write_text(
+        json.dumps(
+            _sample_export(_make_conversation(conversation_id="file-flag-conv")),
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    isolated_data["router"].extract_facts.return_value = ["--file 参数导入测试"]
+
+    reset_chatgpt_import_index()
+    rc = main(["import-chatgpt", "--file", str(export_path)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "imported=1" in out
+
+
+def test_cli_import_chatgpt_file_force_reimports(isolated_data, tmp_path: Path, capsys):
+    export_path = tmp_path / "conversations-force.json"
+    export_path.write_text(
+        json.dumps(
+            _sample_export(_make_conversation(conversation_id="force-file-conv")),
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    isolated_data["router"].extract_facts.return_value = ["--file --force 重载测试"]
+
+    reset_chatgpt_import_index()
+    before = get_memory_store().count()
+    rc = main(["import-chatgpt", "--file", str(export_path)])
+    assert rc == 0
+    assert get_memory_store().count() == before + 1
+
+    rc = main(["import-chatgpt", "--file", str(export_path)])
+    out = capsys.readouterr().out
+    assert "dup=1" in out
+
+    rc = main(["import-chatgpt", "--file", str(export_path), "--force"])
+    out = capsys.readouterr().out
+    assert "imported=1" in out
+    assert get_memory_store().count() == before + 2

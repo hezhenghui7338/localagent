@@ -19,8 +19,10 @@ LA CLI → chat REPL / ingest / pending
 ```
 src/localagent/
 ├── cli.py                 # 全部 LA 命令
-├── chat_repl.py           # REPL + :deepsearch
-├── agent/runtime.py       # Agent 工具循环
+├── chat_repl.py           # REPL + :deepsearch + 意图澄清状态机
+├── agent/
+│   ├── runtime.py         # Agent 工具循环
+│   └── intent_clarification.py  # 意图评估与澄清追问
 ├── models/router.py       # 三级模型回退
 ├── memory/
 │   ├── core_profile.py    # Hot 层
@@ -70,3 +72,16 @@ data/
 
 - `TemporalIntentParser` 从问题解析时间锚点
 - `scoped_recall`：语义 75% + 距锚点 25% 混合排序
+
+## 6. 主动意图澄清
+
+```
+用户输入 → assess_intent()（轻量 LLM 预检）
+              ├─ 明确 → run_agent_turn() 正常流程
+              └─ 模糊 → 返回追问，REPL 进入 pending_clarification
+                         用户补充 → merge_clarified_intent() → run_agent_turn()
+```
+
+- 预检在 `run_agent_turn` 之前，避免模糊指令触发 `run_shell` 等副作用工具
+- `should_skip_intent_assessment()` 对寒暄、`:命令`、含明确路径的请求跳过 LLM 预检
+- 由 `LA_INTENT_CLARIFY` 控制开关（默认开启）
