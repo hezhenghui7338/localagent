@@ -322,6 +322,13 @@ def workspace_context_tool(*, days: int = 7) -> str:
     return workspace_context(days=days)
 
 
+def run_shell(command: str, *, cwd: str | None = None, timeout: float | None = None) -> str:
+    """Agent tool: run a shell command in the workspace."""
+    from localagent.tools.shell import run_shell_tool
+
+    return run_shell_tool(command, cwd=cwd, timeout=timeout)
+
+
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "search_memory",
@@ -366,6 +373,17 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "limit": "可选，返回条数，默认 20",
         },
     },
+    {
+        "name": "run_shell",
+        "description": (
+            "在工作区目录执行 shell 命令并返回输出；"
+            "用于统计代码行数、列目录、运行测试/构建、查看 git log 等需要终端的操作"
+        ),
+        "parameters": {
+            "command": "要执行的 shell 命令，如 find . -name '*.py' | wc -l",
+            "cwd": "可选，工作目录（默认 LA_WORKSPACE 或当前目录）",
+        },
+    },
 ]
 
 
@@ -406,4 +424,16 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> str:
             limit=limit,
             show_ids=True,
         )
+    if name == "run_shell":
+        command = str(arguments.get("command") or "").strip()
+        cwd = arguments.get("cwd")
+        cwd_str = str(cwd).strip() if cwd else None
+        timeout_raw = arguments.get("timeout")
+        timeout_val: float | None = None
+        if timeout_raw is not None:
+            try:
+                timeout_val = float(timeout_raw)
+            except (TypeError, ValueError):
+                timeout_val = None
+        return run_shell(command, cwd=cwd_str, timeout=timeout_val)
     return f"未知工具: {name}"

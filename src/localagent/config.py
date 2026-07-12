@@ -92,6 +92,10 @@ DEFAULT_BANK_ID = "localagent"
 # --- Workspace ---
 LA_WORKSPACE = _env("LA_WORKSPACE")
 
+# --- Agent shell tool ---
+SHELL_TIMEOUT = _env_float("LA_SHELL_TIMEOUT", "30")
+SHELL_MAX_OUTPUT = _env_int("LA_SHELL_MAX_OUTPUT", "12000")
+
 # --- Model routing (LA_MODEL_SERVERS_FILE YAML or legacy env) ---
 DEFAULT_MODEL_PROVIDER = "auto"
 LA_MODEL_SERVERS_RAW = _env("LA_MODEL_SERVERS")
