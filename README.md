@@ -171,77 +171,50 @@ source ~/.zshrc
 
 ## 命令
 
-### 对话
-
 ```bash
-LA chat                          # 默认 auto
-LA chat --provider ollama        # 指定模型路径
-LA chat --cwd ~/code/myproject   # 指定工作区
+$ LA -h
 ```
 
-REPL 内命令：
+```text
+usage: LA [-h] <command> ...
 
+LocalAgent — 本地 AI 个人助手
 
-| 命令                 | 说明                                                         |
-| ------------------ | ---------------------------------------------------------- |
-| `:provider`        | 查看 / 切换模型路径（auto | ollama | minimax | openrouter | cursor） |
-| `:deepsearch <主题>` | 深度研究                                                       |
-| `:q`               | 退出                                                         |
+options:
+  -h, --help       show this help message and exit
 
+命令:
+  主要参数与选项（括号内为可选）：
 
-### 工作区与审计
+  <command>
+    chat           [--session-id ID] [-p auto|ollama|openrouter|aiping|cursor]
+                   交互式对话
+    add            <text> 直接写入一条记忆
+    add-file       [-b] <path> 软链到 kb/ 并索引
+    tasks          [--limit N] [--tail N] [list | <task_id> |
+                   delete|pause|resume|restart|logs <task_id>] 查看/管理后台索引任务
+    sync-file      [--force] 扫描并索引 data/kb/ 下全部文档
+    reset-memory   [--keep-knowledge] 清空记忆与 sync_index
+    memory-status  诊断 Warm 层记忆后端（Hindsight / JSON）
+    rebuild-memory
+                   清空记忆后强制重建 kb/ 索引
+    forget         <id> [--yes] 删除一条记忆
+    rememorize-chat
+                   [--session ID] [--interactive] 从对话档案重新提取记忆
+    import-chatgpt
+                   [path] [--dir DIR] [--force] [--interactive] 导入 ChatGPT 导出
+    search         <query> [--knowledge] [--top-k N] [--verbose] 搜索记忆或知识库
+    reflect        <query> 跨记忆推理（Hindsight reflect）
+    memories       [query] [--tag TAG] [--since DATE] [--sort
+                   newest|oldest|relevance] 浏览/查询记忆
+    workspace      [--days N] [--cwd PATH] [--todos-only] 工作区/git/待办快照
+    audit          [--since 7d] [--report PATH] [--cwd PATH] 审计摘要与报告
+    config         init | list | add | remove | set-key 管理模型 YAML 配置
 
-```bash
-LA workspace                     # 最近文件 + Git + 待办快照
-LA workspace --todos-only
-LA audit                         # 交互式审计摘要
-LA audit --since 7d --report audit.md
+使用 LA <command> -h 查看某个命令的完整说明。
 ```
 
-### 记忆
-
-```bash
-LA add "决定采用分层记忆架构"
-LA search "记忆架构"             # 结果含记忆 id
-LA reflect "架构决策的演变？"     # Hindsight 跨记忆推理
-LA forget <id>
-LA rememorize-chat --session s-xxx
-```
-
-### ChatGPT 导出导入
-
-从 ChatGPT **Settings → Data Controls → Export** 下载 ZIP，解压后将 JSON 放入 `data/chatGPTdata/`。
-
-
-| 文件                              | 含义                  |
-| ------------------------------- | ------------------- |
-| `conversations.json`            | 全部对话历史 → LLM 提取个人事实 |
-| `memory.json` / `memories.json` | ChatGPT「记忆」→ 直接写入   |
-
-
-```bash
-LA import-chatgpt ~/Downloads/conversations.json
-LA import-chatgpt --dir data/chatGPTdata/   # 批量导入
-LA import-chatgpt --force --interactive     # 重新导入 / 逐条确认
-```
-
-### 文件导入与检索
-
-```bash
-LA add-file ~/Documents/notes.md    # 软链 + 索引
-LA add-file notes.md -b             # 后台索引
-LA sync-file                        # 扫描 kb/ 增量同步
-LA search "某文档内容" --knowledge
-LA tasks                            # 查看索引任务
-```
-
-### 记忆维护
-
-```bash
-LA reset-memory      # 清空记忆（保留知识库）
-LA rebuild-memory    # 从知识库重建记忆索引
-LA memory-status     # 诊断记忆后端（Hindsight / JSON）
-```
+`LA chat` 进入 REPL 后，还可使用 `:provider`（切换模型）、`:deepsearch <主题>`（深度研究）、`:q`（退出）。
 
 ## 数据目录
 
