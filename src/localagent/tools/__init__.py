@@ -240,10 +240,13 @@ def web_search(query: str, *, max_results: int = 5) -> str:
         "max_results": max_results,
         **derive_search_params(query),
     }
-    with httpx.Client(timeout=30.0) as client:
-        resp = client.post("https://api.tavily.com/search", json=payload)
-        resp.raise_for_status()
-        data = resp.json()
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            resp = client.post("https://api.tavily.com/search", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:
+        return f"联网搜索失败: {exc}"
     try:
         log_usage("tavily", "search", command="web_search", per_call=True)
     except Exception:
@@ -329,6 +332,19 @@ def run_shell(command: str, *, cwd: str | None = None, timeout: float | None = N
     return run_shell_tool(command, cwd=cwd, timeout=timeout)
 
 
+def write_file(
+    path: str,
+    content: str,
+    *,
+    mode: str = "overwrite",
+    cwd: str | None = None,
+) -> str:
+    """Agent tool: create or update a file in the workspace."""
+    from localagent.tools.files import write_file_tool
+
+    return write_file_tool(path, content, mode=mode, cwd=cwd)
+
+
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "search_memory",
@@ -371,6 +387,19 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "until": "可选，结束日期 YYYY-MM-DD",
             "sort": "可选，newest（默认）/ oldest / relevance",
             "limit": "可选，返回条数，默认 20",
+        },
+    },
+    {
+        "name": "write_file",
+        "description": (
+            "在工作区创建或写入文件（覆盖或追加）；"
+            "用于创建、修改、更新文件内容，优先于 run_shell"
+        ),
+        "parameters": {
+            "path": "文件路径（相对工作区或绝对路径）",
+            "content": "要写入的文本内容",
+            "mode": "可选，overwrite（默认，覆盖）或 append（追加）",
+            "cwd": "可选，工作目录（默认 LA_WORKSPACE 或当前目录）",
         },
     },
     {
@@ -424,6 +453,13 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> str:
             limit=limit,
             show_ids=True,
         )
+    if name == "write_file":
+        path = str(arguments.get("path") or "").strip()
+        content = str(arguments.get("content") or "")
+        mode = str(arguments.get("mode") or "overwrite")
+        cwd = arguments.get("cwd")
+        cwd_str = str(cwd).strip() if cwd else None
+        return write_file(path, content, mode=mode, cwd=cwd_str)
     if name == "run_shell":
         command = str(arguments.get("command") or "").strip()
         cwd = arguments.get("cwd")

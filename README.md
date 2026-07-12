@@ -2,7 +2,7 @@
 
 > **一台普通 Mac + Ollama `qwen3.5:4b`，零 API 费用，就能有不错的个人 AI 助手效果。**
 
-LocalAgent（`LA`）不是又一个 Chat 客户端。它把**对话、个人记忆、文档检索、工作区感知**串成一套完整的本地 Agent 链路——核心亮点是：**用最基础的本地 Ollama 部署，4B 小模型也能「记得住你、找得到文档、看得见当前项目在做什么」**，而不只是聊完就忘。
+LocalAgent（`LA`）不是又一个 Chat 客户端。它把**对话、个人记忆、文档检索、工作区感知**串成一套完整的本地 Agent 链路——核心亮点是：**用最基础的本地 Ollama 部署，4B 小模型也能「记得住你、找得到文档、看得见当前项目在做什么」**；更重要的是，它会**在动手前先追问、确认你的真实意图**，而不是像普通 Chat 那样猜错就改、改错就毁。
 
 ```bash
 ollama pull qwen3.5:4b          # 约 2.5GB，普通 Mac 可跑
@@ -17,6 +17,7 @@ LA chat --provider ollama       # 纯本地，数据不出本机
 | 不知道你在做什么 | Git 状态、最近文件、待办快照 |
 | 搜不到本地笔记 | Chroma + BM25 混合检索个人文档 |
 | 只会一问一答 | LangGraph Agent 按需 JIT 召回上下文 |
+| 指代不明也硬猜、直接改文件 | **主动追问澄清意图**，确认后再调用工具 |
 | 让你自己去终端跑命令 | Agent 自动调用 `run_shell` 执行并汇总结果 |
 
 可选接入 OpenRouter / Cursor / Tavily 做增强，但**身份与数据始终留在本机**。
@@ -24,6 +25,7 @@ LA chat --provider ollama       # 纯本地，数据不出本机
 ## 特性
 
 - **4B 即可用**：默认 `qwen3.5:4b`，对话、记忆写入、检索、工作区感知全链路本地跑通
+- **主动澄清意图**：模糊请求先追问 1–2 个关键问题，确认后再执行；文件写入另有幻觉检测兜底，未实际调用工具不会声称「已完成」
 - **分层记忆**：Hot（核心画像）/ Warm（长期记忆）/ Cold（文档原文）三层架构，按需 JIT 召回
 - **文档知识库**：软链导入个人文件，Chroma + BM25 混合检索
 - **工作区感知**：Git 状态、最近文件、待办任务快照
@@ -90,6 +92,35 @@ ollama pull qwen3.5:4b
 LA chat --provider ollama
 ```
 
+### 亮点：主动追问、确认意图后再动手
+
+普通 Chat 收到「帮我改个文件」往往会猜一个路径直接覆盖；LocalAgent 会先做一次**轻量意图预检**（本地 `qwen3.5:4b`，默认开启），指代不明时**主动追问 1–2 个具体问题**，等你补充后再合并上下文、调用工具执行。文件写入还有**幻觉检测**：若模型声称「已写入」却未调用 `write_file`，会自动重试或明确报错，而不是展示编造的空内容。
+
+```text
+> 帮我改个文件
+在继续之前，我想先确认你的意图：
+
+1. 需要修改哪个文件或提供完整路径？
+2. 具体的修改内容或目标是什么？
+
+请补充说明，我会据此继续处理。
+> 修改根目录下的 test.txt 文件
+明白，你需要修改工作区根目录下的 `test.txt` 文件。请告诉我具体要写入或追加什么内容。
+> 文件内容增加:这是我的一个测试文本,目的是测试跨对话持续性
+[chat] 思考中…
+[chat] 连接模型 (auto(ollama→openrouter→aiping→cursor))…
+[chat] 生成回复…
+[chat] 调用 写入文件…
+[chat] 综合工具结果 (第 2 轮)…
+[chat] ✓ 综合工具结果 (第 2 轮)… (11.1s)
+已成功将指定内容追加到 `test.txt` 文件中。当前文件内容为：
+
+> 这是我的一个测试文本,目的是测试跨对话持续性
+[via ollama/qwen3.5:4b]
+```
+
+适用场景：修改文件、重构代码、分析项目等**对象或范围不明确**的请求。可通过设 `LA_INTENT_CLARIFY=0` 关闭（默认开启）；含具体路径的请求会跳过预检，直接执行。
+
 ### 亮点：Agent 自动执行终端命令
 
 普通 Chat 只会告诉你「去终端运行 `find … | wc -l`」。LocalAgent 的 Agent 会**自己调用 `run_shell` 工具**，在工作区执行命令并把结果整理成回答——全程纯本地 `qwen3.5:4b`，无需云端 API。
@@ -118,8 +149,9 @@ LA chat --provider ollama
 | 3   | 联网搜索最近新闻             | `LA chat` 或 `:deepsearch`（需 Tavily）     |
 | 4   | **纯本地运行** qwen3.5:4b | `LA chat --provider ollama`             |
 | 5   | 回答本地工作内容             | `LA workspace` / `LA chat --cwd .`      |
-| 6   | Agent 自动执行终端命令       | `LA chat` → 「统计当前项目代码行数」              |
-| 7   | 审计报告（Ollama 零费用）     | `LA audit --since 7d`                   |
+| 6   | **主动追问澄清意图**         | `LA chat` → 「帮我改个文件」→ 补充说明 → 执行     |
+| 7   | Agent 自动执行终端命令       | `LA chat` → 「统计当前项目代码行数」              |
+| 8   | 审计报告（Ollama 零费用）     | `LA audit --since 7d`                   |
 
 
 ```bash
@@ -189,6 +221,7 @@ source ~/.zshrc
 | `LA_MODEL_PROVIDER_PRIORITY`            | auto 模式优先级，默认 `ollama,minimax,openrouter,cursor` |
 | `LA_WORKSPACE`                          | 工作区根目录（Git / 文件 / 待办 / shell 命令上下文）              |
 | `LA_SHELL_TIMEOUT` / `LA_SHELL_MAX_OUTPUT` | Agent `run_shell` 超时秒数与输出截断上限（默认 30s / 12000 字符） |
+| `LA_INTENT_CLARIFY`                     | 对话前主动追问澄清意图（默认 `1` 开启，设 `0` 关闭）              |
 | `LA_DATA_DIR`                           | 自定义数据目录（测试隔离用）                                   |
 
 

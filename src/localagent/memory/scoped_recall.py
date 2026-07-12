@@ -117,15 +117,20 @@ def rerank_hits_temporally(
     return [item for _, item in scored[:max_results]]
 
 
-def scoped_recall(query: str, *, max_results: int = 10) -> list[dict[str, Any]]:
+def scoped_recall(
+    query: str,
+    *,
+    max_results: int = 10,
+    facts: list[Any] | None = None,
+) -> list[dict[str, Any]]:
     """Recall memories with semantic + temporal scoring."""
     profile = load_core_profile()
     intent = parse_temporal_intent(query, profile)
     store = get_memory_store()
-    facts = store.all_facts()
+    candidate_facts = facts if facts is not None else store.all_facts()
 
     scored: list[tuple[float, dict[str, Any]]] = []
-    for fact in facts:
+    for fact in candidate_facts:
         meta = fact.metadata or {}
         searchable = " ".join(
             part for part in (

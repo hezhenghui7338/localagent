@@ -673,6 +673,61 @@ def import_chatgpt_dir(
     return summary
 
 
+def import_chatgpt_files(
+    paths: list[Path],
+    *,
+    force: bool = False,
+    include_disabled: bool = False,
+    reporter: ProgressReporter | None = None,
+    interactive: bool = False,
+) -> ImportSummary:
+    """Import one or more ChatGPT export JSON files."""
+    summary = ImportSummary()
+    if not paths:
+        summary.errors.append("no files specified")
+        return summary
+
+    if reporter is not None:
+        reporter.update(
+            ProgressEvent(
+                phase="scan",
+                message=f"准备导入 {len(paths)} 个文件",
+                current=0,
+                total=len(paths),
+            )
+        )
+
+    processed = _load_index()
+    for file_index, path in enumerate(paths, start=1):
+        if not path.exists():
+            summary.errors.append(f"file not found: {path}")
+            continue
+        if not path.is_file():
+            summary.errors.append(f"not a file: {path}")
+            continue
+
+        if reporter is not None:
+            reporter.update(
+                ProgressEvent(
+                    phase="file",
+                    message=f"读取 {path.name}",
+                    current=file_index,
+                    total=len(paths),
+                )
+            )
+        file_summary = _import_chatgpt_json_path(
+            path,
+            force=force,
+            include_disabled=include_disabled,
+            reporter=reporter,
+            interactive=interactive,
+            processed=processed,
+        )
+        _merge_import_summaries(summary, file_summary)
+
+    return summary
+
+
 def reset_chatgpt_import_index() -> None:
     """Clear import dedupe index (tests)."""
     if config.CHATGPT_IMPORT_INDEX_FILE.exists():

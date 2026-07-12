@@ -77,6 +77,7 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
         "localagent.memory.chatgpt_import.get_model_router",
         "localagent.memory.exit_extract.get_model_router",
         "localagent.agent.runtime.get_model_router",
+        "localagent.agent.intent_clarification.get_model_router",
     )
     for target in router_targets:
         monkeypatch.setattr(target, lambda: mock_router)

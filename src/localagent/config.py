@@ -240,6 +240,9 @@ HINDSIGHT_LLM_API_KEY = _env("LA_HINDSIGHT_LLM_API_KEY")
 HINDSIGHT_RETAIN_JSON_FALLBACK = _env_bool("LA_HINDSIGHT_RETAIN_JSON_FALLBACK", "1")
 HINDSIGHT_EXTRACTION_MODE = _env("LA_HINDSIGHT_EXTRACTION_MODE", "auto").lower()
 
+# --- Agent intent clarification ---
+INTENT_CLARIFY_ENABLED = _env_bool("LA_INTENT_CLARIFY", "1")
+
 
 def ensure_data_dirs() -> None:
     """Create runtime data directories if missing."""

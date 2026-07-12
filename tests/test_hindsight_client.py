@@ -7,8 +7,12 @@ from unittest.mock import MagicMock, patch
 from localagent.memory.hindsight_client import (
     HindsightBackend,
     JsonMemoryBackend,
+    _dedupe_recall_hits,
+    _is_hindsight_indexed,
     _is_hindsight_retain_error,
+    _is_hindsight_transient_error,
     _merge_recall_hit,
+    _ollama_openai_base_url,
     _parse_retain_ids,
     _resolve_store_fact,
     get_memory_backend,
@@ -46,10 +50,117 @@ def test_parse_retain_ids_from_dict():
     assert _parse_retain_ids({"success": True, "items_count": 1}) == []
 
 
+def test_hindsight_recall_merges_local_only_registry(isolated_data):
+    """Hindsight hits must not hide JSON/ingest memories that were never indexed."""
+    store = get_memory_store()
+    legacy = store.retain_from_section(
+        filename="import",
+        heading="偏好",
+        text="用户喜欢村上春树的作品",
+        chunk_id="legacy-1",
+        extra_metadata={"source": "import-chatgpt"},
+    )
+    assert legacy is not None
+    store.save()
+
+    backend = HindsightBackend.__new__(HindsightBackend)
+    backend._bank_id = "localagent"
+    backend._client = MagicMock()
+    backend._client.recall.return_value = [
+        MagicMock(id="hs-1", text="2026年7月决定使用 Hindsight 作为记忆引擎", score=0.9),
+    ]
+
+    hits = backend.recall("村上春树", max_results=5)
+    texts = [h["text"] for h in hits]
+    assert any("村上春树" in text for text in texts)
+    assert any("Hindsight" in text for text in texts)
+
+
+def test_is_hindsight_indexed():
+    from localagent.memory.store import MemoryFact
+
+    assert _is_hindsight_indexed(
+        MemoryFact(
+            id="1",
+            text="x",
+            source_file="",
+            section_heading="",
+            created_at="",
+            metadata={"backend": "hindsight"},
+        )
+    )
+    assert not _is_hindsight_indexed(
+        MemoryFact(
+            id="2",
+            text="x",
+            source_file="",
+            section_heading="",
+            created_at="",
+            metadata={"source": "ingest"},
+        )
+    )
+
+
+def test_dedupe_recall_hits():
+    hits = [
+        {"id": "a", "text": "one"},
+        {"id": "a", "text": "dup"},
+        {"id": "b", "text": "two"},
+    ]
+    merged = _dedupe_recall_hits(hits)
+    assert len(merged) == 2
+    assert merged[0]["text"] == "one"
+
+
 def test_is_hindsight_retain_error():
     assert _is_hindsight_retain_error(Exception("Fact extraction failed: 404 Not Found"))
     assert _is_hindsight_retain_error(Exception("Internal Server Error"))
+    assert _is_hindsight_retain_error(Exception("Server disconnected"))
     assert not _is_hindsight_retain_error(ValueError("bad input"))
+
+
+def test_is_hindsight_transient_error():
+    class ServerDisconnectedError(Exception):
+        pass
+
+    assert _is_hindsight_transient_error(ServerDisconnectedError("Server disconnected"))
+    assert _is_hindsight_transient_error(Exception("connection reset by peer"))
+    assert not _is_hindsight_transient_error(ValueError("bad input"))
+
+
+def test_hindsight_retain_retries_transient_disconnect(isolated_data):
+    backend = HindsightBackend.__new__(HindsightBackend)
+    backend._bank_id = "localagent"
+    backend._client = MagicMock()
+    backend._client.retain.side_effect = [
+        Exception("Server disconnected"),
+        {"memory_ids": ["hs-retry-1"]},
+    ]
+
+    fact_id = backend.retain(
+        "用户拥有一台内存为16GB的Mac电脑。",
+        metadata={"source": "import-chatgpt", "source_file": "conv.json"},
+    )
+    assert fact_id == "hs-retry-1"
+    assert backend._client.retain.call_count == 2
+
+
+def test_hindsight_retain_falls_back_to_json_on_disconnect(isolated_data):
+    backend = HindsightBackend.__new__(HindsightBackend)
+    backend._bank_id = "localagent"
+    backend._client = MagicMock()
+    backend._client.retain.side_effect = Exception("Server disconnected")
+
+    fact_id = backend.retain(
+        "用户拥有一台内存为16GB的Mac电脑。",
+        metadata={"source": "import-chatgpt", "source_file": "conv.json"},
+    )
+    assert fact_id
+    fact = get_memory_store().get(fact_id)
+    assert fact is not None
+    assert fact.metadata.get("backend") == "json"
+    assert "hindsight_retain_failed" in fact.metadata
+    assert backend._client.retain.call_count == 2
 
 
 def test_resolve_store_fact_matches_by_text(isolated_data):
@@ -179,6 +290,13 @@ def test_resolve_hindsight_extraction_mode_honors_explicit(isolated_data, monkey
     assert resolve_hindsight_extraction_mode() == "concise"
 
 
+def test_ollama_openai_base_url_appends_v1_suffix():
+    assert _ollama_openai_base_url("http://localhost:11434") == "http://localhost:11434/v1"
+    assert _ollama_openai_base_url("http://localhost:11434/") == "http://localhost:11434/v1"
+    assert _ollama_openai_base_url("http://localhost:11434/v1") == "http://localhost:11434/v1"
+    assert _ollama_openai_base_url(None) is None
+
+
 def test_resolve_hindsight_llm_uses_installed_ollama_model(isolated_data, monkeypatch):
     monkeypatch.setattr("localagent.config.HINDSIGHT_LLM_PROVIDER", "", raising=False)
     monkeypatch.setattr("localagent.config.OLLAMA_MODEL", "qwen3:4b", raising=False)
@@ -201,6 +319,7 @@ def test_resolve_hindsight_llm_uses_installed_ollama_model(isolated_data, monkey
     settings = resolve_hindsight_llm_settings()
     assert settings["provider"] == "ollama"
     assert settings["model"] == "qwen3.5:4b"
+    assert settings["base_url"] == "http://localhost:11434/v1"
 
 
 def test_resolve_hindsight_llm_prefers_ollama_when_available(isolated_data, monkeypatch):
