@@ -70,7 +70,8 @@ def _clean_heading(heading: str) -> str:
 
 def _first_sentence(text: str, *, max_len: int = 28) -> str:
     text = text.strip()
-    text = re.sub(r"^[\s。；，、\-•\d.]+", "", text)
+    # Do not strip leading digits — they are often part of dates like "2026年3月".
+    text = re.sub(r"^[\s。；，、\-•.]+", "", text)
     for sep in ("。", "；", "！", "？", "\n", "，"):
         idx = text.find(sep)
         if 4 <= idx <= max_len:

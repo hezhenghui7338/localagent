@@ -12,6 +12,7 @@ class ProgressEvent:
     message: str
     current: int = 0
     total: int = 0
+    details: list[str] | None = None
 
 
 class ProgressReporter(Protocol):
@@ -30,6 +31,9 @@ class ConsoleProgressReporter:
             )
         else:
             print(f"[{self.prefix}] {event.message}", flush=True)
+        if event.details:
+            for line in event.details:
+                print(f"[{self.prefix}]   {line}", flush=True)
 
 
 class TaskProgressReporter:
@@ -54,6 +58,9 @@ class TaskProgressReporter:
             )
         else:
             append_task_log(self.task_id, event.message)
+        if event.details:
+            for line in event.details:
+                append_task_log(self.task_id, f"  {line}")
 
 
 class MultiProgressReporter:

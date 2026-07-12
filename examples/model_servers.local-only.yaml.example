@@ -1,0 +1,7 @@
+# 纯本地模式 — 复制到 config/model_servers.yaml
+- provider: ollama
+  base_url: http://localhost:11434
+  model: qwen3.5:4b
+  timeout: 90
+  think: false
+  chat_timeout: 12

@@ -1,4 +1,5 @@
 .venv/
+.venv311/
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -11,6 +12,11 @@ build/
 .env.local
 .env.*
 !.env.example
+
+# Model servers config (may contain API keys)
+config/model_servers.yaml
+config/model_servers.yml
+config/model_servers.json
 
 # Runtime & personal data (never commit)
 data/*

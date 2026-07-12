@@ -39,6 +39,7 @@ _RELATIVE_PATTERNS = [
 ]
 
 _YEAR_RE = re.compile(r"(20\d{2})年?")
+_MONTH_RE = re.compile(r"(20\d{2})年(\d{1,2})月")
 
 
 def parse_temporal_intent(query: str, profile: CoreProfile | None = None) -> TemporalIntent:
@@ -55,12 +56,23 @@ def parse_temporal_intent(query: str, profile: CoreProfile | None = None) -> Tem
             intent.scope_end = now.strftime("%Y-%m-%d")
             break
 
-    year_match = _YEAR_RE.search(query)
-    if year_match and not intent.anchor_date:
-        year = int(year_match.group(1))
-        intent.anchor_date = f"{year}-06-15"
-        intent.scope_start = f"{year}-01-01"
-        intent.scope_end = f"{year}-12-31"
+    month_match = _MONTH_RE.search(query)
+    if month_match:
+        year = int(month_match.group(1))
+        month = int(month_match.group(2))
+        from calendar import monthrange
+
+        last_day = monthrange(year, month)[1]
+        intent.anchor_date = f"{year}-{month:02d}-15"
+        intent.scope_start = f"{year}-{month:02d}-01"
+        intent.scope_end = f"{year}-{month:02d}-{last_day:02d}"
+    else:
+        year_match = _YEAR_RE.search(query)
+        if year_match and not intent.anchor_date:
+            year = int(year_match.group(1))
+            intent.anchor_date = f"{year}-06-15"
+            intent.scope_start = f"{year}-01-01"
+            intent.scope_end = f"{year}-12-31"
 
     if profile:
         for anchor in profile.life_anchors:

@@ -16,7 +16,7 @@ from localagent.audit.usage import log_usage
 from localagent.knowledge.hybrid import get_hybrid_retriever
 from localagent.memory.display import format_memory_hits
 from localagent.memory.hindsight_client import get_memory_backend
-from localagent.memory.scoped_recall import scoped_recall
+from localagent.memory.query import list_memory_tags, query_memories
 from localagent.memory.store import MemoryFact, get_memory_store
 
 _MEMORY_MISS = "未找到相关记忆。"
@@ -91,14 +91,61 @@ def _fact_to_hit(fact: MemoryFact, *, score: float = 1.0) -> dict[str, Any]:
 
 def browse_memories(*, top_k: int = 8) -> str:
     """Return a recent sample from the memory store for meta/browse questions."""
-    facts = get_memory_store().all_facts()
-    if not facts:
+    return query_memories_tool(sort="newest", limit=top_k)
+
+
+def query_memories_tool(
+    *,
+    query: str = "",
+    tags: list[str] | None = None,
+    since: str | None = None,
+    until: str | None = None,
+    sort: str = "newest",
+    limit: int = 20,
+    show_ids: bool = True,
+    verbose: bool = False,
+) -> str:
+    """Query memories with tag/time filters, sorting, and optional semantic match."""
+    total = get_memory_backend().count()
+    if total == 0:
         return "记忆库为空，尚未保存任何记忆。"
 
-    recent = sorted(facts, key=lambda fact: fact.created_at, reverse=True)[:top_k]
-    hits = [_fact_to_hit(fact, score=1.0 - index * 0.02) for index, fact in enumerate(recent)]
-    body = format_memory_hits(hits, show_ids=False)
-    return f"记忆库共 {len(facts)} 条，展示最近 {len(recent)} 条\n\n{body}"
+    sort_order = sort if sort in ("newest", "oldest", "relevance") else "newest"
+    hits = query_memories(
+        query=query,
+        tags=tags,
+        since=since,
+        until=until,
+        sort=sort_order,  # type: ignore[arg-type]
+        limit=limit,
+    )
+
+    filters: list[str] = []
+    if query:
+        filters.append(f"语义: {query}")
+    if tags:
+        filters.append("标签: " + ", ".join(tags))
+    if since:
+        filters.append(f"自 {since}")
+    if until:
+        filters.append(f"至 {until}")
+    filter_hint = f"（{' · '.join(filters)}）" if filters else ""
+
+    if not hits:
+        tag_summary = list_memory_tags(limit=10)
+        tag_hint = ""
+        if tag_summary:
+            tag_hint = "\n可用标签: " + ", ".join(f"{tag}({count})" for tag, count in tag_summary)
+        return f"未找到匹配记忆{filter_hint}。记忆库共 {total} 条。{tag_hint}"
+
+    header = f"记忆库共 {total} 条，返回 {len(hits)} 条{filter_hint}"
+    body = format_memory_hits(
+        hits,
+        query=query,
+        show_ids=show_ids,
+        verbose=verbose,
+    )
+    return f"{header}\n\n{body}"
 
 
 def search_memory(
@@ -109,7 +156,7 @@ def search_memory(
     show_ids: bool = False,
     verbose: bool = False,
 ) -> str:
-    hits = scoped_recall(query, max_results=top_k)
+    hits = get_memory_backend().recall(query, max_results=top_k)
     if hits:
         return _format_memory_hits(
             hits,
@@ -245,6 +292,29 @@ def deep_search(
     return router.chat([ChatMessage(role="user", content=synthesis_prompt)], temperature=0.4, usage_command="deepsearch")
 
 
+def reflect_memory(query: str) -> str:
+    """Reason over memories (Hindsight reflect); falls back to recall on JSON backend."""
+    backend = get_memory_backend()
+    answer = backend.reflect(query)
+    if answer:
+        return answer
+
+    if backend.backend_name() == "json":
+        hits = backend.recall(query, max_results=5)
+        if hits:
+            body = _format_memory_hits(hits, query=query)
+            return (
+                "（当前为 JSON 记忆后端，无 Hindsight reflect；以下为 recall 结果）\n"
+                + body
+            )
+        return (
+            "推理召回需要 Hindsight 引擎。"
+            "请使用 Python 3.11+ 并安装: pip install -e \".[hindsight]\""
+        )
+
+    return "未能从记忆中推理出答案。"
+
+
 def workspace_context_tool(*, days: int = 7) -> str:
     """Agent tool: workspace git/files/todos summary."""
     from localagent.workspace.context import workspace_context
@@ -269,9 +339,32 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "parameters": {"query": "搜索关键词"},
     },
     {
+        "name": "reflect_memory",
+        "description": (
+            "对记忆进行推理综合，处理矛盾、歧义或需要跨多条记忆归纳的问题；"
+            "需要 Hindsight 引擎，JSON 后端会降级为 recall"
+        ),
+        "parameters": {"query": "需要推理的问题"},
+    },
+    {
         "name": "workspace_context",
         "description": "获取工作区上下文：最近修改的文件、Git 状态与提交、待办 TODO；用于「我最近干了啥、git 怎样、有什么待办」类问题",
         "parameters": {"days": "可选，最近几天内的文件变更，默认 7"},
+    },
+    {
+        "name": "query_memories",
+        "description": (
+            "浏览或查询本地记忆库：支持按标签、时间范围过滤，按时间或相关度排序，"
+            "以及内容语义匹配；用于「记忆里有什么、按标签查看、某段时间的记忆」类问题"
+        ),
+        "parameters": {
+            "query": "可选，语义搜索关键词",
+            "tags": "可选，标签列表，如 [\"偏好\", \"工作\"]",
+            "since": "可选，起始日期 YYYY-MM-DD",
+            "until": "可选，结束日期 YYYY-MM-DD",
+            "sort": "可选，newest（默认）/ oldest / relevance",
+            "limit": "可选，返回条数，默认 20",
+        },
     },
 ]
 
@@ -283,6 +376,8 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> str:
         return search_knowledge(arguments.get("query", ""))
     if name == "web_search":
         return web_search(arguments.get("query", ""))
+    if name == "reflect_memory":
+        return reflect_memory(arguments.get("query", ""))
     if name == "workspace_context":
         days_raw = arguments.get("days", 7)
         try:
@@ -290,4 +385,25 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> str:
         except (TypeError, ValueError):
             days = 7
         return workspace_context_tool(days=days)
+    if name == "query_memories":
+        tags_raw = arguments.get("tags")
+        tags: list[str] | None = None
+        if isinstance(tags_raw, list):
+            tags = [str(tag) for tag in tags_raw if str(tag).strip()]
+        elif isinstance(tags_raw, str) and tags_raw.strip():
+            tags = [part.strip() for part in tags_raw.split(",") if part.strip()]
+        limit_raw = arguments.get("limit", 20)
+        try:
+            limit = int(limit_raw)
+        except (TypeError, ValueError):
+            limit = 20
+        return query_memories_tool(
+            query=str(arguments.get("query") or ""),
+            tags=tags,
+            since=arguments.get("since"),
+            until=arguments.get("until"),
+            sort=str(arguments.get("sort") or "newest"),
+            limit=limit,
+            show_ids=True,
+        )
     return f"未知工具: {name}"

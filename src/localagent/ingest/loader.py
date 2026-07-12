@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from localagent.config import SUPPORTED_SUFFIXES
@@ -55,9 +56,11 @@ def load_file(path: Path) -> LoadedDoc | None:
     if not text:
         return None
 
+    modified_at = datetime.fromtimestamp(path.stat().st_mtime).isoformat(timespec="seconds")
+
     return LoadedDoc(
         text=text,
         source=str(path.resolve()),
         filename=path.name,
-        metadata={"suffix": suffix},
+        metadata={"suffix": suffix, "modified_at": modified_at},
     )

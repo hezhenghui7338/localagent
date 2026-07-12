@@ -63,7 +63,7 @@ def _resolve_source(hit: dict[str, Any]) -> str:
     meta = hit.get("metadata") or {}
     if meta.get("source") and meta["source"] not in _GENERIC_SOURCES:
         return str(meta["source"])
-    source = hit.get("source_file") or ""
+    source = hit.get("source_file") or str(meta.get("source_file") or "")
     if source and source not in ("manual", "?"):
         return source
     heading = hit.get("section_heading") or ""
@@ -89,7 +89,10 @@ def format_memory_hit(
     source = _resolve_source(hit)
 
     tag_part = " · ".join(f"#{t}" for t in tags) if tags else ""
-    meta_line_parts = [f"相关度 {score:.2f}", date_str, mem_type]
+    meta_line_parts: list[str] = []
+    if score > 0:
+        meta_line_parts.append(f"相关度 {score:.2f}")
+    meta_line_parts.extend([date_str, mem_type])
     if tag_part:
         meta_line_parts.append(tag_part)
     meta_line = " · ".join(meta_line_parts)

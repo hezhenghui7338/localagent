@@ -6,6 +6,12 @@ from localagent.memory.display import format_memory_hit, format_memory_hits
 from localagent.memory.enrich import enrich_heuristic, enrich_memory
 
 
+def test_enrich_heuristic_preserves_leading_year():
+    text = "2026年3月，开发者决定用 Python 重写个人助手，项目代号 LocalAgent"
+    result = enrich_heuristic(text)
+    assert result.title.startswith("2026年3月")
+
+
 def test_enrich_heuristic_generates_title_tags_summary():
     text = "2026年7月决定使用 Hindsight 作为记忆引擎，用于管理长期记忆。"
     result = enrich_heuristic(text, heading="技术决策")

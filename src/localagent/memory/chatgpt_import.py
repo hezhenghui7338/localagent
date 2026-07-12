@@ -12,7 +12,12 @@ from localagent.ingest.progress import ProgressEvent, ProgressReporter
 from localagent.memory.save import confirm_save_facts
 from localagent.memory.value_filter import filter_facts
 from localagent.models.router import get_model_router
-from localagent.persist.chatgpt import ChatGPTConversation, format_conversation_text, load_conversations_file
+from localagent.persist.chatgpt import (
+    ChatGPTConversation,
+    format_conversation_text,
+    load_conversations_file,
+    timestamp_to_iso,
+)
 from localagent.persist.chatgpt_memories import (
     ChatGPTSavedMemory,
     detect_chatgpt_export_kind,
@@ -21,6 +26,61 @@ from localagent.persist.chatgpt_memories import (
 )
 
 _MEMORY_INDEX_PREFIX = "mem:"
+
+
+def _format_fact_details(facts: list[str]) -> list[str]:
+    return [f"{index}. {fact}" for index, fact in enumerate(facts, start=1)]
+
+
+def _report_skip(
+    reporter: ProgressReporter | None,
+    *,
+    skip_reason: str | None,
+    interactive: bool,
+) -> None:
+    if reporter is None or interactive or not skip_reason:
+        return
+    messages = {
+        "do_not_remember": "→ 跳过（Do not remember）",
+        "empty": "→ 跳过（无内容）",
+        "duplicate": "→ 跳过（已导入）",
+        "no_facts": "→ 未提取到记忆",
+        "disabled": "→ 跳过（已禁用）",
+    }
+    if skip_reason.startswith("failed:"):
+        message = f"→ 失败: {skip_reason[7:]}"
+    else:
+        message = messages.get(skip_reason)
+    if message:
+        reporter.update(ProgressEvent(phase="skip", message=message))
+
+
+def _report_extracted_facts(
+    reporter: ProgressReporter | None,
+    facts: list[str],
+    *,
+    interactive: bool,
+) -> None:
+    if reporter is None or interactive or not facts:
+        return
+    reporter.update(
+        ProgressEvent(
+            phase="facts",
+            message=f"→ {len(facts)} 条记忆",
+            details=_format_fact_details(facts),
+        )
+    )
+
+
+def _report_saved(
+    reporter: ProgressReporter | None,
+    saved_count: int,
+    *,
+    interactive: bool,
+) -> None:
+    if reporter is None or interactive or not saved_count:
+        return
+    reporter.update(ProgressEvent(phase="saved", message=f"✓ 已保存 {saved_count} 条"))
 
 
 @dataclass
@@ -101,7 +161,8 @@ def import_conversation(
     source_file: str,
     force: bool = False,
     processed: dict[str, dict] | None = None,
-    interactive: bool | None = None,
+    interactive: bool = False,
+    reporter: ProgressReporter | None = None,
 ) -> tuple[int, str | None]:
     """
     Import one conversation and save extracted memories.
@@ -113,15 +174,19 @@ def import_conversation(
         processed = _load_index()
 
     if conversation.is_do_not_remember:
+        _report_skip(reporter, skip_reason="do_not_remember", interactive=interactive)
         return 0, "do_not_remember"
 
     if not conversation.conversation_id:
+        _report_skip(reporter, skip_reason="empty", interactive=interactive)
         return 0, "empty"
 
     if not force and conversation.conversation_id in processed:
+        _report_skip(reporter, skip_reason="duplicate", interactive=interactive)
         return 0, "duplicate"
 
     if not conversation.messages:
+        _report_skip(reporter, skip_reason="empty", interactive=interactive)
         return 0, "empty"
 
     text = format_conversation_text(conversation)
@@ -135,24 +200,36 @@ def import_conversation(
             ),
         )
     except RuntimeError as exc:
+        _report_skip(reporter, skip_reason=f"failed:{exc}", interactive=interactive)
         return 0, f"failed:{exc}"
     facts = filter_facts(facts)
     if not facts:
         _mark_processed(processed, conversation, source_file=source_file, saved_count=0)
+        _report_skip(reporter, skip_reason="no_facts", interactive=interactive)
         return 0, "no_facts"
 
     title = conversation.title or conversation.conversation_id[:12]
+    _report_extracted_facts(reporter, facts, interactive=interactive)
+    metadata: dict[str, object] = {
+        "source": "import-chatgpt",
+        "session_id": f"chatgpt:{conversation.conversation_id}",
+        "conversation_id": conversation.conversation_id,
+        "source_file": source_file,
+    }
+    conv_created = timestamp_to_iso(conversation.create_time)
+    conv_updated = timestamp_to_iso(conversation.update_time)
+    if conv_created:
+        metadata["chatgpt_created_at"] = conv_created
+        metadata["recorded_at"] = conv_created
+    if conv_updated:
+        metadata["chatgpt_updated_at"] = conv_updated
     ids = confirm_save_facts(
         facts,
-        metadata={
-            "source": "import-chatgpt",
-            "session_id": f"chatgpt:{conversation.conversation_id}",
-            "conversation_id": conversation.conversation_id,
-            "source_file": source_file,
-        },
+        metadata=metadata,
         title=f"《{title}》提取到 {len(facts)} 条记忆",
         interactive=interactive,
     )
+    _report_saved(reporter, len(ids), interactive=interactive)
     _mark_processed(processed, conversation, source_file=source_file, saved_count=len(ids))
     return len(ids), None
 
@@ -187,20 +264,24 @@ def import_saved_memory(
     force: bool = False,
     include_disabled: bool = False,
     processed: dict[str, dict] | None = None,
-    interactive: bool | None = None,
+    interactive: bool = False,
+    reporter: ProgressReporter | None = None,
 ) -> tuple[int, str | None]:
     """Import one ChatGPT saved memory (memory.json entry). Returns (saved_count, skip_reason)."""
     if processed is None:
         processed = _load_index()
 
     if not memory.content.strip():
+        _report_skip(reporter, skip_reason="empty", interactive=interactive)
         return 0, "empty"
 
     if not include_disabled and not memory.enabled:
+        _report_skip(reporter, skip_reason="disabled", interactive=interactive)
         return 0, "disabled"
 
     index_key = _memory_index_key(memory.memory_id)
     if not force and index_key in processed:
+        _report_skip(reporter, skip_reason="duplicate", interactive=interactive)
         return 0, "duplicate"
 
     metadata = {
@@ -208,12 +289,16 @@ def import_saved_memory(
         "chatgpt_memory_id": memory.memory_id,
         "source_file": source_file,
         "enabled": memory.enabled,
+        # Saved memories already carry a recording time; inline years are often future plans.
+        "extract_occurred_from_text": False,
     }
     if memory.created_at:
         metadata["chatgpt_created_at"] = memory.created_at
+        metadata["recorded_at"] = memory.created_at
     if memory.updated_at:
         metadata["chatgpt_updated_at"] = memory.updated_at
 
+    _report_extracted_facts(reporter, [memory.content], interactive=interactive)
     ids = confirm_save_facts(
         [memory.content],
         metadata=metadata,
@@ -221,6 +306,7 @@ def import_saved_memory(
         interactive=interactive,
     )
     saved_count = len(ids)
+    _report_saved(reporter, saved_count, interactive=interactive)
     _mark_memory_processed(
         processed,
         memory,
@@ -236,7 +322,7 @@ def import_chatgpt_memories_file(
     force: bool = False,
     include_disabled: bool = False,
     reporter: ProgressReporter | None = None,
-    interactive: bool | None = None,
+    interactive: bool = False,
 ) -> ImportSummary:
     summary = ImportSummary()
     if not path.exists():
@@ -289,6 +375,7 @@ def import_chatgpt_memories_file(
             include_disabled=include_disabled,
             processed=processed,
             interactive=interactive,
+            reporter=reporter,
         )
         _apply_memory_import_result(summary, saved_count, skip_reason)
 
@@ -317,7 +404,7 @@ def import_chatgpt_file(
     force: bool = False,
     include_disabled: bool = False,
     reporter: ProgressReporter | None = None,
-    interactive: bool | None = None,
+    interactive: bool = False,
 ) -> ImportSummary:
     summary = ImportSummary()
     if not path.exists():
@@ -385,6 +472,7 @@ def import_chatgpt_file(
             force=force,
             processed=processed,
             interactive=interactive,
+            reporter=reporter,
         )
         _apply_import_result(summary, conversation, saved_count, skip_reason)
 
@@ -420,7 +508,7 @@ def _import_chatgpt_json_path(
     force: bool = False,
     include_disabled: bool = False,
     reporter: ProgressReporter | None = None,
-    interactive: bool | None = None,
+    interactive: bool = False,
     processed: dict[str, dict] | None = None,
 ) -> ImportSummary:
     """Import one JSON file, auto-detecting conversations vs saved memories."""
@@ -464,6 +552,7 @@ def _import_chatgpt_json_path(
                 include_disabled=include_disabled,
                 processed=processed,
                 interactive=interactive,
+                reporter=reporter,
             )
             _apply_memory_import_result(summary, saved_count, skip_reason)
         return summary
@@ -498,6 +587,7 @@ def _import_chatgpt_json_path(
             force=force,
             processed=processed,
             interactive=interactive,
+            reporter=reporter,
         )
         _apply_import_result(summary, conversation, saved_count, skip_reason)
     return summary
@@ -523,7 +613,7 @@ def import_chatgpt_dir(
     force: bool = False,
     include_disabled: bool = False,
     reporter: ProgressReporter | None = None,
-    interactive: bool | None = None,
+    interactive: bool = False,
 ) -> ImportSummary:
     summary = ImportSummary()
     if not directory.exists():

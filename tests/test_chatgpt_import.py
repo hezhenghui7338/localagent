@@ -9,6 +9,7 @@ import pytest
 
 from localagent import config
 from localagent.cli import main
+from localagent.ingest.progress import ConsoleProgressReporter
 from localagent.memory.chatgpt_import import (
     import_chatgpt_file,
     import_chatgpt_memories_file,
@@ -96,6 +97,14 @@ def test_format_conversation_text_includes_title_and_roles():
     assert "title: 职业规划" in text
     assert "user: 我喜欢用 Python 做数据分析" in text
     assert "assistant:" in text
+    assert "[2025-09-05]" in text
+
+
+def test_format_conversation_text_includes_message_timestamps():
+    conv = parse_conversation(_make_conversation())
+    text = format_conversation_text(conv)
+    assert "[2025-09-05] user:" in text
+    assert "[2025-09-05] assistant:" in text
 
 
 def test_load_real_sample_file():
@@ -121,6 +130,9 @@ def test_import_chatgpt_saves_memories(isolated_data, tmp_path: Path):
     assert summary.imported == 1
     assert summary.saved_count == 1
     assert get_memory_store().count() == before + 1
+    fact = get_memory_store().all_facts()[-1]
+    assert fact.created_at.startswith("2025-09-05")
+    assert fact.metadata.get("chatgpt_created_at", "").startswith("2025-09-05")
 
 
 def test_import_chatgpt_skips_do_not_remember(isolated_data, tmp_path: Path):
@@ -168,6 +180,45 @@ def test_import_chatgpt_force_reimports(isolated_data, tmp_path: Path):
     assert get_memory_store().count() == before + 2
 
 
+def test_import_chatgpt_auto_saves_in_tty(isolated_data, tmp_path: Path, monkeypatch):
+    """Default import saves without prompting even when stdin is a TTY."""
+    export_path = tmp_path / "tty-auto-save.json"
+    export_path.write_text(
+        json.dumps(_sample_export(_make_conversation(conversation_id="tty-conv")), ensure_ascii=False),
+        encoding="utf-8",
+    )
+    isolated_data["router"].extract_facts.return_value = ["TTY 下也应自动保存"]
+
+    class FakeStdin:
+        def isatty(self) -> bool:
+            return True
+
+    monkeypatch.setattr("sys.stdin", FakeStdin())
+
+    before = get_memory_store().count()
+    summary = import_chatgpt_file(export_path)
+    assert summary.imported == 1
+    assert summary.saved_count == 1
+    assert get_memory_store().count() == before + 1
+
+
+def test_import_chatgpt_reports_extracted_facts(isolated_data, tmp_path: Path, capsys):
+    export_path = tmp_path / "verbose-import.json"
+    fact_text = "用户计划在2026年系统学习 Rust 语言"
+    export_path.write_text(
+        json.dumps(_sample_export(_make_conversation()), ensure_ascii=False),
+        encoding="utf-8",
+    )
+    isolated_data["router"].extract_facts.return_value = [fact_text]
+
+    reporter = ConsoleProgressReporter(prefix="import-chatgpt")
+    import_chatgpt_file(export_path, reporter=reporter)
+    out = capsys.readouterr().out
+    assert "→ 1 条记忆" in out
+    assert fact_text in out
+    assert "✓ 已保存 1 条" in out
+
+
 def test_cli_import_chatgpt(isolated_data, tmp_path: Path, capsys):
     export_path = tmp_path / "cli-import.json"
     export_path.write_text(
@@ -183,6 +234,7 @@ def test_cli_import_chatgpt(isolated_data, tmp_path: Path, capsys):
     out = capsys.readouterr().out
     assert "import-chatgpt" in out
     assert "imported=1" in out
+    assert "用户计划在2026年系统学习 Rust 语言" in out
     assert get_memory_store().count() == before + 1
 
 
@@ -249,6 +301,7 @@ def test_import_chatgpt_memories_saves_directly(isolated_data, tmp_path: Path):
                     "id": "mem_direct",
                     "content": "用户在 2026 年计划系统学习 Rust",
                     "enabled": True,
+                    "created_at": "2025-09-14T11:32:00+00:00",
                 },
                 {
                     "id": "mem_disabled",
@@ -268,6 +321,8 @@ def test_import_chatgpt_memories_saves_directly(isolated_data, tmp_path: Path):
     assert summary.saved_count == 1
     assert summary.skipped_disabled == 1
     assert get_memory_store().count() == before + 1
+    fact = get_memory_store().all_facts()[-1]
+    assert fact.created_at.startswith("2025-09-14")
 
 
 def test_import_chatgpt_memories_include_disabled(isolated_data, tmp_path: Path):

@@ -28,11 +28,26 @@ class ChatREPL:
         router = get_model_router()
         provider_hint = router.format_provider_hint(self.provider)
         model_hint = ""
-        if router.is_ollama_available():
-            model_hint = f"  model={router.resolve_ollama_model()}"
+        model_name = router.format_model_hint(self.provider)
+        if model_name:
+            model_hint = f"  model={model_name}"
         speed_hint = ""
-        if self.provider in ("auto", "ollama") and router.provider_status()["openrouter"]:
-            speed_hint = "\n  提示: Ollama 本地模型较慢时可 :provider openrouter 加速"
+        status = router.provider_status()
+        if self.provider == "minimax" and not status.get("minimax"):
+            print(
+                "[chat] 警告: minimax 未配置 api_key。"
+                " 请 LA config set-key minimax <key> 或在 LA_MODEL_SERVERS 中填写。"
+            )
+        cloud_ready = any(
+            name != "ollama" and name != "cursor" and status.get(name)
+            for name in config.MODEL_PROVIDER_PRIORITY
+        )
+        if self.provider in ("auto", "ollama") and cloud_ready:
+            alt = next(
+                (n for n in config.MODEL_PROVIDER_PRIORITY if n not in ("ollama", "cursor") and status.get(n)),
+                "cloud",
+            )
+            speed_hint = f"\n  提示: Ollama 本地模型较慢时可 :provider {alt} 加速"
         print(
             f"[chat] session={self.session_id}  provider={provider_hint}{model_hint}\n"
             "  输入 :q 退出, :provider 切换路径, :deepsearch <主题> 深度研究\n"
@@ -134,17 +149,14 @@ class ChatREPL:
         parts = line.split(maxsplit=1)
         if len(parts) < 2:
             status = router.provider_status()
-            labels = {
-                "ollama": f"ollama      {'✓' if status['ollama'] else '✗'}  {config.OLLAMA_MODEL}",
-                "openrouter": (
-                    f"openrouter  {'✓' if status['openrouter'] else '✗'}  {config.OPENROUTER_MODEL}"
-                ),
-                "cursor": f"cursor     {'✓' if status['cursor'] else '✗'}  {config.CURSOR_MODEL}",
-            }
             print(f"当前路径: {router.format_provider_hint(self.provider)}")
             for name in config.MODEL_PROVIDER_PRIORITY:
-                print(f"  {labels[name]}")
-            print("用法: :provider auto|ollama|openrouter|cursor")
+                server = config.get_model_server(name)
+                model = router.format_model_hint(name) if name == "ollama" else (server.model if server else "?")
+                mark = "✓" if status.get(name) else "✗"
+                print(f"  {name:<12} {mark}  {model}")
+            providers = "|".join(config.VALID_PROVIDERS)
+            print(f"用法: :provider auto|{providers}")
             return
 
         try:

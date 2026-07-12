@@ -9,6 +9,7 @@ from localagent.agent.runtime import (
     _parse_tool_call,
     _prefetch_personal_context,
     _prefetch_web_context,
+    _strip_tool_blocks,
     run_agent_turn,
 )
 
@@ -41,6 +42,29 @@ def test_parse_tool_call_rejects_unknown_tool():
     assert _parse_tool_call('{"name": "delete_everything", "arguments": {}}') is None
 
 
+def test_strip_tool_blocks():
+    text = '先说一段\n```tool\n{"name": "query_memories", "arguments": {"since": "2023-01-01"}}\n```'
+    assert "query_memories" not in _strip_tool_blocks(text)
+    assert "先说一段" in _strip_tool_blocks(text)
+
+
+def test_run_agent_turn_returns_final_answer_after_tool(isolated_data):
+    first = (
+        '```tool\n{"name": "query_memories", "arguments": {"query": "家庭", "tags": ["家庭"]}}\n```'
+    )
+    isolated_data["router"].chat.side_effect = [first, "你的妻子求职中，你会帮她盯简历。"]
+
+    with patch(
+        "localagent.tools.query_memories_tool",
+        return_value="### 1. 妻子求职\n妻子在找工作",
+    ):
+        result = run_agent_turn("关于我的家庭", provider="ollama")
+
+    assert result.response == "你的妻子求职中，你会帮她盯简历。"
+    assert len(result.tool_calls) == 1
+    assert isolated_data["router"].chat.call_count == 2
+
+
 def test_run_agent_turn_executes_json_fenced_tool_call(isolated_data):
     tool_reply = (
         '```json\n{"name": "search_knowledge", "arguments": {"query": "几年前"}}\n```'
@@ -67,16 +91,42 @@ def test_prefetch_personal_context_for_identity_question():
     assert ctx
     assert "已预加载" in ctx
     assert "未找到相关记忆" in ctx
-    search.assert_called_once_with("我是谁?")
+    search.assert_called_once_with("我是谁?", top_k=10)
 
 
 def test_prefetch_memory_browse_question():
-    with patch("localagent.tools.browse_memories", return_value="记忆库共 3 条，展示最近 3 条") as browse:
+    with patch(
+        "localagent.tools.query_memories_tool",
+        return_value="记忆库共 3 条，返回 3 条",
+    ) as browse:
         ctx = _prefetch_personal_context("我的记忆库里有什么有趣的东西吗?")
     assert ctx
     assert "已预加载" in ctx
     assert "记忆库共 3 条" in ctx
-    browse.assert_called_once()
+    browse.assert_called_once_with(
+        query="我的记忆库里有什么有趣的东西吗?",
+        sort="relevance",
+        limit=25,
+    )
+
+
+def test_prefetch_family_question_uses_tag_search():
+    with (
+        patch(
+            "localagent.tools.query_memories_tool",
+            return_value="找到 2 条相关记忆",
+        ) as query,
+        patch(
+            "localagent.tools.search_memory",
+            return_value="妻子相关记忆",
+        ) as search,
+    ):
+        ctx = _prefetch_personal_context("关于我的家庭,你都知道些什么?深入搜索我的记忆库.")
+    assert ctx
+    assert "已预加载" in ctx
+    query.assert_called_once()
+    assert query.call_args.kwargs.get("tags") == ["家庭"]
+    search.assert_called_once()
 
 
 def test_prefetch_skips_generic_question():
@@ -123,14 +173,18 @@ def test_run_agent_turn_prefetches_memory_browse(isolated_data):
     isolated_data["router"].chat.return_value = "你的记忆库里有不少有趣的内容。"
 
     with patch(
-        "localagent.tools.browse_memories",
-        return_value="记忆库共 5 条，展示最近 5 条",
+        "localagent.tools.query_memories_tool",
+        return_value="记忆库共 5 条，返回 5 条",
     ) as browse:
         result = run_agent_turn("我的记忆库里有什么有趣的东西吗?", provider="ollama")
 
     assert "有趣" in result.response
     assert result.tool_calls == []
-    browse.assert_called_once()
+    browse.assert_called_once_with(
+        query="我的记忆库里有什么有趣的东西吗?",
+        sort="relevance",
+        limit=25,
+    )
     system_prompt = isolated_data["router"].chat.call_args.args[0][0].content
     assert "已预加载" in system_prompt
     assert "记忆库共 5 条" in system_prompt

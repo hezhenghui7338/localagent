@@ -9,6 +9,7 @@ from typing import Any
 
 from localagent import config
 from localagent.memory.core_profile import load_core_profile
+from localagent.memory.temporal import memory_effective_time
 from localagent.memory.store import get_memory_store
 from localagent.memory.temporal_intent import parse_temporal_intent
 
@@ -56,17 +57,64 @@ def _semantic_score(query: str, text: str) -> float:
     return overlap / len(q_terms)
 
 
-def _temporal_score(created_at: str, anchor_date: str | None) -> float:
-    if not created_at or not anchor_date:
+def _temporal_score(effective_at: str, anchor_date: str | None) -> float:
+    if not effective_at or not anchor_date:
         return 0.5
     try:
-        created = datetime.fromisoformat(created_at)
+        created = datetime.fromisoformat(effective_at)
         anchor = datetime.fromisoformat(anchor_date)
         days = abs((created - anchor).total_seconds()) / 86400.0
         half_life = config.TIME_DECAY_HALFLIFE_DAYS
         return math.pow(0.5, days / half_life)
     except Exception:
         return 0.5
+
+
+def rerank_hits_temporally(
+    query: str,
+    hits: list[dict[str, Any]],
+    *,
+    max_results: int = 10,
+) -> list[dict[str, Any]]:
+    """Re-rank recall hits with temporal intent (for Hindsight recall results)."""
+    profile = load_core_profile()
+    intent = parse_temporal_intent(query, profile)
+
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for hit in hits:
+        meta = hit.get("metadata") or {}
+        searchable = " ".join(
+            part for part in (
+                str(hit.get("text") or ""),
+                str(meta.get("title") or ""),
+                str(meta.get("summary") or ""),
+                " ".join(meta.get("tags") or []),
+                str(hit.get("section_heading") or ""),
+            )
+            if part
+        )
+        sem = _semantic_score(query, searchable) if query.strip() else hit.get("score", 1.0)
+        effective_at = memory_effective_time(
+            metadata=hit.get("metadata"),
+            created_at=str(hit.get("created_at") or ""),
+        )
+        temp = _temporal_score(effective_at, intent.anchor_date)
+        base_score = float(hit.get("score") or 0.0)
+        if query.strip():
+            blended = config.SEMANTIC_WEIGHT * max(sem, base_score * 0.5) + (
+                1 - config.SEMANTIC_WEIGHT
+            ) * temp
+        else:
+            blended = base_score
+        enriched = dict(hit)
+        enriched["score"] = blended
+        enriched["semantic_score"] = sem if query.strip() else None
+        enriched["temporal_score"] = temp
+        enriched["anchor"] = intent.to_dict()
+        scored.append((blended, enriched))
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [item for _, item in scored[:max_results]]
 
 
 def scoped_recall(query: str, *, max_results: int = 10) -> list[dict[str, Any]]:
@@ -92,7 +140,8 @@ def scoped_recall(query: str, *, max_results: int = 10) -> list[dict[str, Any]]:
         sem = _semantic_score(query, searchable)
         if sem <= 0:
             continue
-        temp = _temporal_score(fact.created_at, intent.anchor_date)
+        effective_at = memory_effective_time(metadata=fact.metadata, created_at=fact.created_at)
+        temp = _temporal_score(effective_at, intent.anchor_date)
         blended = config.SEMANTIC_WEIGHT * sem + (1 - config.SEMANTIC_WEIGHT) * temp
         scored.append((
             blended,
@@ -104,7 +153,7 @@ def scoped_recall(query: str, *, max_results: int = 10) -> list[dict[str, Any]]:
                 "temporal_score": temp,
                 "source_file": fact.source_file,
                 "section_heading": fact.section_heading,
-                "created_at": fact.created_at,
+                "created_at": effective_at,
                 "metadata": fact.metadata,
                 "anchor": intent.to_dict(),
             },

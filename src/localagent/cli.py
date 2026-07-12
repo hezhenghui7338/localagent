@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -13,12 +14,12 @@ from localagent.ingest.sync_file import sync_files
 from localagent.ingest.progress import ConsoleProgressReporter
 from localagent.ingest.tasks import TaskStatus, format_task_line, get_task_store
 from localagent.memory.chatgpt_import import import_chatgpt_dir, import_chatgpt_file
-from localagent.memory.hindsight_client import get_memory_backend
+from localagent.memory.hindsight_client import describe_memory_backend, get_memory_backend
+from localagent.memory.query import list_memory_tags, query_memories
 from localagent.memory.rememorize import rememorize_chat
 from localagent.memory.reset import rebuild_memory, reset_memory
-from localagent.memory.scoped_recall import scoped_recall
 from localagent.memory.store import get_memory_store
-from localagent.tools import search_knowledge, search_memory
+from localagent.tools import query_memories_tool, reflect_memory, search_knowledge, search_memory
 from localagent.ui.console import emit
 
 
@@ -316,7 +317,7 @@ def cmd_rememorize_chat(args: argparse.Namespace) -> int:
 
 def cmd_import_chatgpt(args: argparse.Namespace) -> int:
     reporter = ConsoleProgressReporter(prefix="import-chatgpt")
-    interactive = True if args.interactive else None
+    interactive = args.interactive
     if args.directory:
         summary = import_chatgpt_dir(
             Path(args.directory),
@@ -390,7 +391,8 @@ def cmd_search(args: argparse.Namespace) -> int:
         print(search_knowledge(args.query, top_k=args.top_k))
     else:
         emit("search", f"检索记忆: {args.query}")
-        hits = scoped_recall(args.query, max_results=args.top_k)
+        backend = get_memory_backend()
+        hits = backend.recall(args.query, max_results=args.top_k)
         result = search_memory(
             args.query,
             top_k=args.top_k,
@@ -401,6 +403,88 @@ def cmd_search(args: argparse.Namespace) -> int:
         print(result)
         if hits:
             print("→ LA forget <id>  删除某条记忆")
+    return 0
+
+
+def cmd_memory_status(_args: argparse.Namespace) -> int:
+    info = describe_memory_backend()
+    print("[memory-status] Warm 层记忆引擎诊断")
+    print(f"  当前后端:     {info['active_backend']} ({info.get('backend_class', '?')})")
+    print(f"  配置偏好:     {info['preference']} (LA_MEMORY_BACKEND)")
+    print(f"  Python:       {info['python_version']}")
+    print(f"  Hindsight:    {'已安装' if info['hindsight_installed'] else '未安装'}")
+    if info["hindsight_installed"]:
+        llm_ok = info.get("hindsight_llm_available", False)
+        mode = info.get("hindsight_extraction_mode", "?")
+        print(f"  Retain 模式:  {mode} (LA_HINDSIGHT_EXTRACTION_MODE)")
+        if mode == "chunks":
+            print(f"  Retain LLM:   不需要（chunks 模式直接分块入库）")
+        else:
+            print(f"  Retain LLM:   {'可用' if llm_ok else '不可用'} ({info.get('hindsight_llm_provider', '?')}/{info.get('hindsight_llm_model', '?')})")
+        configured = info.get("ollama_model_configured")
+        resolved = info.get("hindsight_llm_model")
+        if configured and resolved and configured != resolved:
+            print(f"  ⚠ Ollama 模型: 配置 {configured} → 实际使用 {resolved}")
+        print(f"  Retain 降级:  {'开启' if info.get('retain_json_fallback') else '关闭'} (LA_HINDSIGHT_RETAIN_JSON_FALLBACK)")
+    if not info["python_ok_for_hindsight"]:
+        print("  ⚠ Python 3.11+ 才能安装 hindsight-all")
+    print(f"  记忆条数:     {info['memory_count']}")
+    print(f"  Bank ID:      {info['bank_id']}")
+    print(f"  本地索引:     {info['store_file']}")
+    if info.get("error"):
+        print(f"  错误:         {info['error']}")
+    if info["active_backend"] == "json" and info["preference"] == "auto":
+        print("\n提示: 安装 Hindsight 后可获得 4 路并行 recall + reflect + consolidation")
+        print("  python3.11 -m venv .venv311 && pip install -e '.[full,hindsight]'")
+    return 0
+
+
+def cmd_reflect(args: argparse.Namespace) -> int:
+    emit("reflect", f"推理记忆: {args.query}")
+    print(reflect_memory(args.query))
+    return 0
+
+
+def cmd_memories(args: argparse.Namespace) -> int:
+    tags = [part.strip() for part in (args.tag or []) if part.strip()]
+    sort = args.sort if args.sort in ("newest", "oldest", "relevance") else "newest"
+
+    if args.list_tags:
+        ranked = list_memory_tags(limit=args.limit)
+        if not ranked:
+            print("记忆库中暂无标签。")
+            return 0
+        print(f"共 {len(ranked)} 个标签：")
+        for tag, count in ranked:
+            print(f"  #{tag}  ({count})")
+        return 0
+
+    if args.json:
+        hits = query_memories(
+            query=args.query or "",
+            tags=tags or None,
+            since=args.since,
+            until=args.until,
+            sort=sort,  # type: ignore[arg-type]
+            limit=args.limit,
+        )
+        print(json.dumps(hits, ensure_ascii=False, indent=2))
+        return 0
+
+    emit("memories", "查询记忆库…")
+    result = query_memories_tool(
+        query=args.query or "",
+        tags=tags or None,
+        since=args.since,
+        until=args.until,
+        sort=sort,
+        limit=args.limit,
+        show_ids=True,
+        verbose=args.verbose,
+    )
+    print(result)
+    if get_memory_backend().count():
+        print("→ LA forget <id>  删除某条记忆")
     return 0
 
 
@@ -454,6 +538,148 @@ def cmd_audit(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_config_ensure_result(result) -> None:
+    if result.config_path:
+        print(f"[config] 配置文件: {result.config_path}")
+    else:
+        print("[config] 配置文件: 未找到（使用内置默认）")
+    print(f"[config] 环境文件: {result.env_path}")
+    if result.has_changes:
+        print("[config] 已重新加载，变更如下:")
+        for line in result.change_lines():
+            print(f"  · {line}")
+    else:
+        print("[config] 配置已是最新，无变更")
+    if result.priority_after:
+        print(f"[config] 生效优先级: {'→'.join(result.priority_after)}")
+
+
+def cmd_config(args: argparse.Namespace) -> int:
+    from localagent import env_config
+
+    env_path = env_config.resolve_env_file()
+    env_config.ensure_config(env_path=env_path)
+
+    if args.config_cmd == "list":
+        print(f"[config] 环境文件: {env_path}")
+        config_file = env_config.resolve_model_servers_file(env_path)
+        inline = env_config.read_env_value(env_path, env_config.LA_MODEL_SERVERS_KEY)
+        if config_file and config_file.is_file():
+            print(f"[config] 模型配置: {config_file}")
+        elif inline:
+            print("[config] 模型配置: .env 内 LA_MODEL_SERVERS（建议迁移到 config/model_servers.yaml）")
+        else:
+            print("[config] 模型配置: 内置默认（首次运行会自动创建 config/model_servers.yaml）")
+        priority_override = env_config.read_priority_override(env_path)
+        file_order = [s.provider for s in env_config.read_model_servers(env_path)]
+        mem_order = [s.provider for s in config.MODEL_SERVERS]
+        if file_order != mem_order:
+            print(
+                "[config] 警告: 磁盘配置与内存不一致，请保存 YAML 后执行 LA config init"
+            )
+            print(f"[config] 磁盘顺序: {'→'.join(file_order)}")
+            print(f"[config] 内存顺序: {'→'.join(mem_order)}")
+        effective = list(config.MODEL_PROVIDER_PRIORITY)
+        print(f"[config] 生效优先级: {'→'.join(effective)}")
+        if priority_override:
+            print(f"[config] LA_MODEL_PROVIDER_PRIORITY 覆盖: {priority_override}")
+        else:
+            print("[config] 未设置 LA_MODEL_PROVIDER_PRIORITY，按配置文件列表顺序")
+        print()
+        for index, server in enumerate(config.MODEL_SERVERS, start=1):
+            item = env_config.ServerStatus(server=server, index=index)
+            status = "已配置" if server.is_configured else "未配置"
+            model = server.model or "-"
+            base = server.base_url or "-"
+            print(
+                f"  {item.index}. {server.provider:<12} model={model:<24} "
+                f"key={item.masked_key:<16} ({status})"
+            )
+            if base != "-":
+                print(f"      base_url={base}  timeout={server.timeout}")
+        print()
+        for alias, env_var in env_config.STANDALONE_KEYS.items():
+            value = env_config.read_env_value(env_path, env_var)
+            status = "已配置" if value else "未配置"
+            print(f"  {alias:<12} {env_var:<28} {env_config.mask_secret(value):<16} ({status})")
+        return 0
+
+    if args.config_cmd == "add":
+        try:
+            if args.json:
+                server = env_config.parse_server_json(args.json)
+            elif args.provider and args.model:
+                from localagent.model_servers import ModelServer
+
+                server = ModelServer(
+                    provider=args.provider,
+                    base_url=args.base_url or "",
+                    api_key=args.api_key or "",
+                    model=args.model,
+                    timeout=args.timeout if args.timeout is not None else 120.0,
+                )
+            else:
+                raise ValueError("请提供 JSON 参数，或使用 --provider --model [--base-url --api-key]")
+            config_path, was_update = env_config.add_model_server(server, env_path=env_path)
+        except ValueError as exc:
+            print(f"[config] {exc}")
+            return 1
+        action = "已更新" if was_update else "已添加"
+        print(f"[config] {action} {server.provider} → {config_path}")
+        print(f"[config] 当前顺序: {'→'.join(s.provider for s in env_config.read_model_servers(env_path))}")
+        print("[config] 重新打开终端或重启 LA 进程后生效")
+        return 0
+
+    if args.config_cmd == "init":
+        try:
+            result = env_config.init_model_servers_config(
+                env_path=env_path,
+                force=getattr(args, "force", False),
+            )
+        except FileNotFoundError as exc:
+            print(f"[config] {exc}")
+            return 1
+        _print_config_ensure_result(result)
+        return 0
+
+    if args.config_cmd == "remove":
+        try:
+            config_path, existed = env_config.remove_model_server(args.provider, env_path=env_path)
+        except ValueError as exc:
+            print(f"[config] {exc}")
+            return 1
+        if existed:
+            print(f"[config] 已删除 {args.provider} → {config_path}")
+        else:
+            print(f"[config] 未找到 provider {args.provider!r}")
+            return 1
+        print(f"[config] 当前顺序: {'→'.join(s.provider for s in env_config.read_model_servers(env_path))}")
+        print("[config] 重新打开终端或重启 LA 进程后生效")
+        return 0
+
+    if args.config_cmd == "set-key":
+        try:
+            value = args.value
+            if value in (None, "-"):
+                value = env_config.read_key_from_stdin()
+            if args.provider in env_config.STANDALONE_KEYS:
+                dotenv_path, _ = env_config.set_standalone_key(args.provider, value, path=env_path)
+                env_var = env_config.STANDALONE_KEYS[args.provider]
+                print(f"[config] 已更新 {args.provider} ({env_var}) → {dotenv_path}")
+            else:
+                config_path, _ = env_config.set_server_api_key(args.provider, value, env_path=env_path)
+                print(f"[config] 已更新 {args.provider} api_key → {config_path}")
+            print(f"[config] key={env_config.mask_secret(value.strip())}")
+        except ValueError as exc:
+            print(f"[config] {exc}")
+            return 1
+        print("[config] 重新打开终端或重启 LA 进程后生效")
+        return 0
+
+    print("[config] 未知子命令")
+    return 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="LA",
@@ -471,7 +697,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_chat = sub.add_parser(
         "chat",
-        help="[--session-id ID] [-p auto|ollama|openrouter|cursor]  交互式对话",
+        help=f"[--session-id ID] [-p auto|{'|'.join(config.VALID_PROVIDERS)}]  交互式对话",
         description="启动交互式对话 REPL",
     )
     p_chat.add_argument("--session-id", help="恢复指定对话档案 id")
@@ -479,7 +705,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--provider",
         "-p",
         default="auto",
-        help="模型路径: auto（默认）, ollama, openrouter, cursor",
+        help=f"模型路径: auto（默认）, {', '.join(config.VALID_PROVIDERS)}",
     )
     p_chat.add_argument(
         "--cwd",
@@ -539,6 +765,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_reset.add_argument("--keep-knowledge", action="store_true", help="保留知识库索引")
     p_reset.set_defaults(func=cmd_reset_memory)
+
+    p_mem_status = sub.add_parser(
+        "memory-status",
+        help="诊断 Warm 层记忆后端（Hindsight / JSON）",
+        description="显示当前记忆引擎、Python 版本、Hindsight 安装状态与记忆条数",
+    )
+    p_mem_status.set_defaults(func=cmd_memory_status)
 
     sub.add_parser(
         "rebuild-memory",
@@ -606,6 +839,45 @@ def build_parser() -> argparse.ArgumentParser:
     p_search.add_argument("--verbose", action="store_true", help="显示记忆锚点等详情")
     p_search.set_defaults(func=cmd_search)
 
+    p_reflect = sub.add_parser(
+        "reflect",
+        help="<query>  跨记忆推理（Hindsight reflect）",
+        description="对多条记忆进行推理综合，处理矛盾、歧义或需要归纳的问题",
+    )
+    p_reflect.add_argument("query", help="需要推理的问题")
+    p_reflect.set_defaults(func=cmd_reflect)
+
+    p_memories = sub.add_parser(
+        "memories",
+        help="[query] [--tag TAG] [--since DATE] [--sort newest|oldest|relevance]  浏览/查询记忆",
+        description="浏览或查询记忆库：标签过滤、时间范围、排序、语义匹配",
+    )
+    p_memories.add_argument("query", nargs="?", default="", help="可选，语义搜索关键词")
+    p_memories.add_argument(
+        "--tag",
+        action="append",
+        dest="tag",
+        metavar="TAG",
+        help="按标签过滤（可多次指定）",
+    )
+    p_memories.add_argument("--since", help="起始日期，如 2024-01-01")
+    p_memories.add_argument("--until", help="结束日期，如 2024-12-31")
+    p_memories.add_argument(
+        "--sort",
+        choices=("newest", "oldest", "relevance"),
+        default="newest",
+        help="排序方式（默认 newest；有 query 时可用 relevance）",
+    )
+    p_memories.add_argument("--limit", type=int, default=20, help="返回条数（默认 20）")
+    p_memories.add_argument("--verbose", action="store_true", help="显示评分细节")
+    p_memories.add_argument("--json", action="store_true", help="以 JSON 输出")
+    p_memories.add_argument(
+        "--list-tags",
+        action="store_true",
+        help="列出所有记忆标签及数量",
+    )
+    p_memories.set_defaults(func=cmd_memories)
+
     p_workspace = sub.add_parser(
         "workspace",
         help="[--days N] [--cwd PATH] [--todos-only]  工作区/git/待办快照",
@@ -627,6 +899,60 @@ def build_parser() -> argparse.ArgumentParser:
     p_audit.add_argument("--days", type=int, default=7, help="报告中工作区快照天数（默认 7）")
     p_audit.add_argument("--cwd", help="工作区根目录")
     p_audit.set_defaults(func=cmd_audit)
+
+    p_config = sub.add_parser(
+        "config",
+        help="init | list | add | remove | set-key  管理模型 YAML 配置",
+        description="管理 config/model_servers.yaml（增删改 API Key）",
+    )
+    from localagent import env_config
+
+    config_sub = p_config.add_subparsers(
+        dest="config_cmd",
+        required=True,
+        metavar="<action>",
+        title="操作",
+    )
+    p_config_init = config_sub.add_parser(
+        "init",
+        help="初始化或重新加载 config/model_servers.yaml",
+    )
+    p_config_init.add_argument("--force", action="store_true", help="用模板覆盖已有配置文件")
+    p_config_init.set_defaults(func=cmd_config)
+    p_config_list = config_sub.add_parser("list", help="列出模型服务与独立 Key（脱敏）")
+    p_config_list.set_defaults(func=cmd_config)
+
+    p_config_add = config_sub.add_parser(
+        "add",
+        help="添加/更新一条模型服务（JSON 或 --provider 参数）",
+    )
+    p_config_add.add_argument("json", nargs="?", help='JSON 对象，如 \'{"provider":"aiping",...}\'')
+    p_config_add.add_argument("--provider", help="provider 名称（与 --model 等配合使用）")
+    p_config_add.add_argument("--base-url", dest="base_url", help="OpenAI 兼容 API base URL")
+    p_config_add.add_argument("--api-key", dest="api_key", help="API Key")
+    p_config_add.add_argument("--model", help="模型名称")
+    p_config_add.add_argument("--timeout", type=float, help="请求超时秒数（默认 120）")
+    p_config_add.set_defaults(func=cmd_config)
+
+    p_config_remove = config_sub.add_parser("remove", help="<provider>  从列表删除一条模型服务")
+    p_config_remove.add_argument("provider", help="provider 名称，如 minimax / aiping")
+    p_config_remove.set_defaults(func=cmd_config)
+
+    p_config_set_key = config_sub.add_parser(
+        "set-key",
+        help="<provider> [key]  仅更新 api_key（key 省略或 - 时从 stdin 读取）",
+    )
+    p_config_set_key.add_argument(
+        "provider",
+        help="LA_MODEL_SERVERS 中的 provider，或 tavily / hindsight",
+    )
+    p_config_set_key.add_argument(
+        "value",
+        nargs="?",
+        help="API Key；省略或传 - 时从 stdin 读取",
+    )
+    p_config_set_key.set_defaults(func=cmd_config)
+    p_config.set_defaults(func=cmd_config)
 
     return parser
 
@@ -660,6 +986,9 @@ def main(argv: list[str] | None = None) -> int:
     if complete_rc is not None:
         return complete_rc
 
+    from localagent import env_config
+
+    env_config.ensure_config()
     config.ensure_data_dirs()
     get_task_store().reconcile_stale()
     parser = build_parser()

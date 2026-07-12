@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from localagent.knowledge.hybrid import reciprocal_rank_fusion
 from localagent.memory.scoped_recall import scoped_recall
@@ -28,6 +28,13 @@ def test_should_retain_as_memory():
     assert should_retain_as_memory(personal_long, heading="## 附录")
     # 更短的事实也应通过
     assert is_valuable("我决定用 Rust")
+
+
+def test_temporal_intent_month():
+    intent = parse_temporal_intent("2026年5月 做了什么决定？")
+    assert intent.anchor_date == "2026-05-15"
+    assert intent.scope_start == "2026-05-01"
+    assert intent.scope_end == "2026-05-31"
 
 
 def test_temporal_intent_year():
@@ -61,12 +68,15 @@ def test_scoped_recall_matches_chinese_preference_query():
 
 def test_search_memory_falls_back_to_knowledge():
     with (
-        patch("localagent.tools.scoped_recall", return_value=[]),
+        patch("localagent.tools.get_memory_backend") as backend_getter,
         patch(
             "localagent.tools.search_knowledge",
             return_value="- [0.500] 技术方案 (spec.md)\n  LocalAgent 使用 Hindsight",
         ) as knowledge,
     ):
+        backend = MagicMock()
+        backend.recall.return_value = []
+        backend_getter.return_value = backend
         result = search_memory("Hindsight")
     assert "记忆未命中" in result
     assert "Hindsight" in result
@@ -75,13 +85,16 @@ def test_search_memory_falls_back_to_knowledge():
 
 def test_search_memory_falls_back_to_documents():
     with (
-        patch("localagent.tools.scoped_recall", return_value=[]),
+        patch("localagent.tools.get_memory_backend") as backend_getter,
         patch("localagent.tools.search_knowledge", return_value="未找到相关知识片段。"),
         patch(
             "localagent.tools.search_documents",
             return_value="- [1] journal.md\n  我决定使用 Hindsight",
         ) as documents,
     ):
+        backend = MagicMock()
+        backend.recall.return_value = []
+        backend_getter.return_value = backend
         result = search_memory("Hindsight")
     assert "记忆和 RAG 均未命中" in result
     assert "Hindsight" in result

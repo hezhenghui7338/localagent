@@ -40,23 +40,50 @@ pip install -e ".[hindsight]"
 
 ```bash
 cp .env.example .env
-# 编辑 .env，至少配置 Ollama；可选配置 OpenRouter / Cursor / Tavily
+# 编辑 .env，至少配置一个模型服务；可选配置 Ollama/OpenRouter / Cursor / Tavily（联网搜索）
 ```
 
 首次运行会自动在 `data/` 下创建运行时目录。可将 `data/core_profile.example.json` 复制为 `data/core_profile.json` 作为核心画像模板。
 
 ## 功能示例
 
+### 亮点：Hindsight 记忆引擎深度演示
+
+LocalAgent 的 Warm 层可选 [Hindsight](https://github.com/hindsight/hindsight) 引擎，提供 **Retain → 4 路 Recall → Reflect → Consolidation** 完整记忆链路。仓库提供一条「架构决策演变」叙事演示，覆盖写入、语义召回、时间感知、标签浏览与跨记忆推理：
+
+```bash
+# 安装 Hindsight（Python 3.11+）
+pip install -e ".[full,hindsight]"
+
+# 一键演示（隔离 /tmp，不污染 data/）
+bash examples/hindsight-demo.sh
+
+# 或阅读分步教程
+open examples/hindsight-demo.md
+```
+
+演示要点：
+
+| 步骤 | 命令 | 展示能力 |
+|------|------|----------|
+| 写入演变链 | `LA add` × 4 | Retain + 自动标题/标签/发生时间 |
+| 语义召回 | `LA search "记忆引擎选型"` | Hindsight 多路并行 recall |
+| 时间感知 | `LA search "2026年5月 决定"` | 按发生时间重排序 |
+| 标签浏览 | `LA memories --tag 决策` | 结构化查询 |
+| 跨记忆推理 | `LA reflect "选型经历了什么变化？"` | Hindsight reflect |
+
 仓库提供完整 walkthrough，覆盖 6 个核心场景：
 
-| # | 场景 | 命令 |
-|---|------|------|
-| 1 | 单条记忆写入与召回 | `LA add` → `LA search` |
-| 2 | Markdown 文件导入与召回 | `LA add-file` → `LA search --knowledge` |
-| 3 | 联网搜索最近新闻 | `LA chat` 或 `:deepsearch`（需 Tavily） |
-| 4 | **纯本地运行** qwen3.5:4b | `LA chat --provider ollama` |
-| 5 | 回答本地工作内容 | `LA workspace` / `LA chat --cwd .` |
-| 6 | 审计报告（Ollama 零费用） | `LA audit --since 7d` |
+
+| #   | 场景                   | 命令                                      |
+| --- | -------------------- | --------------------------------------- |
+| 1   | 单条记忆写入与召回            | `LA add` → `LA search`                  |
+| 2   | Markdown 文件导入与召回     | `LA add-file` → `LA search --knowledge` |
+| 3   | 联网搜索最近新闻             | `LA chat` 或 `:deepsearch`（需 Tavily）     |
+| 4   | **纯本地运行** qwen3.5:4b | `LA chat --provider ollama`             |
+| 5   | 回答本地工作内容             | `LA workspace` / `LA chat --cwd .`      |
+| 6   | 审计报告（Ollama 零费用）     | `LA audit --since 7d`                   |
+
 
 ```bash
 # 纯本地模式：普通 Mac + Ollama，无需付费 API
@@ -70,6 +97,7 @@ open examples/walkthrough.md
 
 示例文件：
 
+- [examples/hindsight-demo.md](examples/hindsight-demo.md) — **Hindsight 记忆引擎深度演示**（Retain / Recall / Reflect）
 - [examples/walkthrough.md](examples/walkthrough.md) — 分步教程与预期输出
 - [examples/sample-project-notes.md](examples/sample-project-notes.md) — `add-file` 演示文档
 - [examples/audit-report-sample.md](examples/audit-report-sample.md) — 审计报告样例（Ollama $0）
@@ -92,16 +120,19 @@ source ~/.zshrc
 
 ## 配置
 
-详见 [`.env.example`](.env.example)，常用变量：
+详见 `[.env.example](.env.example)`，常用变量：
 
-| 变量 | 说明 |
-|------|------|
-| `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | 本地 Ollama 地址与模型 |
-| `OPENROUTER_API_KEY` / `CURSOR_API_KEY` | 云端模型降级 |
-| `TAVILY_API_KEY` | 联网搜索 |
-| `LA_MODEL_PROVIDER_PRIORITY` | auto 模式优先级，默认 `ollama,openrouter,cursor` |
-| `LA_WORKSPACE` | 工作区根目录（Git / 文件 / 待办上下文） |
-| `LA_DATA_DIR` | 自定义数据目录（测试隔离用） |
+
+| 变量                                      | 说明                                               |
+| --------------------------------------- | ------------------------------------------------ |
+| `OLLAMA_BASE_URL` / `OLLAMA_MODEL`      | 本地 Ollama 地址与模型                                  |
+| `MINIMAX_API_KEY` / `MINIMAX_MODEL`     | MiniMax 直连（OpenAI 兼容 API）                        |
+| `OPENROUTER_API_KEY` / `CURSOR_API_KEY` | 其他云端模型降级                                         |
+| `TAVILY_API_KEY`                        | 联网搜索                                             |
+| `LA_MODEL_PROVIDER_PRIORITY`            | auto 模式优先级，默认 `ollama,minimax,openrouter,cursor` |
+| `LA_WORKSPACE`                          | 工作区根目录（Git / 文件 / 待办上下文）                         |
+| `LA_DATA_DIR`                           | 自定义数据目录（测试隔离用）                                   |
+
 
 ## 命令
 
@@ -115,11 +146,13 @@ LA chat --cwd ~/code/myproject   # 指定工作区
 
 REPL 内命令：
 
-| 命令 | 说明 |
-|------|------|
-| `:provider` | 查看 / 切换模型路径（auto \| ollama \| openrouter \| cursor） |
-| `:deepsearch <主题>` | 深度研究 |
-| `:q` | 退出 |
+
+| 命令                 | 说明                                                         |
+| ------------------ | ---------------------------------------------------------- |
+| `:provider`        | 查看 / 切换模型路径（auto | ollama | minimax | openrouter | cursor） |
+| `:deepsearch <主题>` | 深度研究                                                       |
+| `:q`               | 退出                                                         |
+
 
 ### 工作区与审计
 
@@ -135,6 +168,7 @@ LA audit --since 7d --report audit.md
 ```bash
 LA add "决定采用分层记忆架构"
 LA search "记忆架构"             # 结果含记忆 id
+LA reflect "架构决策的演变？"     # Hindsight 跨记忆推理
 LA forget <id>
 LA rememorize-chat --session s-xxx
 ```
@@ -143,10 +177,12 @@ LA rememorize-chat --session s-xxx
 
 从 ChatGPT **Settings → Data Controls → Export** 下载 ZIP，解压后将 JSON 放入 `data/chatGPTdata/`。
 
-| 文件 | 含义 |
-|------|------|
-| `conversations.json` | 全部对话历史 → LLM 提取个人事实 |
-| `memory.json` / `memories.json` | ChatGPT「记忆」→ 直接写入 |
+
+| 文件                              | 含义                  |
+| ------------------------------- | ------------------- |
+| `conversations.json`            | 全部对话历史 → LLM 提取个人事实 |
+| `memory.json` / `memories.json` | ChatGPT「记忆」→ 直接写入   |
+
 
 ```bash
 LA import-chatgpt ~/Downloads/conversations.json
@@ -169,6 +205,7 @@ LA tasks                            # 查看索引任务
 ```bash
 LA reset-memory      # 清空记忆（保留知识库）
 LA rebuild-memory    # 从知识库重建记忆索引
+LA memory-status     # 诊断记忆后端（Hindsight / JSON）
 ```
 
 ## 数据目录

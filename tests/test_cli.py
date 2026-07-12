@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from localagent import config
 from localagent.cli import main
@@ -151,9 +151,12 @@ def test_search_documents_reads_kb_files(tmp_path: Path):
     )
     main(["add-file", str(tmp_path / "notes.md")])
 
-    with patch("localagent.tools.scoped_recall", return_value=[]), patch(
+    with patch("localagent.tools.get_memory_backend") as backend_getter, patch(
         "localagent.tools.get_hybrid_retriever"
     ) as retriever:
+        backend = MagicMock()
+        backend.recall.return_value = []
+        backend_getter.return_value = backend
         retriever.return_value.retrieve.return_value = []
         result = search_memory("Hindsight")
 

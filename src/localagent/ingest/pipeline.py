@@ -12,7 +12,7 @@ from localagent.ingest.loader import LoadedDoc, load_file
 from localagent.ingest.progress import ProgressEvent, ProgressReporter
 from localagent.ingest.sync_index import content_hash, get_sync_index
 from localagent.knowledge.indexer import get_knowledge_indexer
-from localagent.memory.store import get_memory_store
+from localagent.memory.hindsight_client import get_memory_backend
 from localagent.memory.value_filter import should_retain_as_memory
 
 
@@ -110,6 +110,8 @@ def ingest_file(
         knowledge_chunk_count=knowledge_count,
     )
     sync_index.save()
+    from localagent.memory.store import get_memory_store
+
     get_memory_store().save()
 
     _report("done", f"完成: facts={memory_count}, chunks={knowledge_count}")
@@ -129,9 +131,9 @@ def _index_document(doc: LoadedDoc, *, reporter: ProgressReporter | None = None)
             reporter.update(ProgressEvent(phase=phase, message=message, current=current, total=total))
 
     indexer = get_knowledge_indexer()
-    memory_store = get_memory_store()
+    backend = get_memory_backend()
 
-    memory_store.remove_by_source_file(doc.filename)
+    backend.remove_by_source_file(doc.filename)
 
     sections = split_into_sections(doc.text, filename=doc.filename)
     memory_sections = [
@@ -163,24 +165,35 @@ def _index_document(doc: LoadedDoc, *, reporter: ProgressReporter | None = None)
             except Exception:
                 facts = []
 
+        doc_recorded_at = doc.metadata.get("modified_at")
         if facts:
             for fact_text in facts:
-                stored = memory_store.retain_from_section(
-                    filename=doc.filename,
-                    heading=section.heading,
-                    text=fact_text,
-                    chunk_id=section.chunk_id,
+                fact_id = backend.retain(
+                    fact_text,
+                    metadata={
+                        "source": "ingest",
+                        "source_file": doc.filename,
+                        "section_heading": section.heading,
+                        "chunk_id": section.chunk_id,
+                        "document_id": doc.filename,
+                        "recorded_at": doc_recorded_at,
+                    },
                 )
-                if stored:
+                if fact_id:
                     memory_count += 1
         else:
-            fact = memory_store.retain_from_section(
-                filename=doc.filename,
-                heading=section.heading,
-                text=section.text,
-                chunk_id=section.chunk_id,
+            fact_id = backend.retain(
+                section.text,
+                metadata={
+                    "source": "ingest",
+                    "source_file": doc.filename,
+                    "section_heading": section.heading,
+                    "chunk_id": section.chunk_id,
+                    "document_id": doc.filename,
+                    "recorded_at": doc_recorded_at,
+                },
             )
-            if fact:
+            if fact_id:
                 memory_count += 1
 
     _report("knowledge", "构建知识库向量与 BM25 索引")

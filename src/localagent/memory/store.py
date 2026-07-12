@@ -6,12 +6,12 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from localagent.config import MEMORY_STORE_FILE
 from localagent.memory.enrich import MemoryEnrichment, enrich_memory
+from localagent.memory.temporal import resolve_memory_times
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +83,8 @@ class MemoryStore:
         chunk_id: str,
         enrichment: MemoryEnrichment | None = None,
         extra_metadata: dict[str, Any] | None = None,
+        fact_id: str | None = None,
+        created_at: str | None = None,
     ) -> MemoryFact | None:
         enriched = enrichment or enrich_memory(
             text,
@@ -95,20 +97,43 @@ class MemoryStore:
         if not searchable:
             return None
 
+        extra = dict(extra_metadata or {})
+        legacy_created = None
+        if created_at is None:
+            legacy_created = extra.pop("created_at", None)
+        else:
+            extra.pop("created_at", None)
+            legacy_created = created_at
+
+        times = resolve_memory_times(
+            text=text,
+            occurred_at=extra.pop("occurred_at", None),
+            recorded_at=extra.pop("recorded_at", None),
+            indexed_at=extra.pop("indexed_at", None),
+            legacy_created_at=legacy_created,
+            extract_occurred_from_text=bool(extra.pop("extract_occurred_from_text", True)),
+        )
+        created_at = times["effective_at"]
+
         metadata = enriched.to_metadata(
             extra={
                 "chunk_id": chunk_id,
                 "char_count": len(text),
-                **(extra_metadata or {}),
+                **times,
+                **extra,
             },
         )
 
+        resolved_id = fact_id or str(uuid.uuid4())
+        if fact_id:
+            self._facts = [f for f in self._facts if f.id != fact_id]
+
         fact = MemoryFact(
-            id=str(uuid.uuid4()),
+            id=resolved_id,
             text=searchable,
             source_file=filename,
             section_heading=heading or enriched.title,
-            created_at=datetime.now().isoformat(timespec="seconds"),
+            created_at=created_at,
             metadata=metadata,
         )
         self._facts.append(fact)
@@ -128,6 +153,38 @@ class MemoryStore:
     def get(self, fact_id: str) -> MemoryFact | None:
         for fact in self._facts:
             if fact.id == fact_id or fact.id.startswith(fact_id):
+                return fact
+        return None
+
+    def find_by_hindsight_id(self, hindsight_id: str) -> MemoryFact | None:
+        if not hindsight_id:
+            return None
+        for fact in self._facts:
+            meta = fact.metadata or {}
+            if str(meta.get("hindsight_id") or "") == hindsight_id:
+                return fact
+            extra_ids = meta.get("hindsight_ids") or []
+            if hindsight_id in {str(item) for item in extra_ids}:
+                return fact
+        return None
+
+    def find_by_text(self, text: str) -> MemoryFact | None:
+        normalized = text.strip()
+        if not normalized:
+            return None
+        for fact in self._facts:
+            candidates = {
+                fact.text.strip(),
+                str((fact.metadata or {}).get("summary") or "").strip(),
+            }
+            if normalized in candidates:
+                return fact
+        prefix = normalized[:48]
+        if len(prefix) < 8:
+            return None
+        for fact in self._facts:
+            fact_text = fact.text.strip()
+            if fact_text.startswith(prefix) or normalized.startswith(fact_text[:48]):
                 return fact
         return None
 

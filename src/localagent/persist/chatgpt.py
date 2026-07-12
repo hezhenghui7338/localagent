@@ -44,6 +44,16 @@ def _format_timestamp(ts: float | None) -> str:
         return ""
 
 
+def timestamp_to_iso(ts: float | None) -> str:
+    """Convert ChatGPT unix timestamp to ISO 8601 (UTC)."""
+    if ts is None:
+        return ""
+    try:
+        return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(timespec="seconds")
+    except (OSError, OverflowError, ValueError):
+        return ""
+
+
 def _extract_message_text(message: dict[str, Any]) -> str:
     content = message.get("content") or {}
     content_type = content.get("content_type", "text")
@@ -132,6 +142,9 @@ def format_conversation_text(conversation: ChatGPTConversation) -> str:
     if ts:
         lines.append(f"date: {ts}")
 
+    conv_ts = _format_timestamp(conversation.create_time)
     for msg in conversation.messages:
-        lines.append(f"{msg.role}: {msg.content}")
+        msg_ts = _format_timestamp(msg.create_time) or conv_ts
+        prefix = f"[{msg_ts}] " if msg_ts else ""
+        lines.append(f"{prefix}{msg.role}: {msg.content}")
     return "\n".join(lines)

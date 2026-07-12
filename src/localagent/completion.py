@@ -12,7 +12,7 @@ from localagent import config
 
 _FILE_SENTINEL = "__LA_FILE__"
 _TASK_ACTIONS = ("delete", "pause", "resume", "restart", "logs", "list", "show")
-_CHAT_PROVIDERS = ("auto", "ollama", "openrouter", "cursor")
+_CHAT_PROVIDERS = ("auto",) + config.VALID_PROVIDERS
 _ZSHRC_START = "# >>> LA CLI completion >>>"
 _ZSHRC_END = "# <<< LA CLI completion <<<"
 
@@ -61,9 +61,13 @@ def _session_ids(limit: int = 30) -> list[str]:
 def _memory_ids(limit: int = 30) -> list[str]:
     try:
         from localagent.memory.store import get_memory_store
+        from localagent.memory.temporal import memory_effective_time
 
         facts = get_memory_store().all_facts()
-        facts.sort(key=lambda fact: fact.created_at, reverse=True)
+        facts.sort(
+            key=lambda fact: memory_effective_time(metadata=fact.metadata, created_at=fact.created_at),
+            reverse=True,
+        )
         return [fact.id for fact in facts[:limit]]
     except Exception:
         return []
@@ -173,6 +177,16 @@ def suggest_completions(words: list[str], parser: argparse.ArgumentParser | None
 
     if cmd in ("rememorize-chat", "import-chatgpt", "sync-file", "reset-memory", "rebuild-memory"):
         return _completing_option(tail, current, sub)
+
+    if cmd == "config":
+        if not tail:
+            return _prefix_match(["init", "list", "add", "remove", "set-key"], current)
+        if tail[0] == "remove" and len(tail) == 1:
+            return []
+        if tail[0] == "set-key" and len(tail) == 1:
+            return []
+        if tail[0] == "add" and len(tail) == 1:
+            return []
 
     return _completing_option(tail, current, sub)
 
