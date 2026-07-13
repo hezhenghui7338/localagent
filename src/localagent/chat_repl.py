@@ -20,6 +20,7 @@ from localagent.memory.exit_extract import schedule_session_memory_extract
 from localagent.models.router import get_model_router, shutdown_cursor_sdk
 from localagent.persist.conversations import append_message, new_session_id
 from localagent.tools import deep_search
+from localagent.ui.banner import print_welcome
 from localagent.ui.console import ActivityIndicator, prepare_for_input
 
 
@@ -32,13 +33,8 @@ class ChatREPL:
         default_core_profile()
 
     def run(self) -> int:
+        print_welcome(provider=self.provider, session_id=self.session_id)
         router = get_model_router()
-        provider_hint = router.format_provider_hint(self.provider)
-        model_hint = ""
-        model_name = router.format_model_hint(self.provider)
-        if model_name:
-            model_hint = f"  model={model_name}"
-        speed_hint = ""
         status = router.provider_status()
         if self.provider == "minimax" and not status.get("minimax"):
             print(
@@ -54,13 +50,7 @@ class ChatREPL:
                 (n for n in config.MODEL_PROVIDER_PRIORITY if n not in ("ollama", "cursor") and status.get(n)),
                 "cloud",
             )
-            speed_hint = f"\n  提示: Ollama 本地模型较慢时可 :provider {alt} 加速"
-        print(
-            f"[chat] session={self.session_id}  provider={provider_hint}{model_hint}\n"
-            "  输入 :q 退出, :provider 切换路径, :deepsearch <主题> 深度研究\n"
-            "  Ctrl+C 取消当前输入/请求，连按两次退出"
-            f"{speed_hint}"
-        )
+            print(f"[chat] 提示: Ollama 本地模型较慢时可 :provider {alt} 加速")
         self._shown_fallback_hint = False
         interrupt_count = 0
         while True:
@@ -102,32 +92,10 @@ class ChatREPL:
         return 0
 
     def _handle_chat(self, user_input: str) -> None:
-        agent_input = user_input
-        if self.pending_clarification is not None:
-            agent_input = merge_clarified_intent(
-                self.pending_clarification.original_message,
-                user_input,
-            )
-            self.pending_clarification = None
-        elif config.INTENT_CLARIFY_ENABLED:
-            assessment = assess_intent(
-                user_input,
-                self.history,
-                provider=self.provider,
-                session_id=self.session_id,
-            )
-            if assessment.needs_clarification:
-                self.history.append({"role": "user", "content": user_input})
-                response = format_clarification_response(assessment)
-                print(response)
-                self.pending_clarification = PendingClarification(original_message=user_input)
-                append_message(self.session_id, "user", user_input)
-                append_message(self.session_id, "assistant", response)
-                self.history.append({"role": "assistant", "content": response})
-                return
-
-        self.history.append({"role": "user", "content": user_input})
         streamed = False
+        user_appended = False
+        provider_source: str | None = None
+        response: str | None = None
 
         def on_token(chunk: str) -> None:
             nonlocal streamed
@@ -136,9 +104,39 @@ class ChatREPL:
                 streamed = True
             print(chunk, end="", flush=True)
 
-        provider_source: str | None = None
-        with ActivityIndicator("chat", "思考中…") as activity:
+        # Start status immediately so intent assessment never looks like a hang.
+        with ActivityIndicator("chat", "处理中…") as activity:
             try:
+                agent_input = user_input
+                if self.pending_clarification is not None:
+                    agent_input = merge_clarified_intent(
+                        self.pending_clarification.original_message,
+                        user_input,
+                    )
+                    self.pending_clarification = None
+                elif config.INTENT_CLARIFY_ENABLED:
+                    assessment = assess_intent(
+                        user_input,
+                        self.history,
+                        provider=self.provider,
+                        session_id=self.session_id,
+                        on_status=activity.update,
+                    )
+                    if assessment.needs_clarification:
+                        self.history.append({"role": "user", "content": user_input})
+                        response = format_clarification_response(assessment)
+                        self.pending_clarification = PendingClarification(
+                            original_message=user_input
+                        )
+                        append_message(self.session_id, "user", user_input)
+                        append_message(self.session_id, "assistant", response)
+                        self.history.append({"role": "assistant", "content": response})
+                        activity.begin_streaming()
+                        print(response)
+                        return
+
+                self.history.append({"role": "user", "content": user_input})
+                user_appended = True
                 result = run_agent_turn(
                     agent_input,
                     self.history[:-1],
@@ -151,11 +149,17 @@ class ChatREPL:
                 provider_source = get_model_router().format_last_source()
             except KeyboardInterrupt:
                 print("\n[chat] 请求已取消")
-                self.history.pop()
+                if user_appended:
+                    self.history.pop()
+                activity.begin_streaming()
                 return
             except Exception as exc:
                 response = f"[错误] {exc}"
 
+        if response is None:
+            return
+        if not str(response).strip():
+            response = "[错误] 模型返回了空内容，请重试。"
         if streamed:
             print()
         else:

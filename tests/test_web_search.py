@@ -35,6 +35,12 @@ def test_derive_search_params_recent_non_news():
     assert "topic" not in opts
 
 
+def test_derive_search_params_current_time():
+    opts = derive_search_params("say hi,现在几点了")
+    assert opts["time_range"] == "day"
+    assert "topic" not in opts
+
+
 def test_web_search_sends_recency_payload(monkeypatch):
     monkeypatch.setattr("localagent.config.TAVILY_API_KEY", "test-key")
     mock_response = MagicMock()

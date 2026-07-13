@@ -174,8 +174,8 @@ def _sync_legacy_shortcuts() -> None:
     OLLAMA_BASE_URL = ollama.base_url if ollama else _env("OLLAMA_BASE_URL", "http://localhost:11434")
     OLLAMA_MODEL = ollama.model if ollama else _env("OLLAMA_MODEL", "qwen3.5:4b")
     OLLAMA_THINK = ollama.think if ollama else _env_bool("OLLAMA_THINK", "0")
-    OLLAMA_NUM_PREDICT = ollama.num_predict if ollama else _env_int("OLLAMA_NUM_PREDICT", "512")
-    OLLAMA_NUM_CTX = ollama.num_ctx if ollama else _env_int("OLLAMA_NUM_CTX", "4096")
+    OLLAMA_NUM_PREDICT = ollama.num_predict if ollama else _env_int("OLLAMA_NUM_PREDICT", "2048")
+    OLLAMA_NUM_CTX = ollama.num_ctx if ollama else _env_int("OLLAMA_NUM_CTX", "8192")
     OLLAMA_KEEP_ALIVE = ollama.keep_alive if ollama else _env("OLLAMA_KEEP_ALIVE", "30m")
     OLLAMA_TIMEOUT = ollama.timeout if ollama else _env_float("OLLAMA_TIMEOUT", "90")
     OLLAMA_CHAT_TIMEOUT = ollama.chat_timeout if ollama else _env_float("LA_OLLAMA_CHAT_TIMEOUT", "12")
@@ -222,6 +222,8 @@ TAVILY_API_KEY = _env("TAVILY_API_KEY")
 # --- Retrieval tuning ---
 SEMANTIC_WEIGHT = _env_float("LA_SEMANTIC_WEIGHT", "0.75")
 TIME_DECAY_HALFLIFE_DAYS = _env_float("LA_TIME_HALFLIFE_DAYS", "90")
+# When the query has no explicit time intent, bias recall toward recently stored facts.
+RECENCY_HALFLIFE_DAYS = _env_float("LA_RECENCY_HALFLIFE_DAYS", "14")
 
 # --- Ingest memory ---
 INGEST_USE_LLM = _env_bool("LA_INGEST_USE_LLM", "0")

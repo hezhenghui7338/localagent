@@ -6,12 +6,15 @@ from unittest.mock import patch
 
 from localagent.agent.runtime import (
     _build_system_prompt,
+    _looks_incomplete_reply,
+    _looks_like_tool_attempt,
     _needs_file_tool_retry,
     _parse_tool_call,
     _prefetch_personal_context,
     _prefetch_session_context,
     _prefetch_web_context,
     _strip_tool_blocks,
+    _truncate_for_llm,
     run_agent_turn,
 )
 
@@ -71,6 +74,93 @@ def test_strip_tool_blocks_removes_xml_tool_call():
         "</tool_call>"
     )
     assert _strip_tool_blocks(text) == "让我搜索。"
+
+
+def test_looks_like_tool_attempt_detects_truncated_fence():
+    text = (
+        '```tool\n{"name": "run_shell", "arguments": {"command": "find . -name \'*.py\''
+    )
+    assert _looks_like_tool_attempt(text)
+    assert _parse_tool_call(text) is None
+    assert _strip_tool_blocks(text) == ""
+
+
+def test_run_agent_turn_retries_truncated_tool_call(isolated_data):
+    truncated = (
+        '```tool\n{"name": "run_shell", "arguments": {"command": "find . -name \'*.py\''
+    )
+    fixed = (
+        '```tool\n{"name": "run_shell", "arguments": '
+        '{"command": "find src -name \'*.py\' | xargs wc -l"}}\n```'
+    )
+    isolated_data["router"].chat.side_effect = [
+        truncated,
+        fixed,
+        "业务代码合计约 3200 行。",
+    ]
+
+    with patch(
+        "localagent.tools.run_shell",
+        return_value="3200 total",
+    ) as shell:
+        result = run_agent_turn("好,重新统计下业务代码行数", provider="ollama")
+
+    assert result.response == "业务代码合计约 3200 行。"
+    assert result.tool_calls == [
+        {
+            "name": "run_shell",
+            "arguments": {"command": "find src -name '*.py' | xargs wc -l"},
+        }
+    ]
+    shell.assert_called_once()
+    assert isolated_data["router"].chat.call_count == 3
+
+
+def test_run_agent_turn_empty_reply_gets_fallback(isolated_data):
+    isolated_data["router"].chat.side_effect = ["", "", ""]
+
+    result = run_agent_turn("你好", provider="ollama")
+
+    assert "未返回有效内容" in result.response
+    assert result.tool_calls == []
+    assert isolated_data["router"].chat.call_count == 3
+
+
+def test_looks_incomplete_reply_detects_truncated_synthesis():
+    assert _looks_incomplete_reply("根据", had_tools=True)
+    assert _looks_incomplete_reply("根据工具结果，", had_tools=True)
+    assert not _looks_incomplete_reply("根据", had_tools=False)
+    assert not _looks_incomplete_reply(
+        "业务代码合计约 3200 行，已排除 .venv 与依赖目录。",
+        had_tools=True,
+    )
+
+
+def test_truncate_for_llm_keeps_head_and_tail():
+    text = "A" * 2000 + "MID" + "B" * 2000
+    out = _truncate_for_llm(text, limit=500)
+    assert len(out) < len(text)
+    assert "截断" in out
+    assert out.startswith("A")
+    assert out.endswith("B")
+
+
+def test_run_agent_turn_retries_incomplete_synthesis(isolated_data):
+    tool_reply = (
+        '```tool\n{"name": "run_shell", "arguments": '
+        '{"command": "wc -l src/**/*.py"}}\n```'
+    )
+    isolated_data["router"].chat.side_effect = [
+        tool_reply,
+        "根据",
+        "业务代码合计约 3200 行。",
+    ]
+
+    with patch("localagent.tools.run_shell", return_value="3200 total"):
+        result = run_agent_turn("统计当前项目的代码行数", provider="ollama")
+
+    assert result.response == "业务代码合计约 3200 行。"
+    assert isolated_data["router"].chat.call_count == 3
 
 
 def test_run_agent_turn_executes_xml_tool_call(isolated_data):
@@ -190,6 +280,23 @@ def test_prefetch_web_context_for_news_question():
     search.assert_called_once_with("最近有什么新闻?")
 
 
+def test_prefetch_web_context_for_current_time_question():
+    """Regression: '现在几点了' must prefetch web search, not rely on model knowledge."""
+    with patch("localagent.tools.web_search", return_value="摘要: 当前时间约为 11:12") as search:
+        ctx = _prefetch_web_context("say hi,现在几点了")
+    assert ctx
+    assert "已预加载" in ctx
+    assert "当前时间约为 11:12" in ctx
+    search.assert_called_once_with("say hi,现在几点了")
+
+
+def test_prefetch_web_context_for_几点了():
+    with patch("localagent.tools.web_search", return_value="摘要: 北京时间 11:12") as search:
+        ctx = _prefetch_web_context("现在几点了")
+    assert ctx
+    search.assert_called_once_with("现在几点了")
+
+
 def test_prefetch_web_skips_non_time_sensitive_question():
     assert _prefetch_web_context("Python 怎么写装饰器?") == ""
 
@@ -291,6 +398,21 @@ def test_run_agent_turn_prefetches_web_for_news(isolated_data):
     system_prompt = isolated_data["router"].chat.call_args.args[0][0].content
     assert "联网搜索结果" in system_prompt
     assert "今日要闻" in system_prompt
+
+
+def test_run_agent_turn_prefetches_web_for_current_time(isolated_data):
+    """Regression: asking the current time must trigger web search prefetch."""
+    isolated_data["router"].chat.return_value = "现在大约是上午 11:12。"
+
+    with patch("localagent.tools.web_search", return_value="摘要: 当前本地时间 11:12") as search:
+        result = run_agent_turn("say hi,现在几点了", provider="ollama")
+
+    assert result.response == "现在大约是上午 11:12。"
+    assert result.tool_calls == []
+    search.assert_called_once_with("say hi,现在几点了")
+    system_prompt = isolated_data["router"].chat.call_args.args[0][0].content
+    assert "联网搜索结果" in system_prompt
+    assert "当前本地时间 11:12" in system_prompt
 
 
 def test_needs_file_tool_retry_detects_hallucinated_write():
@@ -402,4 +524,14 @@ def test_parse_write_file_tool_call():
         "name": "write_file",
         "arguments": {"path": "test.txt", "content": "hello"},
     }
+
+
+def test_run_agent_turn_none_reply_treated_as_empty(isolated_data):
+    isolated_data["router"].chat.side_effect = [None, "你好，我是 LocalAgent"]
+
+    result = run_agent_turn("你好", provider="ollama")
+
+    assert result.response == "你好，我是 LocalAgent"
+    assert isolated_data["router"].chat.call_count == 2
+
 

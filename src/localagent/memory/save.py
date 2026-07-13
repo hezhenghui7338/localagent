@@ -17,7 +17,12 @@ def save_facts(
     if not facts:
         return []
     backend = get_memory_backend()
-    return backend.retain_batch(facts, metadata=metadata or {})
+    ids = backend.retain_batch(facts, metadata=metadata or {})
+    from localagent.memory.profile_pin import maybe_pin_fact_to_profile
+
+    for fact in facts:
+        maybe_pin_fact_to_profile(fact)
+    return ids
 
 
 def _should_save_interactively(*, interactive: bool | None) -> bool:
