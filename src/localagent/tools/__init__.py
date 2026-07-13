@@ -4,20 +4,21 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date
 from typing import Any
-
-import httpx
 
 from collections.abc import Callable
 
-from localagent import config
-from localagent.audit.usage import log_usage
 from localagent.knowledge.hybrid import get_hybrid_retriever
 from localagent.memory.display import format_memory_hits
 from localagent.memory.backend import get_memory_backend
 from localagent.memory.query import list_memory_tags, query_memories
 from localagent.memory.store import MemoryFact, get_memory_store
+from localagent.tools.web_search import (
+    augment_web_query,
+    derive_search_params,
+    resolve_web_search_provider,
+    web_search,
+)
 
 _MEMORY_MISS = "未找到相关记忆。"
 _KNOWLEDGE_MISS = "未找到相关知识片段。"
@@ -219,76 +220,6 @@ def search_knowledge(query: str, *, top_k: int = 5, fallback: bool = True) -> st
     return _KNOWLEDGE_MISS
 
 
-def augment_web_query(query: str) -> str:
-    """Add a current-date hint when the query lacks an explicit year."""
-    q = query.strip()
-    if not q or re.search(r"20\d{2}", q):
-        return q
-    today = date.today()
-    return f"{q} {today.strftime('%Y年%m月')}"
-
-
-def derive_search_params(query: str) -> dict[str, Any]:
-    """Derive Tavily recency/topic options from query text."""
-    opts: dict[str, Any] = {"search_depth": "basic", "include_answer": True}
-    q = query.lower()
-
-    news_markers = ("新闻", "时事", "头条", "热点", "快讯", "news", "breaking")
-    recent_markers = ("最近", "最新", "今日", "今天", "昨天", "本周", "近期", "当下", "现在", "latest", "recent")
-    today_markers = ("今天", "今日", "today", "刚刚")
-    time_markers = ("几点", "当前时间", "现在时间", "今天几号", "今天日期", "what time", "current time")
-
-    is_news = any(marker in query or marker in q for marker in news_markers)
-    is_recent = any(marker in query or marker in q for marker in recent_markers)
-    is_today = any(marker in query or marker in q for marker in today_markers)
-    is_time = any(marker in query or marker in q for marker in time_markers)
-
-    if is_news:
-        opts["topic"] = "news"
-        opts["days"] = 1 if is_today else 7
-    elif is_time or is_today:
-        opts["time_range"] = "day"
-    elif is_recent:
-        opts["time_range"] = "week"
-    return opts
-
-
-def web_search(query: str, *, max_results: int = 5) -> str:
-    if not config.TAVILY_API_KEY:
-        return "联网搜索未配置（请设置 TAVILY_API_KEY）。"
-    search_query = augment_web_query(query)
-    payload = {
-        "api_key": config.TAVILY_API_KEY,
-        "query": search_query,
-        "max_results": max_results,
-        **derive_search_params(query),
-    }
-    try:
-        with httpx.Client(timeout=30.0) as client:
-            resp = client.post("https://api.tavily.com/search", json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-    except Exception as exc:
-        return f"联网搜索失败: {exc}"
-    try:
-        log_usage("tavily", "search", command="web_search", per_call=True)
-    except Exception:
-        pass
-    lines: list[str] = []
-    answer = data.get("answer", "")
-    if answer:
-        lines.append(f"摘要: {answer}")
-    results = data.get("results", [])
-    if not results:
-        return answer or "未找到联网结果。"
-    for r in results:
-        published = r.get("published_date", "")
-        date_hint = f" ({published})" if published else ""
-        lines.append(f"- {r.get('title', '')}{date_hint}: {r.get('content', '')[:200]}")
-        lines.append(f"  URL: {r.get('url', '')}")
-    return "\n".join(lines)
-
-
 def deep_search(
     topic: str,
     *,
@@ -389,8 +320,12 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "web_search",
-        "description": "联网搜索最新信息，用于时效性、新闻、外部资料类问题",
-        "parameters": {"query": "搜索关键词"},
+        "description": (
+            "联网搜索最新信息，用于时效性、新闻、天气、外部资料类问题（默认免费可用）。"
+            "查询应包含地点与完整日期（如「深圳 2026年7月14日 天气」）；"
+            "返回结果会标注时效核对，过期条目不可当作当前事实"
+        ),
+        "parameters": {"query": "搜索关键词（含地点与日期更佳）"},
     },
     {
         "name": "reflect_memory",

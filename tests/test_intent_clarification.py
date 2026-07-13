@@ -7,7 +7,9 @@ import json
 from localagent.agent.intent_clarification import (
     IntentAssessment,
     assess_intent,
+    format_assumed_intent,
     format_clarification_response,
+    is_personal_memory_query,
     is_session_recall_query,
     merge_clarified_intent,
     should_skip_intent_assessment,
@@ -43,6 +45,9 @@ def test_should_skip_for_personal_memory_queries():
     assert should_skip_intent_assessment("你知道我住在哪里吗?") is True
     assert should_skip_intent_assessment("记录一下:我居住在深圳") is True
     assert should_skip_intent_assessment("我是谁") is True
+    assert should_skip_intent_assessment("我喜欢喝什么呢?") is True
+    assert should_skip_intent_assessment("我喜欢什么") is True
+    assert is_personal_memory_query("我喜欢喝什么呢?") is True
 
 
 def test_is_session_recall_query():
@@ -52,11 +57,38 @@ def test_is_session_recall_query():
 
 def test_assess_intent_skips_session_recall_without_llm(isolated_data):
     result = assess_intent("我今天问了啥?")
+    assert result.mode == "act"
+    assert result.needs_clarification is False
+    isolated_data["router"].chat.assert_not_called()
+
+
+def test_assess_intent_skips_preference_recall_without_llm(isolated_data):
+    result = assess_intent("我喜欢喝什么呢?")
+    assert result.mode == "act"
     assert result.needs_clarification is False
     isolated_data["router"].chat.assert_not_called()
 
 
 def test_parse_assessment_needs_clarification(isolated_data):
+    payload = json.dumps(
+        {
+            "mode": "clarify",
+            "assumptions": [],
+            "questions": ["你想修改哪个文件？"],
+            "risk": "high",
+            "reasoning": "缺少对象与目标",
+        },
+        ensure_ascii=False,
+    )
+    isolated_data["router"].chat.return_value = payload
+    result = assess_intent("帮我改一下")
+    assert result.mode == "clarify"
+    assert result.needs_clarification is True
+    assert len(result.questions) == 1
+    assert "文件" in result.questions[0]
+
+
+def test_parse_assessment_legacy_binary_schema(isolated_data):
     payload = json.dumps(
         {
             "needs_clarification": True,
@@ -67,24 +99,50 @@ def test_parse_assessment_needs_clarification(isolated_data):
     )
     isolated_data["router"].chat.return_value = payload
     result = assess_intent("帮我改一下")
+    assert result.mode == "clarify"
     assert result.needs_clarification is True
-    assert len(result.questions) == 2
-    assert "文件" in result.questions[0]
+    assert len(result.questions) == 1
 
 
 def test_parse_assessment_clear_intent(isolated_data):
     payload = json.dumps(
-        {"needs_clarification": False, "questions": [], "reasoning": "问题明确"},
+        {
+            "mode": "act",
+            "assumptions": [],
+            "questions": [],
+            "risk": "low",
+            "reasoning": "问题明确",
+        },
         ensure_ascii=False,
     )
     isolated_data["router"].chat.return_value = payload
     result = assess_intent("统计 src/ 下所有 .py 文件的行数")
+    assert result.mode == "act"
     assert result.needs_clarification is False
+
+
+def test_parse_assessment_assume_mode(isolated_data):
+    payload = json.dumps(
+        {
+            "mode": "assume",
+            "assumptions": ["先列出当前项目目录结构"],
+            "questions": [],
+            "risk": "low",
+            "reasoning": "轻微模糊但可逆",
+        },
+        ensure_ascii=False,
+    )
+    isolated_data["router"].chat.return_value = payload
+    result = assess_intent("看看项目")
+    assert result.mode == "assume"
+    assert result.needs_clarification is False
+    assert result.assumptions == ["先列出当前项目目录结构"]
 
 
 def test_assess_intent_skips_when_disabled(isolated_data, monkeypatch):
     monkeypatch.setattr("localagent.config.INTENT_CLARIFY_ENABLED", False)
     result = assess_intent("帮我改一下")
+    assert result.mode == "act"
     assert result.needs_clarification is False
     isolated_data["router"].chat.assert_not_called()
 
@@ -92,28 +150,58 @@ def test_assess_intent_skips_when_disabled(isolated_data, monkeypatch):
 def test_assess_intent_parse_failure_defaults_to_clear(isolated_data):
     isolated_data["router"].chat.return_value = "这不是 JSON"
     result = assess_intent("帮我改一下")
+    assert result.mode == "act"
     assert result.needs_clarification is False
 
 
 def test_assess_intent_empty_questions_treated_as_clear(isolated_data):
     payload = json.dumps(
-        {"needs_clarification": True, "questions": [], "reasoning": "矛盾输出"},
+        {
+            "mode": "clarify",
+            "assumptions": [],
+            "questions": [],
+            "reasoning": "矛盾输出",
+        },
         ensure_ascii=False,
     )
     isolated_data["router"].chat.return_value = payload
     result = assess_intent("帮我改一下")
+    assert result.mode == "act"
     assert result.needs_clarification is False
+
+
+def test_assess_intent_clarify_without_questions_falls_back_to_assume(isolated_data):
+    payload = json.dumps(
+        {
+            "mode": "clarify",
+            "assumptions": ["先查看 runtime.py"],
+            "questions": [],
+            "reasoning": "矛盾输出",
+        },
+        ensure_ascii=False,
+    )
+    isolated_data["router"].chat.return_value = payload
+    result = assess_intent("帮我改一下")
+    assert result.mode == "assume"
+    assert result.assumptions == ["先查看 runtime.py"]
 
 
 def test_format_clarification_response():
     assessment = IntentAssessment(
-        needs_clarification=True,
-        questions=["你想改哪个文件？", "期望达到什么效果？"],
+        mode="clarify",
+        questions=["你想改哪个文件？"],
     )
     text = format_clarification_response(assessment)
     assert "确认你的意图" in text
     assert "1. 你想改哪个文件？" in text
-    assert "2. 期望达到什么效果？" in text
+
+
+def test_format_assumed_intent():
+    text = format_assumed_intent("看看项目", ["先列出当前仓库目录结构"])
+    assert "[用户问题]" in text
+    assert "看看项目" in text
+    assert "[执行假设" in text
+    assert "先列出当前仓库目录结构" in text
 
 
 def test_merge_clarified_intent():
