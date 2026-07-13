@@ -1,7 +1,7 @@
 [project]
 name = "localagent"
 version = "0.2.0"
-description = "一台普通 Mac + Ollama qwen3.5:4b 即可有不错的个人 AI 助手效果 — 记忆、检索、工作区感知，数据留本机、零 API 成本"
+description = "完全本地的主动式 AI 助手：模糊意图会追问；Hindsight 长期多层次记忆（ChatGPT 历史/个人文档/对话）；联网搜索 + 本地 Shell，打通本机、用户画像与互联网"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

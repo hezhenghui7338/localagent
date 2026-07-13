@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.png" alt="LocalAgent" width="360">
+  <img src="docs/logo.zh-CN.png" alt="LocalAgent" width="360">
 </p>
 
 <p align="center">
@@ -10,11 +10,17 @@
   <a href="./README.md">English</a> · <a href="./README.zh-CN.md">中文</a>
 </p>
 
-# LocalAgent
+# <img src="assets/LA%20logo.png" alt="LA" width="36" valign="middle"> LocalAgent
 
-> **一台普通 Mac + Ollama `qwen3.5:4b`，零 API 费用，就能有不错的个人 AI 助手效果。**
+> **完全本地 · 主动追问 · 长期懂你 — 打通本机、用户画像与互联网，真正可用。**
 
-LocalAgent（`LA`）不是又一个 Chat 客户端。它把**对话、个人记忆、文档检索、工作区感知**串成一套完整的本地 Agent 链路——核心亮点是：**用最基础的本地 Ollama 部署，4B 小模型也能「记得住你、找得到文档、看得见当前项目在做什么」**；更重要的是，它会**在动手前先追问、确认你的真实意图**，而不是像普通 Chat 那样猜错就改、改错就毁。
+LocalAgent（`LA`）不是又一个 Chat 客户端，而是跑在你本机上的**主动式个人 AI**。核心叙事：
+
+1. **完全本地化** — 默认 Ollama `qwen3.5:4b`，对话、记忆、检索与执行全链路可纯本地跑通，身份与数据不出本机  
+2. **主动意识** — 意图模糊时主动追问 1–2 个关键问题，确认真实意图后再动手，而不是猜错就改、改错就毁  
+3. **长期、多层次记忆** — Hot / Warm / Cold 分层，真正「懂你」的助手  
+4. **记忆从哪来** — **ChatGPT 历史对话**、个人文档、日常对话均可入库，配合强大的 **Hindsight** 记忆引擎全方位记住用户  
+5. **真正可用** — 联网查询 + 本地 Shell，打通**电脑本地 · 用户画像 · 互联网**三层能力
 
 ```bash
 ollama pull qwen3.5:4b          # 约 2.5GB，普通 Mac 可跑
@@ -23,28 +29,25 @@ cp examples/env.local-only.example .env
 LA chat --provider ollama       # 纯本地，数据不出本机
 ```
 
-| 普通本地 Chat | LocalAgent + qwen3.5:4b |
+| 普通本地 Chat | LocalAgent |
 | --- | --- |
-| 聊完就忘 | 分层记忆，跨会话召回你的事实与偏好 |
-| 不知道你在做什么 | Git 状态、最近文件、待办快照 |
-| 搜不到本地笔记 | Chroma + BM25 混合检索个人文档 |
-| 只会一问一答 | LangGraph Agent 按需 JIT 召回上下文 |
-| 指代不明也硬猜、直接改文件 | **主动追问澄清意图**，确认后再调用工具 |
-| 让你自己去终端跑命令 | Agent 自动调用 `run_shell` 执行并汇总结果 |
+| 云端或半本地，数据边界模糊 | **完全本地**，身份与记忆留在本机 |
+| 指代不明也硬猜、直接改文件 | **主动追问**澄清意图，确认后再调用工具 |
+| 聊完就忘 | **长期多层次记忆** + Hindsight，跨会话懂你 |
+| 记忆只能靠本轮聊天 | ChatGPT 历史 / 个人文档 / 对话 **多源冷启动** |
+| 不会搜网、不会跑命令 | **联网搜索** + **本地 Shell**，本机 · 画像 · 联网打通 |
 
 可选接入 OpenRouter / Cursor / Tavily 做增强，但**身份与数据始终留在本机**。
 
 ## 特性
 
-- **4B 即可用**：默认 `qwen3.5:4b`，对话、记忆写入、检索、工作区感知全链路本地跑通
-- **主动澄清意图**：模糊请求先追问 1–2 个关键问题，确认后再执行；文件写入另有幻觉检测兜底，未实际调用工具不会声称「已完成」
-- **分层记忆**：Hot（核心画像）/ Warm（长期记忆）/ Cold（文档原文）三层架构，按需 JIT 召回
+- **完全本地化**：默认 `qwen3.5:4b`，对话、记忆写入、检索、工作区感知、Shell 执行全链路本地跑通；可选云端模型，数据仍归本机
+- **主动意识**：模糊请求先追问 1–2 个关键问题，确认后再执行；文件写入另有幻觉检测兜底
+- **长期多层次记忆**：Hot（核心画像）/ Warm（长期记忆）/ Cold（文档原文），按需 JIT 召回，真正懂你
+- **Hindsight + 多源输入**：ChatGPT 历史、个人文档、日常对话 → 同一管线；配合强大的 **Hindsight** 记忆引擎全方位记住用户
+- **本机 · 画像 · 联网三层打通**：工作区感知 + `run_shell` 本地执行 + Tavily 联网搜索，真正可用
 - **文档知识库**：软链导入个人文件，Chroma + BM25 混合检索
-- **工作区感知**：Git 状态、最近文件、待办任务快照
-- **终端执行**：Agent 在工作区自动运行 shell 命令（统计代码、列目录、跑测试等）
 - **多模型对话**：Ollama / OpenRouter / Cursor 统一入口，`auto` 模式按优先级自动降级
-- **ChatGPT 冷启动**：导入历史对话与 ChatGPT「记忆」功能导出，快速建立个人记忆
-- **联网搜索**：Tavily 集成，支持 `:deepsearch` 深度研究（可选）
 - **可审计**：Token 消耗、费用估算、敏感文件扫描，可导出 Markdown 报告
 
 ## 要求
@@ -65,7 +68,7 @@ pip install -e ".[dev]"
 # 完整安装（LangGraph + Chroma 向量检索）
 pip install -e ".[full,dev]"
 
-# 可选：Hindsight 记忆引擎（Python 3.11+）
+# 推荐：Hindsight 记忆引擎（Python 3.11+，全方位长期记忆）
 pip install -e ".[hindsight]"
 ```
 
@@ -80,9 +83,9 @@ cp .env.example .env
 
 ## 功能示例
 
-### 亮点：纯本地 qwen3.5:4b 即可用
+### 亮点：完全本地化
 
-LocalAgent 的核心链路——**对话、记忆写入、记忆召回、文档检索、工作区感知、审计统计**——均可只依赖本地 Ollama，无需任何付费 API。
+LocalAgent 的核心链路——**对话、记忆写入、记忆召回、文档检索、工作区感知、Shell 执行、审计统计**——均可只依赖本地 Ollama，无需任何付费 API。数据与身份不出本机。
 
 | 能力 | 是否需要联网 API | 说明 |
 | --- | --- | --- |
@@ -102,9 +105,9 @@ ollama pull qwen3.5:4b
 LA chat --provider ollama
 ```
 
-### 亮点：主动追问、确认意图后再动手
+### 亮点：主动意识——模糊意图先追问
 
-普通 Chat 收到「帮我改个文件」往往会猜一个路径直接覆盖；LocalAgent 会先做一次**轻量意图预检**（本地 `qwen3.5:4b`，默认开启），指代不明时**主动追问 1–2 个具体问题**，等你补充后再合并上下文、调用工具执行。文件写入还有**幻觉检测**：若模型声称「已写入」却未调用 `write_file`，会自动重试或明确报错，而不是展示编造的空内容。
+普通 Chat 收到「帮我改个文件」往往会猜一个路径直接覆盖；LocalAgent 具有**主动意识**：先做一次**轻量意图预检**（本地 `qwen3.5:4b`，默认开启），指代不明时**主动追问 1–2 个具体问题**，等你补充后再合并上下文、调用工具执行。文件写入还有**幻觉检测**：若模型声称「已写入」却未调用 `write_file`，会自动重试或明确报错，而不是展示编造的空内容。
 
 ```text
 > 帮我改个文件
@@ -131,7 +134,7 @@ LA chat --provider ollama
 
 适用场景：修改文件、重构代码、分析项目等**对象或范围不明确**的请求。可通过设 `LA_INTENT_CLARIFY=0` 关闭（默认开启）；含具体路径的请求会跳过预检，直接执行。
 
-### 亮点：Agent 自动执行终端命令
+### 亮点：本机执行 —— 本地 Shell 真正动手
 
 普通 Chat 只会告诉你「去终端运行 `find … | wc -l`」。LocalAgent 的 Agent 会**自己调用 `run_shell` 工具**，在工作区执行命令并把结果整理成回答——全程纯本地 `qwen3.5:4b`，无需云端 API。
 
@@ -167,9 +170,9 @@ LA chat --provider ollama
 open examples/walkthrough.md
 ```
 
-### 进阶：Hindsight 记忆引擎演示
+### 亮点：Hindsight 长期记忆 —— 全方位记住你
 
-LocalAgent 的 Warm 层可选 [Hindsight](https://github.com/hindsight/hindsight) 引擎，提供 **Retain → 4 路 Recall → Reflect → Consolidation** 完整记忆链路。仓库提供一条「架构决策演变」叙事演示，覆盖写入、语义召回、时间感知、标签浏览与跨记忆推理：
+记忆输入支持 **ChatGPT 历史对话、个人文档、日常对话**；Warm 层接入强大的 [Hindsight](https://github.com/hindsight/hindsight) 引擎（`pip install -e ".[hindsight]"`，需 Python 3.11+），提供 **Retain → 4 路 Recall → Reflect → Consolidation** 完整记忆链路。仓库提供一条「架构决策演变」叙事演示，覆盖写入、语义召回、时间感知、标签浏览与跨记忆推理：
 
 ```bash
 # 安装 Hindsight（Python 3.11+）
@@ -298,26 +301,26 @@ data/
 
 ## 架构
 
+叙事主线：**完全本地** → **主动追问** → **长期多层次记忆（Hindsight）** → **多源输入** → **本机 · 画像 · 联网三层打通**。
+
 ```
 ┌─────────────────────────────────────────┐
 │              LA chat (REPL)             │
 │     Ollama / OpenRouter / Cursor        │
+│         （意图澄清 → 再动手）              │
 └─────────────────┬───────────────────────┘
                   │ LangGraph Agent
-    ┌─────────────┼─────────────┐
-    ▼             ▼             ▼
-  Hot          Warm           Cold
-core_profile  Hindsight/    Chroma + BM25
-              JSON memory   (文档原文)
-                  │
-                  ▼
-            run_shell（工作区终端）
+    ┌─────────────┼─────────────┬──────────────┐
+    ▼             ▼             ▼              ▼
+  Hot          Warm           Cold         联网 / Shell
+core_profile  Hindsight     Chroma+BM25   Tavily / run_shell
+（用户画像）   （长期记忆）    （个人文档）    （互联网 · 本机）
 ```
 
-- **Hot**：`core_profile.json`（Pinned 核心事实）
-- **Warm**：Hindsight / JSON memory（长期记忆）
-- **Cold**：Chroma + BM25 混合检索（文档原文）
-- **Agent**：LangGraph 工具循环，按需 JIT 召回
+- **Hot**：`core_profile.json`（Pinned 核心事实 / 用户画像）
+- **Warm**：Hindsight 记忆引擎（长期记忆；ChatGPT / 对话提取入库）
+- **Cold**：Chroma + BM25（个人文档原文）
+- **Agent**：LangGraph 工具循环；按需 JIT 召回记忆，并可联网、执行本地 Shell
 
 详见 [docs/PRD.md](docs/PRD.md) 和 [docs/TDD.md](docs/TDD.md)。
 

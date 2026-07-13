@@ -10,11 +10,17 @@
   <a href="./README.md">English</a> · <a href="./README.zh-CN.md">中文</a>
 </p>
 
-# LocalAgent
+# <img src="assets/LA%20logo.png" alt="LA" width="36" valign="middle"> LocalAgent
 
-> **A regular Mac + Ollama `qwen3.5:4b` — solid personal AI assistant quality, with zero API cost.**
+> **Fully local · Asks first · Knows you long-term — machine · profile · internet, actually usable.**
 
-LocalAgent (`LA`) is not another chat client. It wires **conversation, personal memory, document retrieval, and workspace awareness** into a complete local agent pipeline. The core pitch: **with a basic local Ollama setup, even a 4B model can remember you, find your docs, and see what the current project is doing**. More importantly, it **asks clarifying questions and confirms your real intent before acting** — instead of guessing wrong, editing wrong, and making a mess like a typical chat bot.
+LocalAgent (`LA`) is not another chat client. It is a **proactive personal AI that runs on your machine**. Core narrative:
+
+1. **Fully local** — default Ollama `qwen3.5:4b`; chat, memory, retrieval, and execution all run on-device; identity and data never leave your machine  
+2. **Proactive awareness** — when intent is vague, it asks 1–2 key clarifying questions before acting, instead of guessing wrong and breaking things  
+3. **Long-term, multi-layer memory** — Hot / Warm / Cold layers; an assistant that actually knows you across sessions  
+4. **Where memory comes from** — **ChatGPT history**, personal documents, and live chats all ingest into one pipeline, powered by the **Hindsight** memory engine  
+5. **Actually usable** — web search + local Shell, connecting **your machine · your profile · the internet**
 
 ```bash
 ollama pull qwen3.5:4b          # ~2.5GB, runs on a regular Mac
@@ -23,28 +29,25 @@ cp examples/env.local-only.example .env
 LA chat --provider ollama       # fully local — data never leaves your machine
 ```
 
-| Typical local chat | LocalAgent + qwen3.5:4b |
+| Typical local chat | LocalAgent |
 | --- | --- |
-| Forgets after the session | Layered memory — recalls facts & preferences across sessions |
-| Doesn't know what you're doing | Git status, recent files, todo snapshots |
-| Can't search local notes | Chroma + BM25 hybrid retrieval over personal docs |
-| Q&A only | LangGraph agent with on-demand JIT context recall |
-| Guesses unclear references and edits files anyway | **Actively clarifies intent**, then calls tools after confirmation |
-| Tells you to run commands in a terminal | Agent calls `run_shell`, executes, and summarizes results |
+| Cloud or half-local; data boundary unclear | **Fully local** — identity and memory stay on device |
+| Guesses unclear references and edits anyway | **Asks first**, then calls tools after confirmation |
+| Forgets after the session | **Long-term multi-layer memory** + Hindsight |
+| Memory only from this chat | **ChatGPT history / docs / chats** as cold-start sources |
+| Can't search the web or run commands | **Web search** + **local shell** — machine · profile · internet |
 
 Optional OpenRouter / Cursor / Tavily for extras — **identity and data stay on your machine**.
 
 ## Features
 
-- **Usable at 4B**: default `qwen3.5:4b` — chat, memory write, retrieval, and workspace awareness all run locally
-- **Active intent clarification**: vague requests get 1–2 clarifying questions first; file writes also have hallucination detection so it won't claim “done” without actually calling tools
-- **Layered memory**: Hot (core profile) / Warm (long-term memory) / Cold (document source) with JIT recall
+- **Fully local**: default `qwen3.5:4b` — chat, memory write, retrieval, workspace awareness, and Shell execution all run on-device; optional cloud models, data still owned locally
+- **Proactive awareness**: vague requests get 1–2 clarifying questions first; file writes also have hallucination detection
+- **Long-term multi-layer memory**: Hot (core profile) / Warm (long-term) / Cold (document source) with JIT recall — an assistant that knows you
+- **Hindsight + multi-source ingest**: ChatGPT history, personal docs, and live chats → one pipeline; powered by the **Hindsight** memory engine
+- **Machine · profile · internet**: workspace awareness + `run_shell` + Tavily web search — three layers that make it actually usable
 - **Document knowledge base**: symlink personal files in; Chroma + BM25 hybrid search
-- **Workspace awareness**: Git status, recent files, todo snapshots
-- **Terminal execution**: Agent runs shell commands in the workspace (count LOC, list dirs, run tests, etc.)
 - **Multi-model chat**: unified Ollama / OpenRouter / Cursor entry; `auto` mode falls back by priority
-- **ChatGPT cold start**: import chat history and ChatGPT “Memory” exports to bootstrap personal memory
-- **Web search**: Tavily integration, including `:deepsearch` deep research (optional)
 - **Auditable**: token usage, cost estimates, sensitive-file scan — exportable Markdown reports
 
 ## Requirements
@@ -65,7 +68,7 @@ pip install -e ".[dev]"
 # Full install (LangGraph + Chroma vector retrieval)
 pip install -e ".[full,dev]"
 
-# Optional: Hindsight memory engine (Python 3.11+)
+# Recommended: Hindsight memory engine (Python 3.11+ — long-term memory that knows you)
 pip install -e ".[hindsight]"
 ```
 
@@ -80,9 +83,9 @@ First run creates runtime dirs under `data/`. You can copy `data/core_profile.ex
 
 ## Feature highlights
 
-### Fully local with qwen3.5:4b
+### Fully local
 
-LocalAgent’s core path — **chat, memory write, memory recall, document retrieval, workspace awareness, audit stats** — can run on local Ollama alone, with no paid API.
+LocalAgent’s core path — **chat, memory write, memory recall, document retrieval, workspace awareness, Shell execution, audit stats** — can run on local Ollama alone, with no paid API. Identity and data stay on your machine.
 
 | Capability | Needs cloud API? | Notes |
 | --- | --- | --- |
@@ -102,9 +105,9 @@ ollama pull qwen3.5:4b
 LA chat --provider ollama
 ```
 
-### Ask first, act after intent is clear
+### Proactive awareness — clarify vague intent first
 
-A typical chat that hears “help me edit a file” often guesses a path and overwrites it. LocalAgent runs a **light intent pre-check** first (local `qwen3.5:4b`, on by default). When references are unclear it **asks 1–2 concrete questions**, waits for your answers, then merges context and calls tools. File writes also have **hallucination detection**: if the model claims it “wrote” something without calling `write_file`, it retries or errors clearly instead of showing fabricated empty content.
+A typical chat that hears “help me edit a file” often guesses a path and overwrites it. LocalAgent has **proactive awareness**: it runs a **light intent pre-check** first (local `qwen3.5:4b`, on by default). When references are unclear it **asks 1–2 concrete questions**, waits for your answers, then merges context and calls tools. File writes also have **hallucination detection**: if the model claims it “wrote” something without calling `write_file`, it retries or errors clearly instead of showing fabricated empty content.
 
 ```text
 > help me edit a file
@@ -131,7 +134,7 @@ Successfully appended the specified content to `test.txt`. Current contents:
 
 Best for requests where the **target or scope is unclear** (edit files, refactor, analyze a project). Disable with `LA_INTENT_CLARIFY=0` (default on). Requests that already include a concrete path skip the pre-check.
 
-### Agent runs terminal commands itself
+### Local execution — Shell that actually acts
 
 A typical chat only tells you to run `find … | wc -l` yourself. LocalAgent’s agent **calls `run_shell`**, executes in the workspace, and turns the output into an answer — fully local `qwen3.5:4b`, no cloud API.
 
@@ -158,7 +161,7 @@ The repo includes a full walkthrough covering the core scenarios:
 | 3 | Search recent news online | `LA chat` or `:deepsearch` (needs Tavily) |
 | 4 | **Fully local** qwen3.5:4b | `LA chat --provider ollama` |
 | 5 | Answer about local work | `LA workspace` / `LA chat --cwd .` |
-| 6 | **Active intent clarification** | `LA chat` → “help me edit a file” → clarify → execute |
+| 6 | **Proactive awareness** | `LA chat` → “help me edit a file” → clarify → execute |
 | 7 | Agent runs terminal commands | `LA chat` → “count project LOC” |
 | 8 | Audit report (Ollama $0) | `LA audit --since 7d` |
 
@@ -167,9 +170,9 @@ The repo includes a full walkthrough covering the core scenarios:
 open examples/walkthrough.md
 ```
 
-### Advanced: Hindsight memory demo
+### Hindsight long-term memory — remembers you end-to-end
 
-Warm memory can optionally use the [Hindsight](https://github.com/hindsight/hindsight) engine: **Retain → 4-way Recall → Reflect → Consolidation**. The repo includes an “architecture decision evolution” narrative demo covering write, semantic recall, time awareness, tag browsing, and cross-memory reasoning:
+Memory inputs include **ChatGPT history, personal documents, and live chats**. The Warm layer is powered by the [Hindsight](https://github.com/hindsight/hindsight) engine (`pip install -e ".[hindsight]"`, Python 3.11+): **Retain → 4-way Recall → Reflect → Consolidation**. The repo includes an “architecture decision evolution” narrative demo covering write, semantic recall, time awareness, tag browsing, and cross-memory reasoning:
 
 ```bash
 # Install Hindsight (Python 3.11+)
@@ -298,26 +301,26 @@ data/
 
 ## Architecture
 
+Narrative arc: **fully local** → **ask first** → **long-term multi-layer memory (Hindsight)** → **multi-source ingest** → **machine · profile · internet**.
+
 ```
 ┌─────────────────────────────────────────┐
 │              LA chat (REPL)             │
 │     Ollama / OpenRouter / Cursor        │
+│         (clarify intent → then act)     │
 └─────────────────┬───────────────────────┘
                   │ LangGraph Agent
-    ┌─────────────┼─────────────┐
-    ▼             ▼             ▼
-  Hot          Warm           Cold
-core_profile  Hindsight/    Chroma + BM25
-              JSON memory   (document source)
-                  │
-                  ▼
-            run_shell (workspace terminal)
+    ┌─────────────┼─────────────┬──────────────┐
+    ▼             ▼             ▼              ▼
+  Hot          Warm           Cold         Web / Shell
+core_profile  Hindsight     Chroma+BM25   Tavily / run_shell
+(profile)     (long-term)   (docs)        (internet · machine)
 ```
 
-- **Hot**: `core_profile.json` (pinned core facts)
-- **Warm**: Hindsight / JSON memory (long-term memory)
-- **Cold**: Chroma + BM25 hybrid retrieval (document source)
-- **Agent**: LangGraph tool loop with on-demand JIT recall
+- **Hot**: `core_profile.json` (pinned core facts / user profile)
+- **Warm**: Hindsight memory engine (long-term; ChatGPT / chat extract)
+- **Cold**: Chroma + BM25 (personal document source)
+- **Agent**: LangGraph tool loop; JIT memory recall, plus web search and local Shell
 
 See [docs/PRD.md](docs/PRD.md) and [docs/TDD.md](docs/TDD.md).
 
