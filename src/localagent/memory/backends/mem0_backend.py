@@ -560,20 +560,38 @@ class Mem0Backend:
 
     def recall(self, query: str, *, max_results: int = 10) -> list[dict[str, Any]]:
         from localagent.memory.backends.json_backend import JsonMemoryBackend
-        from localagent.memory.scoped_recall import rerank_hits_temporally, scoped_recall
+        from localagent.memory.scoped_recall import (
+            expand_dialog_neighbors,
+            expand_recall_queries,
+            finalize_hybrid_rank,
+            rrf_fuse_hits,
+            scoped_recall,
+            scoped_recall_multi,
+        )
 
-        prefetch = max(max_results * 3, 20)
-        local_only = _local_only_facts()
+        prefetch = max(max_results * 4, 24)
+        store = get_memory_store()
+        all_facts = list(store.all_facts())
+        local_only = [fact for fact in all_facts if not _is_engine_indexed(fact)]
 
-        engine_hits: list[dict[str, Any]] = []
+        queries = (
+            expand_recall_queries(query)
+            if config.MEMORY_RECALL_QUERY_EXPAND
+            else [" ".join((query or "").split())]
+        )
+        queries = [q for q in queries if q] or [query]
+
+        ranked_lists: list[list[dict[str, Any]]] = []
+
+        # One vector query keeps embedding cost down; lexical variants recover keywords.
         try:
             results = self._memory.search(
-                query,
+                queries[0],
                 filters={"user_id": self._user_id},
                 top_k=prefetch,
                 threshold=0.0,
             )
-            store = get_memory_store()
+            engine_hits: list[dict[str, Any]] = []
             for index, item in enumerate(_iter_search_results(results)):
                 if isinstance(item, dict):
                     memory_id = str(item.get("id") or "")
@@ -583,18 +601,53 @@ class Mem0Backend:
                     text = str(getattr(item, "memory", None) or getattr(item, "text", "") or "")
                 store_fact = _resolve_store_fact(store, memory_id=memory_id, text=text)
                 engine_hits.append(_merge_recall_hit(item, index=index, store_fact=store_fact))
+            if engine_hits:
+                ranked_lists.append(engine_hits)
         except Exception as exc:
             logger.warning("Mem0 recall failed (%s), falling back to local registry", exc)
             return JsonMemoryBackend().recall(query, max_results=max_results)
 
-        local_hits = (
-            scoped_recall(query, max_results=prefetch, facts=local_only) if local_only else []
-        )
-        merged = _dedupe_recall_hits(engine_hits + local_hits)
+        if config.MEMORY_RECALL_HYBRID and all_facts:
+            lexical_hits = scoped_recall_multi(queries, max_results=prefetch, facts=all_facts)
+            if lexical_hits:
+                ranked_lists.append(lexical_hits)
+        elif local_only:
+            local_hits = scoped_recall(query, max_results=prefetch, facts=local_only)
+            if local_hits:
+                ranked_lists.append(local_hits)
+
+        if not ranked_lists:
+            return JsonMemoryBackend().recall(query, max_results=max_results)
+
+        merged = rrf_fuse_hits(ranked_lists)
+        merged = _dedupe_recall_hits(merged)
+        # Keep RRF order for the core top pool; neighbors are optional fill-ins only.
+        core = merged[: max(max_results * 2, 16)]
+        neighbor_window = config.MEMORY_RECALL_NEIGHBOR_WINDOW
+        if neighbor_window <= 0 and config.MEMORY_RECALL_HYBRID:
+            from localagent.memory.temporal_intent import parse_temporal_intent
+
+            intent = parse_temporal_intent(query)
+            if intent.prefers_event_neighbors:
+                neighbor_window = config.MEMORY_RECALL_WHEN_EVENT_NEIGHBOR_WINDOW
+        if neighbor_window > 0 and config.MEMORY_RECALL_HYBRID:
+            with_neighbors = expand_dialog_neighbors(core, all_facts, window=neighbor_window)
+            # Re-fuse so neighbors don't outrank RRF-selected evidence via BM25 noise.
+            neighbor_only = [
+                hit for hit in with_neighbors if str(hit.get("source") or "") == "neighbor"
+            ]
+            if neighbor_only:
+                merged = rrf_fuse_hits([core, neighbor_only])
+            else:
+                merged = core
+        else:
+            merged = core
+
         if not merged:
             return JsonMemoryBackend().recall(query, max_results=max_results)
 
-        return rerank_hits_temporally(query, merged, max_results=max_results)
+        # Preserve RRF ranking; only apply a light temporal/lexical polish.
+        return finalize_hybrid_rank(query, merged, max_results=max_results)
 
     def reflect(self, query: str) -> str | None:
         """Simulate Hindsight reflect: search + LA LLM synthesis."""

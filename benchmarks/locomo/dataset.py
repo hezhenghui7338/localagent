@@ -67,6 +67,13 @@ def format_turn(
     return " ".join(parts)
 
 
+def _locomo_occurred_at(date_time: str) -> str | None:
+    """Parse LoCoMo session timestamps into ISO dates for temporal recall."""
+    from localagent.memory.temporal import extract_occurred_at
+
+    return extract_occurred_at(date_time)
+
+
 def iter_memory_items(sample: dict[str, Any]) -> Iterator[dict[str, Any]]:
     """Yield structured memory items for ingest."""
     conversation = sample["conversation"]
@@ -91,20 +98,24 @@ def iter_memory_items(sample: dict[str, Any]) -> Iterator[dict[str, Any]]:
     for session_num, date_time, turns in iter_sessions(conversation):
         for turn in turns:
             text = format_turn(turn, date_time=date_time, session_num=session_num)
+            occurred = _locomo_occurred_at(date_time)
+            metadata: dict[str, Any] = {
+                "source": "locomo",
+                "sample_id": sample_id,
+                "kind": "dialog",
+                "session": session_num,
+                "date_time": date_time,
+                "dia_id": turn.get("dia_id"),
+                "speaker": turn.get("speaker"),
+                "source_file": f"locomo:{sample_id}:s{session_num}",
+                "section_heading": f"session_{session_num}",
+                "chunk_id": str(turn.get("dia_id") or f"s{session_num}"),
+            }
+            if occurred:
+                metadata["occurred_at"] = occurred
             yield {
                 "text": text,
-                "metadata": {
-                    "source": "locomo",
-                    "sample_id": sample_id,
-                    "kind": "dialog",
-                    "session": session_num,
-                    "date_time": date_time,
-                    "dia_id": turn.get("dia_id"),
-                    "speaker": turn.get("speaker"),
-                    "source_file": f"locomo:{sample_id}:s{session_num}",
-                    "section_heading": f"session_{session_num}",
-                    "chunk_id": str(turn.get("dia_id") or f"s{session_num}"),
-                },
+                "metadata": metadata,
             }
 
 

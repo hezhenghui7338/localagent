@@ -9,29 +9,50 @@ from localagent.knowledge.indexer import get_knowledge_indexer, reset_knowledge_
 from localagent.knowledge.store import get_knowledge_store, reset_knowledge_store_singleton
 from localagent.ingest.progress import ProgressEvent, ProgressReporter
 from localagent.memory.backend import get_memory_backend, reset_memory_backend
+from localagent.memory.chatgpt_import import reset_chatgpt_import_index
+from localagent.memory.rememorize import reset_chat_ingest_index
 from localagent.memory.store import get_memory_store, reset_memory_store_singleton
 
+# metadata.source values grouped by LA memory reset / ingest origin
+SOURCE_GROUPS: dict[str, frozenset[str]] = {
+    "chat": frozenset({"chat", "rememorize-chat", "chat_explicit"}),
+    "file": frozenset({"ingest"}),
+    "chatgpt": frozenset({"import-chatgpt", "import-chatgpt-memory"}),
+}
 
-def reset_memory(
+
+def _fact_source(fact) -> str:
+    meta = fact.metadata or {}
+    return str(meta.get("source") or "")
+
+
+def _delete_facts_by_sources(
+    sources: frozenset[str],
     *,
-    clear_knowledge: bool = True,
     reporter: ProgressReporter | None = None,
-) -> dict[str, int | bool]:
-    """Clear memory store and sync_index; optionally clear knowledge index."""
-    config.ensure_data_dirs()
+) -> int:
+    backend = get_memory_backend()
+    store = get_memory_store()
+    removed = 0
+    for fact in list(store.all_facts()):
+        if _fact_source(fact) not in sources:
+            continue
+        if backend.delete(fact.id):
+            removed += 1
+        elif store.delete(fact.id) is not None:
+            removed += 1
+    if reporter is not None:
+        reporter.update(
+            ProgressEvent(phase="reset", message=f"已删除 {removed} 条匹配来源的记忆")
+        )
+    store.save()
+    return removed
 
+
+def _clear_file_indexes(*, clear_knowledge: bool, reporter: ProgressReporter | None) -> tuple[int, int]:
     def _report(message: str) -> None:
         if reporter is not None:
             reporter.update(ProgressEvent(phase="reset", message=message))
-
-    _report("清空记忆存储…")
-    backend = get_memory_backend()
-    memory_removed = backend.clear()
-
-    memory_store = get_memory_store()
-    memory_removed = max(memory_removed, memory_store.count())
-    memory_store.clear()
-    memory_store.save()
 
     _report("清空 sync_index…")
     sync_index = get_sync_index()
@@ -51,21 +72,80 @@ def reset_memory(
     else:
         _report("保留知识库索引")
 
-    reset_memory_store_singleton()
-    reset_knowledge_store_singleton()
     reset_sync_index_singleton()
+    reset_knowledge_store_singleton()
     reset_knowledge_indexer()
-    reset_memory_backend()
-
     if config.SYNC_INDEX_FILE.exists():
         config.SYNC_INDEX_FILE.unlink()
+    return sync_files_tracked, knowledge_removed
 
+
+def reset_memory(
+    *,
+    clear_knowledge: bool = True,
+    source: str = "all",
+    reporter: ProgressReporter | None = None,
+) -> dict[str, int | bool | str]:
+    """Clear memory by origin (chat / file / chatgpt / all)."""
+    config.ensure_data_dirs()
+    origin = (source or "all").strip().lower()
+    if origin not in ("all", "chat", "file", "chatgpt"):
+        raise ValueError(f"未知来源: {source}（可用: chat, file, chatgpt, all）")
+
+    def _report(message: str) -> None:
+        if reporter is not None:
+            reporter.update(ProgressEvent(phase="reset", message=message))
+
+    if origin == "all":
+        _report("清空记忆存储…")
+        backend = get_memory_backend()
+        memory_removed = backend.clear()
+
+        memory_store = get_memory_store()
+        memory_removed = max(memory_removed, memory_store.count())
+        memory_store.clear()
+        memory_store.save()
+
+        sync_files_tracked, knowledge_removed = _clear_file_indexes(
+            clear_knowledge=clear_knowledge,
+            reporter=reporter,
+        )
+        reset_chat_ingest_index()
+        reset_chatgpt_import_index()
+        reset_memory_store_singleton()
+        reset_memory_backend()
+        _report("重置完成")
+        return {
+            "source": "all",
+            "memory_facts_removed": memory_removed,
+            "sync_index_entries_removed": sync_files_tracked,
+            "knowledge_chunks_removed": knowledge_removed,
+            "clear_knowledge": clear_knowledge,
+        }
+
+    _report(f"按来源清空记忆: {origin}")
+    memory_removed = _delete_facts_by_sources(SOURCE_GROUPS[origin], reporter=reporter)
+    sync_files_tracked = 0
+    knowledge_removed = 0
+
+    if origin == "chat":
+        reset_chat_ingest_index()
+    elif origin == "chatgpt":
+        reset_chatgpt_import_index()
+    elif origin == "file":
+        sync_files_tracked, knowledge_removed = _clear_file_indexes(
+            clear_knowledge=clear_knowledge,
+            reporter=reporter,
+        )
+
+    reset_memory_backend()
     _report("重置完成")
     return {
+        "source": origin,
         "memory_facts_removed": memory_removed,
         "sync_index_entries_removed": sync_files_tracked,
         "knowledge_chunks_removed": knowledge_removed,
-        "clear_knowledge": clear_knowledge,
+        "clear_knowledge": clear_knowledge if origin == "file" else False,
     }
 
 
@@ -99,12 +179,12 @@ def reindex_memory_engine(
 def rebuild_memory(
     *,
     reporter: ProgressReporter | None = None,
-) -> tuple[dict[str, int | bool], SyncSummary]:
-    """Reset memory then force re-index all kb/ documents."""
+) -> tuple[dict[str, int | bool | str], SyncSummary]:
+    """Reset all memory then force re-index all kb/ documents."""
     store = get_memory_store()
     snapshot = [fact.to_dict() for fact in store.all_facts()]
 
-    reset_stats = reset_memory(clear_knowledge=True, reporter=reporter)
+    reset_stats = reset_memory(clear_knowledge=True, source="all", reporter=reporter)
     if reporter is not None:
         reporter.update(ProgressEvent(phase="rebuild", message="重新索引 kb/ 文档…"))
     summary = sync_files(force=True, reporter=reporter)

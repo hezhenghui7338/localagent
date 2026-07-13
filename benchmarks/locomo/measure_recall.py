@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -30,6 +31,17 @@ def _hit_at_k(retrieved: list[str], evidence: list[str], k: int) -> bool:
         return False
     top = set(retrieved[:k])
     return any(item in top for item in evidence)
+
+
+def _normalize_evidence(evidence: list[Any]) -> list[str]:
+    """Split LoCoMo evidence cells that sometimes pack multiple dia_ids."""
+    out: list[str] = []
+    for item in evidence:
+        for part in re.split(r"[;,]", str(item)):
+            dia = part.strip()
+            if dia:
+                out.append(dia)
+    return out
 
 
 def measure_sample(
@@ -68,7 +80,7 @@ def measure_sample(
         cat = int(qa.get("category"))
         if cat == 5:
             continue
-        evidence = [str(e) for e in (qa.get("evidence") or []) if e]
+        evidence = _normalize_evidence(list(qa.get("evidence") or []))
         if not evidence:
             continue
         hits = backend.recall(str(qa.get("question") or ""), max_results=top_k)
