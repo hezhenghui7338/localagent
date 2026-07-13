@@ -121,6 +121,20 @@ def test_set_server_api_key(config_setup):
     assert openrouter.api_key == "sk-or-new"
 
 
+def test_set_server_model(config_setup):
+    env_path, _ = config_setup
+    env_config.set_server_model("ollama", "llama3.2:3b", env_path=env_path)
+    servers = env_config.read_model_servers(env_path)
+    ollama = next(s for s in servers if s.provider == "ollama")
+    assert ollama.model == "llama3.2:3b"
+
+
+def test_set_server_model_rejects_auto(config_setup):
+    env_path, _ = config_setup
+    with pytest.raises(ValueError, match="具体路径"):
+        env_config.set_server_model("auto", "x", env_path=env_path)
+
+
 def test_init_model_servers_config(tmp_path: Path, monkeypatch):
     project = tmp_path / "project"
     project.mkdir()
@@ -248,23 +262,21 @@ def test_cli_config_list_reflects_yaml_order(config_setup, capsys):
     assert "ollama→openrouter→minimax" in out
 
 
-def test_auto_bootstrap_creates_yaml_and_env_pointer(tmp_path: Path, monkeypatch):
-    project = tmp_path / "project"
+def test_auto_bootstrap_uses_packaged_templates(tmp_path: Path, monkeypatch):
+    """After pip install, checkout templates are absent; package resources must work."""
+    project = tmp_path / "user-home"
     project.mkdir()
-    example_dir = project / "config"
-    example_dir.mkdir()
-    (example_dir / "model_servers.yaml.example").write_text(
-        "- provider: ollama\n  model: qwen3.5:4b\n  base_url: http://localhost:11434\n",
-        encoding="utf-8",
-    )
     env_path = project / ".env"
-    env_path.write_text("TAVILY_API_KEY=test\n", encoding="utf-8")
     monkeypatch.setattr(config, "PROJECT_ROOT", project)
     monkeypatch.setenv("LA_ENV_FILE", str(env_path))
 
     created = env_config.auto_bootstrap_model_servers_config()
     assert created is not None
-    assert (project / "config/model_servers.yaml").is_file()
+    assert created.is_file()
+    assert (project / "config" / "model_servers.yaml").is_file()
+    assert env_path.is_file()
+    assert "LA_MODEL_SERVERS_FILE" in env_path.read_text(encoding="utf-8")
+    assert "provider: ollama" in created.read_text(encoding="utf-8")
     assert env_config.read_env_value(env_path, "LA_MODEL_SERVERS_FILE") == "config/model_servers.yaml"
 
 
@@ -280,3 +292,78 @@ def test_reload_model_servers_with_file(config_setup):
     config.reload_model_servers(config_file=str(yaml_path))
     assert "minimax" in config.VALID_PROVIDERS
     assert config.get_model_server("minimax").api_key == "old-minimax-key"
+
+
+def test_apply_config_flags_provider_and_tavily(config_setup):
+    env_path, _ = config_setup
+    result = env_config.apply_config_flags(
+        provider="ollama",
+        base_url="http://127.0.0.1:11434",
+        model="qwen3.5:4b",
+        tavily_api_key="tvly-test",
+        env_path=env_path,
+    )
+    ollama = next(s for s in env_config.read_model_servers(env_path) if s.provider == "ollama")
+    assert ollama.base_url == "http://127.0.0.1:11434"
+    assert ollama.model == "qwen3.5:4b"
+    assert env_config.read_env_value(env_path, "TAVILY_API_KEY") == "tvly-test"
+    assert any("TAVILY_API_KEY" in line for line in result.change_lines())
+
+
+def test_cli_config_flat_flags(config_setup, capsys):
+    rc = main(
+        [
+            "config",
+            "--provider",
+            "ollama",
+            "--base_url",
+            "http://localhost:9999",
+            "--model",
+            "qwen3.5:4b",
+            "--TAVILY_API_KEY",
+            "tvly-cli",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "已写入" in out
+    ollama = next(s for s in env_config.read_model_servers(config_setup[0]) if s.provider == "ollama")
+    assert ollama.base_url == "http://localhost:9999"
+    assert env_config.read_env_value(config_setup[0], "TAVILY_API_KEY") == "tvly-cli"
+
+
+def test_cli_config_from_json_file(config_setup, tmp_path, capsys):
+    cfg = tmp_path / "my.json"
+    cfg.write_text(
+        '{"provider":"openrouter","api_key":"sk-or-json","model":"anthropic/claude-sonnet-4",'
+        '"TAVILY_API_KEY":"tvly-json"}',
+        encoding="utf-8",
+    )
+    rc = main(["config", str(cfg)])
+    assert rc == 0
+    servers = env_config.read_model_servers(config_setup[0])
+    openrouter = next(s for s in servers if s.provider == "openrouter")
+    assert openrouter.api_key == "sk-or-json"
+    assert env_config.read_env_value(config_setup[0], "TAVILY_API_KEY") == "tvly-json"
+
+
+def test_cli_config_example(capsys):
+    rc = main(["config-example"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert '"provider": "ollama"' in out
+    assert "TAVILY_API_KEY" in out
+    assert "qwen3.5:4b" in out
+
+
+def test_normalize_config_argv():
+    from localagent.cli import _normalize_config_argv
+
+    assert _normalize_config_argv(["config", "list"]) == ["config", "list"]
+    assert _normalize_config_argv(["config", "--provider", "ollama"]) == [
+        "config",
+        "set",
+        "--provider",
+        "ollama",
+    ]
+    assert _normalize_config_argv(["config", "foo.json"]) == ["config", "apply", "foo.json"]

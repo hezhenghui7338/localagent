@@ -281,6 +281,82 @@ class ModelRouter:
         except Exception:
             return []
 
+    def resolve_effective_provider(self, choice: str) -> str:
+        """Map ``auto`` to the first available provider in priority order."""
+        choice = (choice or config.DEFAULT_MODEL_PROVIDER).strip().lower()
+        if choice != config.DEFAULT_MODEL_PROVIDER:
+            return choice
+        status = self.provider_status()
+        for name in config.MODEL_PROVIDER_PRIORITY:
+            if status.get(name):
+                return name
+        if config.MODEL_PROVIDER_PRIORITY:
+            return config.MODEL_PROVIDER_PRIORITY[0]
+        return "ollama"
+
+    def list_provider_models(self, provider: str) -> list[str]:
+        """List model IDs supported by a concrete provider (not ``auto``)."""
+        name = provider.strip().lower()
+        if name == config.DEFAULT_MODEL_PROVIDER:
+            name = self.resolve_effective_provider(name)
+        if name == "ollama":
+            return self.list_completion_models()
+        if name == "cursor":
+            return self._list_cursor_models()
+        return self._list_openai_compatible_models(name)
+
+    def clear_model_cache(self) -> None:
+        """Drop cached model resolution after config changes."""
+        self._resolved_ollama_model = None
+
+    def _list_cursor_models(self) -> list[str]:
+        server = self._server("cursor")
+        api_key = server.api_key if server else ""
+        if not api_key:
+            return []
+        try:
+            from cursor_sdk import Cursor
+
+            models = Cursor.models.list(api_key=api_key)
+        except Exception as exc:
+            logger.warning("cursor models.list failed: %s", exc)
+            return []
+        ids: list[str] = []
+        for item in models or []:
+            model_id = getattr(item, "id", None) or (item.get("id") if isinstance(item, dict) else None)
+            if model_id:
+                ids.append(str(model_id))
+        return ids
+
+    def _list_openai_compatible_models(self, provider: str) -> list[str]:
+        server = self._server(provider)
+        if not server or not server.base_url:
+            return []
+        headers: dict[str, str] = {}
+        if server.api_key:
+            headers["Authorization"] = f"Bearer {server.api_key}"
+        headers.update(openai_compatible_headers(provider))
+        try:
+            with httpx.Client(timeout=min(15.0, server.timeout or 15.0)) as client:
+                resp = client.get(f"{server.base_url.rstrip('/')}/models", headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as exc:
+            logger.warning("%s /models failed: %s", provider, exc)
+            return []
+        raw = data.get("data", data) if isinstance(data, dict) else data
+        if not isinstance(raw, list):
+            return []
+        ids: list[str] = []
+        for item in raw:
+            if isinstance(item, dict):
+                model_id = item.get("id") or item.get("name")
+            else:
+                model_id = getattr(item, "id", None) or getattr(item, "name", None)
+            if model_id:
+                ids.append(str(model_id))
+        return ids
+
     def _failure_hint(self) -> str:
         models = self.list_completion_models()
         server = self._server("ollama")

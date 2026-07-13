@@ -18,7 +18,37 @@ from localagent.model_servers import (
     resolve_model_servers_path,
 )
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_USER_HOME = Path.home() / ".localagent"
+
+
+def resolve_project_root() -> Path:
+    """Runtime home for .env / config / data.
+
+    Priority:
+    1. ``LA_HOME`` or ``LA_PROJECT_ROOT``
+    2. Source / editable checkout (repo root with ``pyproject.toml`` + ``src/localagent``)
+    3. ``~/.localagent`` after a normal ``pip install`` / ``pipx install``
+    """
+    override = os.getenv("LA_HOME", "").strip() or os.getenv("LA_PROJECT_ROOT", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+
+    package_dir = Path(__file__).resolve().parent
+    # Editable / source: <repo>/src/localagent/config.py
+    src_root = package_dir.parents[1]
+    if (src_root / "pyproject.toml").is_file() and (src_root / "src" / "localagent").is_dir():
+        return src_root
+
+    # Flat layout fallback: <repo>/localagent/config.py
+    flat_root = package_dir.parent
+    if (flat_root / "pyproject.toml").is_file() and (flat_root / "localagent").is_dir():
+        return flat_root
+
+    return DEFAULT_USER_HOME.resolve()
+
+
+PROJECT_ROOT = resolve_project_root()
+IS_SOURCE_CHECKOUT = (PROJECT_ROOT / "src" / "localagent").is_dir()
 
 _env_override = os.getenv("LA_ENV_FILE", "").strip()
 if _env_override:

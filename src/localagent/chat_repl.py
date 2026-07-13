@@ -1,11 +1,6 @@
-"""Chat REPL with :deepsearch, :provider, and conversation persistence."""
+"""Chat REPL with slash commands (/…), conversation persistence, and agent turns."""
 
 from __future__ import annotations
-
-try:
-    import readline  # noqa: F401
-except ImportError:
-    pass
 
 from localagent import config
 from localagent.agent.intent_clarification import (
@@ -15,11 +10,17 @@ from localagent.agent.intent_clarification import (
     merge_clarified_intent,
 )
 from localagent.agent.runtime import run_agent_turn
+from localagent.completion import install_repl_readline_completer
 from localagent.memory.core_profile import default_core_profile
 from localagent.memory.exit_extract import schedule_session_memory_extract
 from localagent.models.router import get_model_router, shutdown_cursor_sdk
 from localagent.persist.conversations import append_message, new_session_id
-from localagent.tools import deep_search
+from localagent.session_commands import (
+    SessionCommandContext,
+    dispatch_session_line,
+    is_session_command,
+    set_repl_provider,
+)
 from localagent.ui.banner import print_welcome
 from localagent.ui.console import ActivityIndicator, prepare_for_input
 
@@ -29,17 +30,19 @@ class ChatREPL:
         self.session_id = session_id or new_session_id()
         self.history: list[dict[str, str]] = []
         self.provider = config.normalize_provider_choice(provider)
+        set_repl_provider(self.provider)
         self.pending_clarification: PendingClarification | None = None
         default_core_profile()
 
     def run(self) -> int:
+        install_repl_readline_completer()
         print_welcome(provider=self.provider, session_id=self.session_id)
         router = get_model_router()
         status = router.provider_status()
         if self.provider == "minimax" and not status.get("minimax"):
             print(
                 "[chat] 警告: minimax 未配置 api_key。"
-                " 请 LA config set-key minimax <key> 或在 LA_MODEL_SERVERS 中填写。"
+                " 请 LA config set-key minimax <key> 或在 LA 会话中 /config set-key minimax <key>。"
             )
         cloud_ready = any(
             name != "ollama" and name != "cursor" and status.get(name)
@@ -50,7 +53,7 @@ class ChatREPL:
                 (n for n in config.MODEL_PROVIDER_PRIORITY if n not in ("ollama", "cursor") and status.get(n)),
                 "cloud",
             )
-            print(f"[chat] 提示: Ollama 本地模型较慢时可 :provider {alt} 加速")
+            print(f"[chat] 提示: Ollama 本地模型较慢时可 /provider {alt} 加速")
         self._shown_fallback_hint = False
         interrupt_count = 0
         while True:
@@ -70,20 +73,18 @@ class ChatREPL:
                 continue
             if not line:
                 continue
-            if line in (":q", ":quit", ":exit"):
-                break
-            if line.startswith(":provider") or line.startswith(":p "):
-                self._handle_provider(line)
-                continue
-            if line == ":p":
-                self._handle_provider(":provider")
-                continue
-            if line.startswith(":deepsearch"):
-                topic = line[len(":deepsearch"):].strip()
-                if not topic:
-                    print("用法: :deepsearch <主题>")
-                    continue
-                self._handle_deepsearch(topic)
+            if is_session_command(line):
+                ctx = SessionCommandContext(
+                    session_id=self.session_id,
+                    provider=self.provider,
+                    history=self.history,
+                )
+                result = dispatch_session_line(line, ctx)
+                if result.provider is not None:
+                    self.provider = result.provider
+                    set_repl_provider(self.provider)
+                if result.should_exit:
+                    break
                 continue
 
             self._handle_chat(line)
@@ -178,44 +179,6 @@ class ChatREPL:
         append_message(self.session_id, "user", user_input)
         append_message(self.session_id, "assistant", response)
         self.history.append({"role": "assistant", "content": response})
-
-    def _handle_provider(self, line: str) -> None:
-        router = get_model_router()
-        parts = line.split(maxsplit=1)
-        if len(parts) < 2:
-            status = router.provider_status()
-            print(f"当前路径: {router.format_provider_hint(self.provider)}")
-            for name in config.MODEL_PROVIDER_PRIORITY:
-                server = config.get_model_server(name)
-                model = router.format_model_hint(name) if name == "ollama" else (server.model if server else "?")
-                mark = "✓" if status.get(name) else "✗"
-                print(f"  {name:<12} {mark}  {model}")
-            providers = "|".join(config.VALID_PROVIDERS)
-            print(f"用法: :provider auto|{providers}")
-            return
-
-        try:
-            self.provider = config.normalize_provider_choice(parts[1])
-        except ValueError as exc:
-            print(f"[provider] {exc}")
-            return
-
-        print(f"[provider] 已切换为 {router.format_provider_hint(self.provider)}")
-
-    def _handle_deepsearch(self, topic: str) -> None:
-        append_message(self.session_id, "user", f":deepsearch {topic}")
-        with ActivityIndicator("deepsearch", f"研究中: {topic}") as activity:
-            try:
-                report = deep_search(topic, on_status=activity.update)
-            except KeyboardInterrupt:
-                print("\n[chat] deepsearch 已取消")
-                return
-            except Exception as exc:
-                report = f"[deepsearch 失败] {exc}"
-        print(report)
-        append_message(self.session_id, "assistant", report, tool="deepsearch")
-        self.history.append({"role": "user", "content": f":deepsearch {topic}"})
-        self.history.append({"role": "assistant", "content": report})
 
     def _on_exit(self) -> None:
         schedule_session_memory_extract(self.session_id)

@@ -48,6 +48,45 @@ def test_resolve_skips_embedding_only():
             assert router.resolve_ollama_model() == "qwen3.5:4b"
 
 
+def test_list_provider_models_ollama():
+    router = ModelRouter()
+    models = [
+        {"name": "bge-m3:latest", "capabilities": ["embedding"]},
+        {"name": "qwen3.5:4b", "capabilities": ["completion"]},
+    ]
+    with patch.object(router, "_list_ollama_models", return_value=models):
+        assert router.list_provider_models("ollama") == ["qwen3.5:4b"]
+
+
+def test_list_provider_models_openai_compatible():
+    router = ModelRouter()
+    server = MagicMock()
+    server.base_url = "https://api.example.com/v1"
+    server.api_key = "sk-test"
+    server.timeout = 30.0
+    response = MagicMock()
+    response.raise_for_status = MagicMock()
+    response.json.return_value = {"data": [{"id": "model-a"}, {"id": "model-b"}]}
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = None
+    client.get.return_value = response
+    with patch.object(router, "_server", return_value=server):
+        with patch("localagent.models.router.httpx.Client", return_value=client):
+            assert router.list_provider_models("openrouter") == ["model-a", "model-b"]
+
+
+def test_resolve_effective_provider_auto(monkeypatch):
+    router = ModelRouter()
+    monkeypatch.setattr(
+        "localagent.models.router.config.MODEL_PROVIDER_PRIORITY",
+        ["ollama", "openrouter"],
+    )
+    with patch.object(router, "provider_status", return_value={"ollama": False, "openrouter": True}):
+        assert router.resolve_effective_provider("auto") == "openrouter"
+    assert router.resolve_effective_provider("cursor") == "cursor"
+
+
 def test_provider_order_auto_uses_env_priority(monkeypatch):
     monkeypatch.setattr(
         "localagent.models.router.config.MODEL_PROVIDER_PRIORITY",

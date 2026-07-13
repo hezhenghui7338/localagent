@@ -34,6 +34,11 @@ def test_extract_session_memories_skips_commands(isolated_data):
 
     assert extract_session_memories(session_id, interactive=False) == []
 
+    session_id2 = "s-cmd-slash"
+    append_message(session_id2, "user", "/search bar")
+    append_message(session_id2, "assistant", "ok")
+    assert extract_session_memories(session_id2, interactive=False) == []
+
 
 def test_schedule_session_memory_extract_spawns_detached_process():
     import subprocess

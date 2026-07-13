@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import sys
 from dataclasses import dataclass, fields, replace
 from pathlib import Path
@@ -26,6 +25,16 @@ STANDALONE_KEYS: dict[str, str] = {
     "tavily": "TAVILY_API_KEY",
     "hindsight": "LA_HINDSIGHT_LLM_API_KEY",
 }
+
+# Flat env-style keys → provider api_key in model_servers.yaml
+PROVIDER_API_KEY_ENV: dict[str, str] = {
+    "OPENROUTER_API_KEY": "openrouter",
+    "CURSOR_API_KEY": "cursor",
+    "MINIMAX_API_KEY": "minimax",
+    "AIPING_API_KEY": "aiping",
+}
+
+CONFIG_EXAMPLE_FILENAME = "config.example.json"
 
 
 @dataclass(frozen=True)
@@ -178,15 +187,22 @@ def read_env_value(path: Path, key: str) -> str:
     return read_env_file(path).get(key, "")
 
 
+def _template_text(filename: str, *, project_relative: str) -> str | None:
+    """Prefer checkout template; fall back to packaged resources after pip install."""
+    project_path = config.PROJECT_ROOT / project_relative
+    if project_path.is_file():
+        return project_path.read_text(encoding="utf-8")
+    from localagent.resources import read_text
+
+    return read_text(filename)
+
+
 def _ensure_env_file(path: Path) -> None:
     if path.is_file():
         return
-    example = config.PROJECT_ROOT / ".env.example"
-    if example.is_file():
-        path.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
-        return
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("", encoding="utf-8")
+    text = _template_text("env.example", project_relative=".env.example")
+    path.write_text(text if text is not None else "", encoding="utf-8")
 
 
 def write_env_value(path: Path, key: str, value: str) -> bool:
@@ -277,16 +293,19 @@ def auto_bootstrap_model_servers_config() -> Path | None:
             pass
         return existing
 
-    example = config.PROJECT_ROOT / "config/model_servers.yaml.example"
     target = default_model_servers_file()
-    if not example.is_file():
+    template = _template_text(
+        "model_servers.yaml.example",
+        project_relative="config/model_servers.yaml.example",
+    )
+    if template is None:
         return None
 
     try:
         _ensure_env_file(env_path)
         target.parent.mkdir(parents=True, exist_ok=True)
         if not target.is_file():
-            shutil.copyfile(example, target)
+            target.write_text(template, encoding="utf-8")
         _wire_env_servers_file(env_path, target)
     except OSError:
         return target if target.is_file() else None
@@ -340,10 +359,13 @@ def ensure_model_servers_file(env_path: Path | None = None) -> Path:
         return bootstrapped
 
     target = default_model_servers_file()
-    example = config.PROJECT_ROOT / "config/model_servers.yaml.example"
-    if not target.is_file() and example.is_file():
+    template = _template_text(
+        "model_servers.yaml.example",
+        project_relative="config/model_servers.yaml.example",
+    )
+    if not target.is_file() and template is not None:
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(example, target)
+        target.write_text(template, encoding="utf-8")
 
     rel = target.relative_to(config.PROJECT_ROOT) if target.is_relative_to(config.PROJECT_ROOT) else target
     write_env_value(env_path, LA_MODEL_SERVERS_FILE_ENV, str(rel))
@@ -376,7 +398,10 @@ def init_model_servers_config(*, env_path: Path | None = None, force: bool = Fal
     _refresh_project_env(env_path)
     _ensure_env_file(env_path)
     target = default_model_servers_file()
-    example = config.PROJECT_ROOT / "config/model_servers.yaml.example"
+    template = _template_text(
+        "model_servers.yaml.example",
+        project_relative="config/model_servers.yaml.example",
+    )
     servers_before = tuple(config.MODEL_SERVERS)
     priority_before = tuple(config.MODEL_PROVIDER_PRIORITY)
     had_pointer = bool(read_env_value(env_path, LA_MODEL_SERVERS_FILE_ENV).strip())
@@ -385,17 +410,17 @@ def init_model_servers_config(*, env_path: Path | None = None, force: bool = Fal
     force_overwritten = False
 
     if force:
-        if not example.is_file():
-            raise FileNotFoundError(f"模板不存在: {example}")
+        if template is None:
+            raise FileNotFoundError("模板不存在: model_servers.yaml.example")
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(example, target)
+        target.write_text(template, encoding="utf-8")
         created = not existed_before
         force_overwritten = existed_before
     elif not target.is_file():
-        if not example.is_file():
-            raise FileNotFoundError(f"模板不存在: {example}")
+        if template is None:
+            raise FileNotFoundError("模板不存在: model_servers.yaml.example")
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(example, target)
+        target.write_text(template, encoding="utf-8")
         created = True
 
     rel = target.relative_to(config.PROJECT_ROOT)
@@ -475,6 +500,35 @@ def set_server_api_key(
     return config_path, True
 
 
+def set_server_model(
+    provider: str,
+    model: str,
+    *,
+    env_path: Path | None = None,
+) -> tuple[Path, bool]:
+    """Update ``model`` for one provider entry in model_servers.yaml."""
+    alias = provider.strip().lower()
+    cleaned = model.strip()
+    if not cleaned:
+        raise ValueError("模型名称不能为空")
+    if alias == "auto":
+        raise ValueError("请先用 /provider 指定具体路径，再设置模型")
+    env_path = env_path or resolve_env_file()
+    servers = read_model_servers(env_path)
+    updated: list[ModelServer] = []
+    found = False
+    for item in servers:
+        if item.provider == alias:
+            updated.append(replace(item, model=cleaned))
+            found = True
+        else:
+            updated.append(item)
+    if not found:
+        raise ValueError(f"未找到 provider {alias!r}，请先在 config/model_servers.yaml 中添加")
+    config_path = write_model_servers(updated, env_path=env_path)
+    return config_path, True
+
+
 def list_server_status(env_path: Path | None = None) -> list[ServerStatus]:
     env_path = env_path or resolve_env_file()
     return [
@@ -500,16 +554,26 @@ def parse_server_json(raw: str) -> ModelServer:
     return ModelServer.from_dict(data)
 
 
-def set_standalone_key(name: str, value: str, *, path: Path | None = None) -> tuple[Path, bool]:
+def set_standalone_key(
+    name: str,
+    value: str,
+    *,
+    path: Path | None = None,
+    allow_empty: bool = False,
+) -> tuple[Path, bool]:
     alias = name.strip().lower()
     if alias not in STANDALONE_KEYS:
         valid = ", ".join(sorted(STANDALONE_KEYS))
         raise ValueError(f"未知 key {name!r}，可选: {valid}")
     cleaned = value.strip()
-    if not cleaned:
+    if not cleaned and not allow_empty:
         raise ValueError("API Key 不能为空")
     env_path = path or resolve_env_file()
-    was_update = write_env_value(env_path, STANDALONE_KEYS[alias], cleaned)
+    env_var = STANDALONE_KEYS[alias]
+    was_update = write_env_value(env_path, env_var, cleaned)
+    os.environ[env_var] = cleaned
+    if alias == "tavily":
+        config.TAVILY_API_KEY = cleaned
     return env_path, was_update
 
 
@@ -520,6 +584,239 @@ def read_key_from_stdin() -> str:
     if not value:
         raise ValueError("stdin 为空，未读取到 API Key")
     return value
+
+
+@dataclass(frozen=True)
+class SimpleConfigResult:
+    """Outcome of ``LA config`` flat flags / JSON file apply."""
+
+    env_path: Path
+    config_path: Path | None
+    changes: tuple[str, ...] = ()
+
+    def change_lines(self) -> list[str]:
+        return list(self.changes)
+
+
+def config_example_text() -> str:
+    """Return bundled ``config.example.json`` content."""
+    text = _template_text(
+        CONFIG_EXAMPLE_FILENAME,
+        project_relative=f"config/{CONFIG_EXAMPLE_FILENAME}",
+    )
+    if text is None:
+        raise FileNotFoundError(f"未找到模板: {CONFIG_EXAMPLE_FILENAME}")
+    return text.rstrip() + "\n"
+
+
+def upsert_provider_fields(
+    provider: str,
+    *,
+    base_url: str | None = None,
+    model: str | None = None,
+    api_key: str | None = None,
+    timeout: float | None = None,
+    env_path: Path | None = None,
+) -> tuple[Path, bool, list[str]]:
+    """Create or patch one provider entry; only provided fields are changed."""
+    alias = provider.strip().lower()
+    if not alias or alias == "auto":
+        raise ValueError("请指定具体 provider（不能为空或 auto）")
+    env_path = env_path or resolve_env_file()
+    servers = read_model_servers(env_path)
+    existing = next((item for item in servers if item.provider == alias), None)
+    changes: list[str] = []
+
+    if existing is None:
+        entry = ModelServer(
+            provider=alias,
+            base_url=base_url or "",
+            api_key=api_key or "",
+            model=model or "",
+            timeout=timeout if timeout is not None else 120.0,
+        )
+        config_path, _ = add_model_server(entry, env_path=env_path)
+        changes.append(f"新增 provider: {alias}")
+        return config_path, False, changes
+
+    kwargs: dict[str, object] = {}
+    if base_url is not None and base_url != existing.base_url:
+        kwargs["base_url"] = base_url
+        changes.append(f"{alias}.base_url → {base_url}")
+    if model is not None and model != existing.model:
+        kwargs["model"] = model
+        changes.append(f"{alias}.model → {model}")
+    if api_key is not None and api_key != existing.api_key:
+        kwargs["api_key"] = api_key
+        changes.append(f"{alias}.api_key → {mask_secret(api_key)}")
+    if timeout is not None and timeout != existing.timeout:
+        kwargs["timeout"] = timeout
+        changes.append(f"{alias}.timeout → {timeout}")
+
+    if not kwargs:
+        config_path = resolve_model_servers_file(env_path) or default_model_servers_file()
+        return config_path, True, changes
+
+    updated = replace(existing, **kwargs)
+    config_path, _ = add_model_server(updated, env_path=env_path)
+    return config_path, True, changes
+
+
+def apply_simple_config(
+    data: dict[str, object],
+    *,
+    env_path: Path | None = None,
+) -> SimpleConfigResult:
+    """Apply a flat config dict (CLI flags or config.json).
+
+    Recognized keys:
+    - provider / base_url / model / api_key / timeout — upsert that provider
+    - TAVILY_API_KEY / LA_HINDSIGHT_LLM_API_KEY (or tavily / hindsight)
+    - OPENROUTER_API_KEY / CURSOR_API_KEY / MINIMAX_API_KEY / AIPING_API_KEY
+    - servers: optional list of full ModelServer objects
+    """
+    if not isinstance(data, dict):
+        raise ValueError("配置必须是 JSON 对象")
+
+    env_path = env_path or resolve_env_file()
+    ensure_config(env_path=env_path)
+    changes: list[str] = []
+    config_path: Path | None = resolve_model_servers_file(env_path)
+
+    servers_raw = data.get("servers")
+    if servers_raw is not None:
+        if not isinstance(servers_raw, list):
+            raise ValueError("servers 必须是数组")
+        for index, item in enumerate(servers_raw):
+            if not isinstance(item, dict):
+                raise ValueError(f"servers[{index}] 必须是对象")
+            server = ModelServer.from_dict(item)
+            path, was_update = add_model_server(server, env_path=env_path)
+            config_path = path
+            action = "更新" if was_update else "新增"
+            changes.append(f"{action} provider: {server.provider}")
+
+    provider = str(data.get("provider") or "").strip()
+    has_provider_fields = any(
+        key in data for key in ("base_url", "base-url", "model", "api_key", "api-key", "timeout")
+    )
+    if provider or has_provider_fields:
+        alias = provider or "ollama"
+        base_url = data.get("base_url", data.get("base-url"))
+        model = data.get("model")
+        api_key = data.get("api_key", data.get("api-key"))
+        timeout_raw = data.get("timeout")
+        timeout = float(timeout_raw) if timeout_raw is not None and str(timeout_raw) != "" else None
+        path, _, field_changes = upsert_provider_fields(
+            alias,
+            base_url=None if base_url is None else str(base_url),
+            model=None if model is None else str(model),
+            api_key=None if api_key is None else str(api_key),
+            timeout=timeout,
+            env_path=env_path,
+        )
+        config_path = path
+        changes.extend(field_changes)
+
+    # Standalone env keys (alias or full env name)
+    standalone_by_env = {env_var: alias for alias, env_var in STANDALONE_KEYS.items()}
+    for key, value in data.items():
+        if key in ("provider", "base_url", "base-url", "model", "api_key", "api-key", "timeout", "servers"):
+            continue
+        key_str = str(key).strip()
+        if not key_str:
+            continue
+        upper = key_str.upper()
+        lower = key_str.lower()
+
+        if upper in PROVIDER_API_KEY_ENV:
+            target = PROVIDER_API_KEY_ENV[upper]
+            path, _, field_changes = upsert_provider_fields(
+                target,
+                api_key=str(value),
+                env_path=env_path,
+            )
+            config_path = path
+            if field_changes:
+                changes.extend(field_changes)
+            else:
+                changes.append(f"{target}.api_key → {mask_secret(str(value))}")
+            continue
+
+        alias = None
+        if lower in STANDALONE_KEYS:
+            alias = lower
+        elif upper in standalone_by_env:
+            alias = standalone_by_env[upper]
+        if alias is not None:
+            dotenv_path, _ = set_standalone_key(
+                alias,
+                str(value),
+                path=env_path,
+                allow_empty=True,
+            )
+            env_var = STANDALONE_KEYS[alias]
+            changes.append(f"{env_var} → {mask_secret(str(value))} ({dotenv_path.name})")
+
+    if not changes:
+        raise ValueError(
+            "未识别到可写入的配置项。可用: --provider/--base_url/--model/--api_key/"
+            "--TAVILY_API_KEY，或见 la config-example"
+        )
+
+    return SimpleConfigResult(
+        env_path=env_path,
+        config_path=config_path,
+        changes=tuple(changes),
+    )
+
+
+def apply_config_file(path: str | Path, *, env_path: Path | None = None) -> SimpleConfigResult:
+    file_path = Path(path).expanduser().resolve()
+    if not file_path.is_file():
+        raise FileNotFoundError(f"配置文件不存在: {file_path}")
+    try:
+        data = json.loads(file_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"JSON 无效: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError("配置文件根节点必须是 JSON 对象")
+    return apply_simple_config(data, env_path=env_path)
+
+
+def apply_config_flags(
+    *,
+    provider: str | None = None,
+    base_url: str | None = None,
+    model: str | None = None,
+    api_key: str | None = None,
+    timeout: float | None = None,
+    tavily_api_key: str | None = None,
+    openrouter_api_key: str | None = None,
+    cursor_api_key: str | None = None,
+    minimax_api_key: str | None = None,
+    env_path: Path | None = None,
+) -> SimpleConfigResult:
+    data: dict[str, object] = {}
+    if provider is not None:
+        data["provider"] = provider
+    if base_url is not None:
+        data["base_url"] = base_url
+    if model is not None:
+        data["model"] = model
+    if api_key is not None:
+        data["api_key"] = api_key
+    if timeout is not None:
+        data["timeout"] = timeout
+    if tavily_api_key is not None:
+        data["TAVILY_API_KEY"] = tavily_api_key
+    if openrouter_api_key is not None:
+        data["OPENROUTER_API_KEY"] = openrouter_api_key
+    if cursor_api_key is not None:
+        data["CURSOR_API_KEY"] = cursor_api_key
+    if minimax_api_key is not None:
+        data["MINIMAX_API_KEY"] = minimax_api_key
+    return apply_simple_config(data, env_path=env_path)
 
 
 # Backward-compatible alias

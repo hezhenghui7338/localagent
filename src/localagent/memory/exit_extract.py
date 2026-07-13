@@ -12,10 +12,12 @@ from localagent.persist.conversations import load_conversation
 
 
 def _user_texts_from_messages(messages: list[dict]) -> list[str]:
+    from localagent.session_commands import is_meta_user_content
+
     return [
         m["content"]
         for m in messages
-        if m.get("role") == "user" and not m.get("content", "").startswith(":")
+        if m.get("role") == "user" and not is_meta_user_content(m.get("content", ""))
     ]
 
 

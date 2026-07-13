@@ -759,7 +759,7 @@ def get_memory_backend() -> MemoryBackend:
         if not _hindsight_importable():
             raise RuntimeError(
                 "LA_MEMORY_BACKEND=hindsight but hindsight is not installed. "
-                "Use Python 3.11+ and: pip install -e '.[hindsight]'"
+                "Use Python 3.11+ and: pip install 'la-localagent[hindsight]'"
             )
         if not hindsight_usable():
             raise RuntimeError(
