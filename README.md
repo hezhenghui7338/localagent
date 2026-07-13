@@ -292,13 +292,13 @@ Example files:
 ### Benchmark: LoCoMo long-term conversational memory
 
 Evaluate Warm-layer cross-session memory with ACL 2024 [LoCoMo](https://github.com/snap-research/locomo).  
-**Current recall scores (2026-07-13, `conv-26`, JSON backend, n=150):** Hit@1 **0.307** / Hit@5 **0.473** / Hit@8 **0.540**.
+**Current recall scores (2026-07-14, `conv-26`, Mem0 hybrid, n=150):** Hit@1 **0.360** / Hit@5 **0.573** / Hit@8 **0.660**.
 
 ```bash
 python -m benchmarks.locomo.run download
 python -m benchmarks.locomo.measure_recall \
   --skip-ingest --sample-ids conv-26 \
-  --work-dir benchmarks/data/runs/locomo-cursor
+  --work-dir benchmarks/data/runs/locomo-mem0
 ```
 
 Per-category table and reproduction steps: [benchmarks/locomo/README.md](benchmarks/locomo/README.md).
