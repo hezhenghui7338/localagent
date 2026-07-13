@@ -9,47 +9,48 @@
 
 | 项目 | 值 |
 |------|-----|
-| 日期 | 2026-07-13 |
+| 日期 | 2026-07-14 |
 | 样本 | LoCoMo `conv-26`（19 sessions / 419 turns / 199 QA） |
-| 记忆后端 | JSON `scoped_recall`（BM25 + Jaccard + 时间加权） |
+| 记忆后端 | Mem0 hybrid（向量 + 词法 RRF + `finalize_hybrid_rank`） |
 | 入库条数 | 420（含 conversation meta） |
 | 评测题量 | **150**（排除 adversarial cat5；仅统计有 `evidence` 的题） |
-| 产物 | [`benchmarks/data/runs/locomo-cursor/recall_hitk.json`](../data/runs/locomo-cursor/recall_hitk.json) |
+| 产物 | [`benchmarks/data/runs/locomo-mem0/recall_hitk_hybrid.json`](../data/runs/locomo-mem0/recall_hitk_hybrid.json) |
 
 ### 证据召回 hit@k
 
 | Category | 名称 | n | Hit@1 | Hit@5 | Hit@8 |
 |----------|------|--:|------:|------:|------:|
-| overall | — | 150 | **0.307** | **0.473** | **0.540** |
-| 4 | single-hop | 70 | 0.329 | 0.471 | 0.514 |
-| 2 | temporal | 37 | 0.568 | 0.676 | 0.703 |
-| 1 | multi-hop | 32 | 0.031 | 0.281 | 0.438 |
-| 3 | open-domain | 11 | 0.091 | 0.364 | 0.455 |
+| overall | — | 150 | **0.360** | **0.573** | **0.660** |
+| 4 | single-hop | 70 | 0.343 | 0.543 | 0.629 |
+| 2 | temporal | 37 | 0.649 | 0.730 | 0.811 |
+| 1 | multi-hop | 32 | 0.125 | 0.500 | 0.625 |
+| 3 | open-domain | 11 | 0.182 | 0.455 | 0.455 |
 
 **读数要点**
 
-- **Temporal** 相对最好（Hit@5 ≈ 0.68）：session 时间戳写进记忆后，时间类问题更容易命中。
-- **Single-hop** 中等（Hit@5 ≈ 0.47）：字面重叠足够时能找回证据轮。
-- **Multi-hop / open-domain** 仍弱：需要跨轮综合或语义改写，是下一步记忆改进重点。
+- **Temporal** 最好（Hit@5 ≈ 0.73）：时间意图 + session 时间戳，时间类问题更容易命中。
+- **Single-hop** 中等偏上（Hit@5 ≈ 0.54）：混合检索对字面重叠题更稳。
+- **Multi-hop** Hit@5 已到 0.50，但 Hit@1 仍弱（0.125）：证据常在池内却未排到第一。
+- **Open-domain** 仍弱：需要跨轮综合或语义改写，是下一步记忆改进重点。
 
-复现本表：
+复现本表（需已入库的 `locomo-mem0` work-dir；默认 `MEMORY_RECALL_HYBRID=true`）：
 
 ```bash
 python -m benchmarks.locomo.measure_recall \
   --skip-ingest --sample-ids conv-26 \
-  --work-dir benchmarks/data/runs/locomo-cursor \
-  --out benchmarks/data/runs/locomo-cursor/recall_hitk.json
+  --work-dir benchmarks/data/runs/locomo-mem0 \
+  --out benchmarks/data/runs/locomo-mem0/recall_hitk_hybrid.json
 ```
 
-### 辅证：端到端 QA F1（小样本）
+### 辅证：端到端 QA F1
 
 | 项目 | 值 |
 |------|-----|
-| 设置 | `recall_generate` + provider=`cursor`（composer-2.5），top_k=8，n=15 |
-| Overall F1 | 0.221 |
-| 产物 | [`results_recall_generate_cursor.json`](../data/runs/locomo-cursor/results_recall_generate_cursor.json) |
+| 设置 | Mem0 `recall_generate` + provider=`cursor`（composer-2.5），top_k=8，n=152 |
+| Overall F1 | **0.339** |
+| 产物 | [`results_recall_generate_cursor.json`](../data/runs/locomo-mem0/results_recall_generate_cursor.json) |
 
-> 该 F1 为小样本 smoke，**不能**代表全量 LoCoMo；正式对比请以 hit@k 为主，全量 QA 需另行跑满。
+> QA F1 受答题模型影响，仅作辅证；正式对比长期记忆能力请以 hit@k 为主。该 F1 跑于 hybrid 复测前的同一 Mem0 库，未在 hybrid 上重跑全量答题。
 
 ## 评测协议
 
@@ -73,7 +74,7 @@ python -m benchmarks.locomo.measure_recall \
 ```bash
 python -m benchmarks.locomo.measure_recall \
   --skip-ingest --sample-ids conv-26 \
-  --work-dir benchmarks/data/runs/locomo-cursor
+  --work-dir benchmarks/data/runs/locomo-mem0
 ```
 
 ## 快速开始
@@ -86,19 +87,19 @@ pip install nltk   # 与官方一致的 Porter stemmer（无则自动降级）
 # 1) 下载官方数据 (~2.8MB)
 python -m benchmarks.locomo.run download
 
-# 2) 入库 + 测召回（推荐作为记忆能力主流程）
+# 2) 入库 + 测召回（推荐作为记忆能力主流程；默认 Mem0 hybrid）
 python -m benchmarks.locomo.run run \
   --sample-ids conv-26 --mode recall --max-questions 1 \
-  --work-dir benchmarks/data/runs/locomo-cursor
+  --work-dir benchmarks/data/runs/locomo-mem0
 python -m benchmarks.locomo.measure_recall \
   --skip-ingest --sample-ids conv-26 \
-  --work-dir benchmarks/data/runs/locomo-cursor
+  --work-dir benchmarks/data/runs/locomo-mem0
 
 # 3) 可选：端到端 QA（依赖 LLM provider）
 python -m benchmarks.locomo.run run \
   --sample-ids conv-26 --max-questions 20 \
   --mode recall_generate --provider cursor \
-  --skip-ingest --work-dir benchmarks/data/runs/locomo-cursor
+  --skip-ingest --work-dir benchmarks/data/runs/locomo-mem0
 ```
 
 ## 答题模式

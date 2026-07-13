@@ -292,13 +292,13 @@ open examples/mem0-demo.md
 ### 基准：LoCoMo 长期会话记忆
 
 用 ACL 2024 [LoCoMo](https://github.com/snap-research/locomo) 评测 Warm 层跨 session 记忆。  
-**当前召回分数（2026-07-13，`conv-26`，JSON 后端，n=150）**：Hit@1 **0.307** / Hit@5 **0.473** / Hit@8 **0.540**。
+**当前召回分数（2026-07-14，`conv-26`，Mem0 hybrid，n=150）**：Hit@1 **0.360** / Hit@5 **0.573** / Hit@8 **0.660**。
 
 ```bash
 python -m benchmarks.locomo.run download
 python -m benchmarks.locomo.measure_recall \
   --skip-ingest --sample-ids conv-26 \
-  --work-dir benchmarks/data/runs/locomo-cursor
+  --work-dir benchmarks/data/runs/locomo-mem0
 ```
 
 分 category 表与复现步骤见 [benchmarks/locomo/README.md](benchmarks/locomo/README.md)。
