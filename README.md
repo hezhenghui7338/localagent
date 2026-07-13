@@ -1,231 +1,237 @@
+<p align="center">
+  <img src="docs/logo.png" alt="LocalAgent" width="360">
+</p>
+
+<p align="center">
+  <strong>Your AI. Your Data. Your Mac.</strong>
+</p>
+
+<p align="center">
+  <a href="./README.md">English</a> · <a href="./README.zh-CN.md">中文</a>
+</p>
+
 # LocalAgent
 
-> **一台普通 Mac + Ollama `qwen3.5:4b`，零 API 费用，就能有不错的个人 AI 助手效果。**
+> **A regular Mac + Ollama `qwen3.5:4b` — solid personal AI assistant quality, with zero API cost.**
 
-LocalAgent（`LA`）不是又一个 Chat 客户端。它把**对话、个人记忆、文档检索、工作区感知**串成一套完整的本地 Agent 链路——核心亮点是：**用最基础的本地 Ollama 部署，4B 小模型也能「记得住你、找得到文档、看得见当前项目在做什么」**；更重要的是，它会**在动手前先追问、确认你的真实意图**，而不是像普通 Chat 那样猜错就改、改错就毁。
+LocalAgent (`LA`) is not another chat client. It wires **conversation, personal memory, document retrieval, and workspace awareness** into a complete local agent pipeline. The core pitch: **with a basic local Ollama setup, even a 4B model can remember you, find your docs, and see what the current project is doing**. More importantly, it **asks clarifying questions and confirms your real intent before acting** — instead of guessing wrong, editing wrong, and making a mess like a typical chat bot.
 
 ```bash
-ollama pull qwen3.5:4b          # 约 2.5GB，普通 Mac 可跑
+ollama pull qwen3.5:4b          # ~2.5GB, runs on a regular Mac
 pip install -e ".[full]"
 cp examples/env.local-only.example .env
-LA chat --provider ollama       # 纯本地，数据不出本机
+LA chat --provider ollama       # fully local — data never leaves your machine
 ```
 
-| 普通本地 Chat | LocalAgent + qwen3.5:4b |
+| Typical local chat | LocalAgent + qwen3.5:4b |
 | --- | --- |
-| 聊完就忘 | 分层记忆，跨会话召回你的事实与偏好 |
-| 不知道你在做什么 | Git 状态、最近文件、待办快照 |
-| 搜不到本地笔记 | Chroma + BM25 混合检索个人文档 |
-| 只会一问一答 | LangGraph Agent 按需 JIT 召回上下文 |
-| 指代不明也硬猜、直接改文件 | **主动追问澄清意图**，确认后再调用工具 |
-| 让你自己去终端跑命令 | Agent 自动调用 `run_shell` 执行并汇总结果 |
+| Forgets after the session | Layered memory — recalls facts & preferences across sessions |
+| Doesn't know what you're doing | Git status, recent files, todo snapshots |
+| Can't search local notes | Chroma + BM25 hybrid retrieval over personal docs |
+| Q&A only | LangGraph agent with on-demand JIT context recall |
+| Guesses unclear references and edits files anyway | **Actively clarifies intent**, then calls tools after confirmation |
+| Tells you to run commands in a terminal | Agent calls `run_shell`, executes, and summarizes results |
 
-可选接入 OpenRouter / Cursor / Tavily 做增强，但**身份与数据始终留在本机**。
+Optional OpenRouter / Cursor / Tavily for extras — **identity and data stay on your machine**.
 
-## 特性
+## Features
 
-- **4B 即可用**：默认 `qwen3.5:4b`，对话、记忆写入、检索、工作区感知全链路本地跑通
-- **主动澄清意图**：模糊请求先追问 1–2 个关键问题，确认后再执行；文件写入另有幻觉检测兜底，未实际调用工具不会声称「已完成」
-- **分层记忆**：Hot（核心画像）/ Warm（长期记忆）/ Cold（文档原文）三层架构，按需 JIT 召回
-- **文档知识库**：软链导入个人文件，Chroma + BM25 混合检索
-- **工作区感知**：Git 状态、最近文件、待办任务快照
-- **终端执行**：Agent 在工作区自动运行 shell 命令（统计代码、列目录、跑测试等）
-- **多模型对话**：Ollama / OpenRouter / Cursor 统一入口，`auto` 模式按优先级自动降级
-- **ChatGPT 冷启动**：导入历史对话与 ChatGPT「记忆」功能导出，快速建立个人记忆
-- **联网搜索**：Tavily 集成，支持 `:deepsearch` 深度研究（可选）
-- **可审计**：Token 消耗、费用估算、敏感文件扫描，可导出 Markdown 报告
+- **Usable at 4B**: default `qwen3.5:4b` — chat, memory write, retrieval, and workspace awareness all run locally
+- **Active intent clarification**: vague requests get 1–2 clarifying questions first; file writes also have hallucination detection so it won't claim “done” without actually calling tools
+- **Layered memory**: Hot (core profile) / Warm (long-term memory) / Cold (document source) with JIT recall
+- **Document knowledge base**: symlink personal files in; Chroma + BM25 hybrid search
+- **Workspace awareness**: Git status, recent files, todo snapshots
+- **Terminal execution**: Agent runs shell commands in the workspace (count LOC, list dirs, run tests, etc.)
+- **Multi-model chat**: unified Ollama / OpenRouter / Cursor entry; `auto` mode falls back by priority
+- **ChatGPT cold start**: import chat history and ChatGPT “Memory” exports to bootstrap personal memory
+- **Web search**: Tavily integration, including `:deepsearch` deep research (optional)
+- **Auditable**: token usage, cost estimates, sensitive-file scan — exportable Markdown reports
 
-## 要求
+## Requirements
 
-- Python 3.10+（Hindsight 记忆引擎需 3.11+）
-- [Ollama](https://ollama.com/) + `qwen3.5:4b`（推荐，也是项目默认配置）
+- Python 3.10+ (Hindsight memory engine needs 3.11+)
+- [Ollama](https://ollama.com/) + `qwen3.5:4b` (recommended; also the project default)
 
-## 快速开始
+## Quick start
 
 ```bash
 git clone git@github.com:hezhenghui7338/localagent.git
 cd LocalAgent
 python3 -m venv .venv && source .venv/bin/activate
 
-# 基础安装（BM25 + 核心 CLI）
+# Base install (BM25 + core CLI)
 pip install -e ".[dev]"
 
-# 完整安装（LangGraph + Chroma 向量检索）
+# Full install (LangGraph + Chroma vector retrieval)
 pip install -e ".[full,dev]"
 
-# 可选：Hindsight 记忆引擎（Python 3.11+）
+# Optional: Hindsight memory engine (Python 3.11+)
 pip install -e ".[hindsight]"
 ```
 
-复制环境变量模板并填入你的 API Key：
+Copy the env template and fill in your API keys:
 
 ```bash
 cp .env.example .env
-# 编辑 .env，至少配置一个模型服务；可选配置 Ollama/OpenRouter / Cursor / Tavily（联网搜索）
+# Edit .env — configure at least one model provider; optionally Ollama / OpenRouter / Cursor / Tavily (web search)
 ```
 
-首次运行会自动在 `data/` 下创建运行时目录。可将 `data/core_profile.example.json` 复制为 `data/core_profile.json` 作为核心画像模板。
+First run creates runtime dirs under `data/`. You can copy `data/core_profile.example.json` to `data/core_profile.json` as a core profile template.
 
-## 功能示例
+## Feature highlights
 
-### 亮点：纯本地 qwen3.5:4b 即可用
+### Fully local with qwen3.5:4b
 
-LocalAgent 的核心链路——**对话、记忆写入、记忆召回、文档检索、工作区感知、审计统计**——均可只依赖本地 Ollama，无需任何付费 API。
+LocalAgent’s core path — **chat, memory write, memory recall, document retrieval, workspace awareness, audit stats** — can run on local Ollama alone, with no paid API.
 
-
-| 能力 | 是否需要联网 API | 说明 |
+| Capability | Needs cloud API? | Notes |
 | --- | --- | --- |
-| 对话 `LA chat` | 否 | 默认 `qwen3.5:4b`，普通 Mac 可跑 |
-| 单条记忆 `LA add` | 否 | 本地模型提取标题/标签 |
-| 文件导入 `LA add-file` | 否 | 默认启发式提取，不调用 LLM |
-| 记忆/知识检索 `LA search` | 否 | BM25 + Chroma 本地检索 |
-| 工作区 `LA workspace` | 否 | 读本地 Git / 文件 / TODO |
-| Agent 执行命令 `run_shell` | 否 | 本地 4B 模型自动调用 shell 并汇总输出 |
-| 审计 `LA audit` | 否 | 读本地 usage.jsonl |
-| 联网搜索 | 是（Tavily） | 唯一需要 API Key 的可选功能 |
-
+| Chat `LA chat` | No | Default `qwen3.5:4b`, runs on a regular Mac |
+| Single memory `LA add` | No | Local model extracts title/tags |
+| File import `LA add-file` | No | Heuristic extraction by default; no LLM |
+| Memory/knowledge search `LA search` | No | BM25 + Chroma locally |
+| Workspace `LA workspace` | No | Reads local Git / files / TODOs |
+| Agent commands `run_shell` | No | Local 4B model calls shell and summarizes |
+| Audit `LA audit` | No | Reads local usage.jsonl |
+| Web search | Yes (Tavily) | Only optional feature that needs an API key |
 
 ```bash
-# 纯本地模式：普通 Mac + Ollama，无需付费 API
+# Fully local: regular Mac + Ollama, no paid API
 cp examples/env.local-only.example .env
 ollama pull qwen3.5:4b
 LA chat --provider ollama
 ```
 
-### 亮点：主动追问、确认意图后再动手
+### Ask first, act after intent is clear
 
-普通 Chat 收到「帮我改个文件」往往会猜一个路径直接覆盖；LocalAgent 会先做一次**轻量意图预检**（本地 `qwen3.5:4b`，默认开启），指代不明时**主动追问 1–2 个具体问题**，等你补充后再合并上下文、调用工具执行。文件写入还有**幻觉检测**：若模型声称「已写入」却未调用 `write_file`，会自动重试或明确报错，而不是展示编造的空内容。
+A typical chat that hears “help me edit a file” often guesses a path and overwrites it. LocalAgent runs a **light intent pre-check** first (local `qwen3.5:4b`, on by default). When references are unclear it **asks 1–2 concrete questions**, waits for your answers, then merges context and calls tools. File writes also have **hallucination detection**: if the model claims it “wrote” something without calling `write_file`, it retries or errors clearly instead of showing fabricated empty content.
 
 ```text
-> 帮我改个文件
-在继续之前，我想先确认你的意图：
+> help me edit a file
+Before I continue, I want to confirm your intent:
 
-1. 需要修改哪个文件或提供完整路径？
-2. 具体的修改内容或目标是什么？
+1. Which file should be modified, or what is the full path?
+2. What exactly should change?
 
-请补充说明，我会据此继续处理。
-> 修改根目录下的 test.txt 文件
-明白，你需要修改工作区根目录下的 `test.txt` 文件。请告诉我具体要写入或追加什么内容。
-> 文件内容增加:这是我的一个测试文本,目的是测试跨对话持续性
-[chat] 思考中…
-[chat] 连接模型 (auto(ollama→openrouter→aiping→cursor))…
-[chat] 生成回复…
-[chat] 调用 写入文件…
-[chat] 综合工具结果 (第 2 轮)…
-[chat] ✓ 综合工具结果 (第 2 轮)… (11.1s)
-已成功将指定内容追加到 `test.txt` 文件中。当前文件内容为：
+Please add details and I’ll continue from there.
+> edit test.txt in the project root
+Got it — you want to modify `test.txt` at the workspace root. Tell me what to write or append.
+> append: this is a test note for cross-session persistence
+[chat] thinking…
+[chat] connecting model (auto(ollama→openrouter→aiping→cursor))…
+[chat] generating…
+[chat] calling write_file…
+[chat] synthesizing tool results (round 2)…
+[chat] ✓ synthesizing tool results (round 2)… (11.1s)
+Successfully appended the specified content to `test.txt`. Current contents:
 
-> 这是我的一个测试文本,目的是测试跨对话持续性
+> this is a test note for cross-session persistence
 [via ollama/qwen3.5:4b]
 ```
 
-适用场景：修改文件、重构代码、分析项目等**对象或范围不明确**的请求。可通过设 `LA_INTENT_CLARIFY=0` 关闭（默认开启）；含具体路径的请求会跳过预检，直接执行。
+Best for requests where the **target or scope is unclear** (edit files, refactor, analyze a project). Disable with `LA_INTENT_CLARIFY=0` (default on). Requests that already include a concrete path skip the pre-check.
 
-### 亮点：Agent 自动执行终端命令
+### Agent runs terminal commands itself
 
-普通 Chat 只会告诉你「去终端运行 `find … | wc -l`」。LocalAgent 的 Agent 会**自己调用 `run_shell` 工具**，在工作区执行命令并把结果整理成回答——全程纯本地 `qwen3.5:4b`，无需云端 API。
+A typical chat only tells you to run `find … | wc -l` yourself. LocalAgent’s agent **calls `run_shell`**, executes in the workspace, and turns the output into an answer — fully local `qwen3.5:4b`, no cloud API.
 
 ```text
-> 统计一下当前项目的代码行数
-[chat] 思考中…
-[chat] 连接模型 (auto(ollama→openrouter→aiping→cursor))…
-[chat] 生成回复…
-[chat] 调用 执行命令: find . -type f \( -name "*.py" -o -name …
-[chat] 综合工具结果 (第 2 轮)…
-[chat] ✓ 综合工具结果 (第 2 轮)… (20.4s)
-当前项目（`/Users/hzh/code/LocalAgent`）中主要编程语言文件（Python、JS、TS、Go、Java、C/C++、Rust等，排除隐藏目录）的总代码行数为 **13,961 行**。
+> count the lines of code in this project
+[chat] thinking…
+[chat] connecting model (auto(ollama→openrouter→aiping→cursor))…
+[chat] generating…
+[chat] calling run_shell: find . -type f \( -name "*.py" -o -name …
+[chat] synthesizing tool results (round 2)…
+[chat] ✓ synthesizing tool results (round 2)… (20.4s)
+In the current project (`/Users/hzh/code/LocalAgent`), main language files (Python, JS, TS, Go, Java, C/C++, Rust, etc., excluding hidden dirs) total **13,961 lines**.
 [via ollama/qwen3.5:4b]
 ```
 
-适用场景：统计代码行数、列目录、查看 Git 日志、运行测试/构建等。命令在工作区目录执行（`LA_WORKSPACE` 或当前目录），默认超时 30 秒。
+Use cases: LOC counts, listing directories, Git logs, running tests/builds. Commands run in the workspace (`LA_WORKSPACE` or cwd); default timeout 30s.
 
-仓库提供完整 walkthrough，覆盖 6 个核心场景：
+The repo includes a full walkthrough covering the core scenarios:
 
-
-| #   | 场景                   | 命令                                      |
-| --- | -------------------- | --------------------------------------- |
-| 1   | 单条记忆写入与召回            | `LA add` → `LA search`                  |
-| 2   | Markdown 文件导入与召回     | `LA add-file` → `LA search --knowledge` |
-| 3   | 联网搜索最近新闻             | `LA chat` 或 `:deepsearch`（需 Tavily）     |
-| 4   | **纯本地运行** qwen3.5:4b | `LA chat --provider ollama`             |
-| 5   | 回答本地工作内容             | `LA workspace` / `LA chat --cwd .`      |
-| 6   | **主动追问澄清意图**         | `LA chat` → 「帮我改个文件」→ 补充说明 → 执行     |
-| 7   | Agent 自动执行终端命令       | `LA chat` → 「统计当前项目代码行数」              |
-| 8   | 审计报告（Ollama 零费用）     | `LA audit --since 7d`                   |
-
+| # | Scenario | Command |
+| --- | --- | --- |
+| 1 | Write & recall a single memory | `LA add` → `LA search` |
+| 2 | Import & recall a Markdown file | `LA add-file` → `LA search --knowledge` |
+| 3 | Search recent news online | `LA chat` or `:deepsearch` (needs Tavily) |
+| 4 | **Fully local** qwen3.5:4b | `LA chat --provider ollama` |
+| 5 | Answer about local work | `LA workspace` / `LA chat --cwd .` |
+| 6 | **Active intent clarification** | `LA chat` → “help me edit a file” → clarify → execute |
+| 7 | Agent runs terminal commands | `LA chat` → “count project LOC” |
+| 8 | Audit report (Ollama $0) | `LA audit --since 7d` |
 
 ```bash
-# 按示例文档逐步体验
+# Follow the example walkthrough step by step
 open examples/walkthrough.md
 ```
 
-### 进阶：Hindsight 记忆引擎演示
+### Advanced: Hindsight memory demo
 
-LocalAgent 的 Warm 层可选 [Hindsight](https://github.com/hindsight/hindsight) 引擎，提供 **Retain → 4 路 Recall → Reflect → Consolidation** 完整记忆链路。仓库提供一条「架构决策演变」叙事演示，覆盖写入、语义召回、时间感知、标签浏览与跨记忆推理：
+Warm memory can optionally use the [Hindsight](https://github.com/hindsight/hindsight) engine: **Retain → 4-way Recall → Reflect → Consolidation**. The repo includes an “architecture decision evolution” narrative demo covering write, semantic recall, time awareness, tag browsing, and cross-memory reasoning:
 
 ```bash
-# 安装 Hindsight（Python 3.11+）
+# Install Hindsight (Python 3.11+)
 pip install -e ".[full,hindsight]"
 
-# 一键演示（隔离 /tmp，不污染 data/）
+# One-shot demo (isolated under /tmp — does not touch data/)
 bash examples/hindsight-demo.sh
 
-# 或阅读分步教程
+# Or read the step-by-step guide
 open examples/hindsight-demo.md
 ```
 
-演示要点：
+Demo highlights:
 
-| 步骤 | 命令 | 展示能力 |
-|------|------|----------|
-| 写入演变链 | `LA add` × 4 | Retain + 自动标题/标签/发生时间 |
-| 语义召回 | `LA search "记忆引擎选型"` | Hindsight 多路并行 recall |
-| 时间感知 | `LA search "2026年5月 决定"` | 按发生时间重排序 |
-| 标签浏览 | `LA memories --tag 决策` | 结构化查询 |
-| 跨记忆推理 | `LA reflect "选型经历了什么变化？"` | Hindsight reflect |
+| Step | Command | Shows |
+|------|---------|-------|
+| Write evolution chain | `LA add` × 4 | Retain + auto title/tags/event time |
+| Semantic recall | `LA search "memory engine choice"` | Hindsight multi-path parallel recall |
+| Time awareness | `LA search "May 2026 decision"` | Re-rank by event time |
+| Tag browse | `LA memories --tag decision` | Structured query |
+| Cross-memory reasoning | `LA reflect "how did the choice evolve?"` | Hindsight reflect |
 
-示例文件：
+Example files:
 
-- [examples/walkthrough.md](examples/walkthrough.md) — **6 场景分步教程**（纯本地 qwen3.5:4b 优先）
-- [examples/hindsight-demo.md](examples/hindsight-demo.md) — Hindsight 记忆引擎深度演示（Retain / Recall / Reflect）
-- [examples/sample-project-notes.md](examples/sample-project-notes.md) — `add-file` 演示文档
-- [examples/audit-report-sample.md](examples/audit-report-sample.md) — 审计报告样例（Ollama $0）
-- [examples/env.local-only.example](examples/env.local-only.example) — 纯本地 `.env` 模板
+- [examples/walkthrough.md](examples/walkthrough.md) — **step-by-step tutorial** (local qwen3.5:4b first)
+- [examples/hindsight-demo.md](examples/hindsight-demo.md) — Hindsight deep dive (Retain / Recall / Reflect)
+- [examples/sample-project-notes.md](examples/sample-project-notes.md) — sample doc for `add-file`
+- [examples/audit-report-sample.md](examples/audit-report-sample.md) — sample audit report (Ollama $0)
+- [examples/env.local-only.example](examples/env.local-only.example) — fully local `.env` template
 
-### Shell 自动补全
+### Shell completion
 
 ```bash
 LA complete-init
 source ~/.zshrc
 ```
 
-之后 `LA add` + Tab 会提示 `add` / `add-file` 等子命令。
+After that, `LA add` + Tab suggests `add` / `add-file` and other subcommands.
 
-### Ollama 提示
+### Ollama tips
 
-- 默认模型 `qwen3.5:4b`；若未安装，LA 会尝试匹配已安装的同名 tag
-- Qwen3 系列默认生成大量 thinking token，LocalAgent 默认 `OLLAMA_THINK=0` 关闭思考模式
-- 本地 Ollama 较慢时，`auto` 模式会在 12 秒内降级到 OpenRouter；也可在 chat 中输入 `:provider openrouter` 手动切换
+- Default model is `qwen3.5:4b`; if missing, LA tries to match an installed tag with the same name
+- Qwen3 often emits many thinking tokens; LocalAgent defaults `OLLAMA_THINK=0` to disable thinking mode
+- When local Ollama is slow, `auto` falls back to OpenRouter within ~12s; or switch manually in chat with `:provider openrouter`
 
-## 配置
+## Configuration
 
-详见 `[.env.example](.env.example)`，常用变量：
+See [`.env.example`](.env.example). Common variables:
 
+| Variable | Description |
+| --- | --- |
+| `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | Local Ollama URL and model |
+| `MINIMAX_API_KEY` / `MINIMAX_MODEL` | MiniMax direct (OpenAI-compatible API) |
+| `OPENROUTER_API_KEY` / `CURSOR_API_KEY` | Other cloud fallbacks |
+| `TAVILY_API_KEY` | Web search |
+| `LA_MODEL_PROVIDER_PRIORITY` | `auto` priority; default `ollama,minimax,openrouter,cursor` |
+| `LA_WORKSPACE` | Workspace root (Git / files / todos / shell context) |
+| `LA_SHELL_TIMEOUT` / `LA_SHELL_MAX_OUTPUT` | Agent `run_shell` timeout (s) and output cap (default 30s / 12000 chars) |
+| `LA_INTENT_CLARIFY` | Clarify intent before acting (default `1`; set `0` to disable) |
+| `LA_DATA_DIR` | Custom data dir (for test isolation) |
 
-| 变量                                      | 说明                                               |
-| --------------------------------------- | ------------------------------------------------ |
-| `OLLAMA_BASE_URL` / `OLLAMA_MODEL`      | 本地 Ollama 地址与模型                                  |
-| `MINIMAX_API_KEY` / `MINIMAX_MODEL`     | MiniMax 直连（OpenAI 兼容 API）                        |
-| `OPENROUTER_API_KEY` / `CURSOR_API_KEY` | 其他云端模型降级                                         |
-| `TAVILY_API_KEY`                        | 联网搜索                                             |
-| `LA_MODEL_PROVIDER_PRIORITY`            | auto 模式优先级，默认 `ollama,minimax,openrouter,cursor` |
-| `LA_WORKSPACE`                          | 工作区根目录（Git / 文件 / 待办 / shell 命令上下文）              |
-| `LA_SHELL_TIMEOUT` / `LA_SHELL_MAX_OUTPUT` | Agent `run_shell` 超时秒数与输出截断上限（默认 30s / 12000 字符） |
-| `LA_INTENT_CLARIFY`                     | 对话前主动追问澄清意图（默认 `1` 开启，设 `0` 关闭）              |
-| `LA_DATA_DIR`                           | 自定义数据目录（测试隔离用）                                   |
-
-
-## 命令
+## Commands
 
 ```bash
 $ LA -h
@@ -234,63 +240,63 @@ $ LA -h
 ```text
 usage: LA [-h] <command> ...
 
-LocalAgent — 本地 AI 个人助手
+LocalAgent — local AI personal assistant
 
 options:
   -h, --help       show this help message and exit
 
-命令:
-  主要参数与选项（括号内为可选）：
+commands:
+  Main args and options (brackets = optional):
 
   <command>
     chat           [--session-id ID] [-p auto|ollama|openrouter|aiping|cursor]
-                   交互式对话
-    add            <text> 直接写入一条记忆
-    add-file       [-b] <path> 软链到 kb/ 并索引
+                   Interactive chat
+    add            <text> Write one memory directly
+    add-file       [-b] <path> Symlink into kb/ and index
     tasks          [--limit N] [--tail N] [list | <task_id> |
-                   delete|pause|resume|restart|logs <task_id>] 查看/管理后台索引任务
-    sync-file      [--force] 扫描并索引 data/kb/ 下全部文档
-    reset-memory   [--keep-knowledge] 清空记忆与 sync_index
-    memory-status  诊断 Warm 层记忆后端（Hindsight / JSON）
+                   delete|pause|resume|restart|logs <task_id>] Manage background index tasks
+    sync-file      [--force] Scan and index all docs under data/kb/
+    reset-memory   [--keep-knowledge] Clear memory and sync_index
+    memory-status  Diagnose Warm memory backend (Hindsight / JSON)
     rebuild-memory
-                   清空记忆后强制重建 kb/ 索引
-    forget         <id> [--yes] 删除一条记忆
+                   Clear memory then force-rebuild kb/ index
+    forget         <id> [--yes] Delete one memory
     rememorize-chat
-                   [--session ID] [--interactive] 从对话档案重新提取记忆
+                   [--session ID] [--interactive] Re-extract memory from chat archives
     import-chatgpt
-                   [path] [--dir DIR] [--force] [--interactive] 导入 ChatGPT 导出
-    search         <query> [--knowledge] [--top-k N] [--verbose] 搜索记忆或知识库
-    reflect        <query> 跨记忆推理（Hindsight reflect）
+                   [path] [--dir DIR] [--force] [--interactive] Import ChatGPT export
+    search         <query> [--knowledge] [--top-k N] [--verbose] Search memory or knowledge base
+    reflect        <query> Cross-memory reasoning (Hindsight reflect)
     memories       [query] [--tag TAG] [--since DATE] [--sort
-                   newest|oldest|relevance] 浏览/查询记忆
-    workspace      [--days N] [--cwd PATH] [--todos-only] 工作区/git/待办快照
-    audit          [--since 7d] [--report PATH] [--cwd PATH] 审计摘要与报告
-    config         init | list | add | remove | set-key 管理模型 YAML 配置
+                   newest|oldest|relevance] Browse / query memories
+    workspace      [--days N] [--cwd PATH] [--todos-only] Workspace / git / todo snapshot
+    audit          [--since 7d] [--report PATH] [--cwd PATH] Audit summary and report
+    config         init | list | add | remove | set-key Manage model YAML config
 
-使用 LA <command> -h 查看某个命令的完整说明。
+Use LA <command> -h for full help on a command.
 ```
 
-`LA chat` 进入 REPL 后，还可使用 `:provider`（切换模型）、`:deepsearch <主题>`（深度研究）、`:q`（退出）。
+In `LA chat` REPL you can also use `:provider` (switch model), `:deepsearch <topic>` (deep research), `:q` (quit).
 
-## 数据目录
+## Data directory
 
-运行时数据默认位于 `data/`（已在 `.gitignore` 中排除，不会提交到 Git）：
+Runtime data defaults to `data/` (gitignored — not committed):
 
 ```
 data/
-├── kb/                        # 软链接的个人文件
-├── core_profile.json          # Hot 层核心事实
-├── sync_index.json            # 已索引文件登记
-├── conversations/             # 对话档案
-├── chatGPTdata/               # ChatGPT 导出归档
-├── chatgpt_import_index.json  # 导入去重登记
-├── sessions.db                # LangGraph 会话
-├── chroma/                    # 向量索引
-├── bm25.pkl                   # BM25 索引
-└── audit/usage.jsonl          # 调用审计日志
+├── kb/                        # Symlinked personal files
+├── core_profile.json          # Hot-layer core facts
+├── sync_index.json            # Indexed file registry
+├── conversations/             # Chat archives
+├── chatGPTdata/               # ChatGPT export archive
+├── chatgpt_import_index.json  # Import dedupe registry
+├── sessions.db                # LangGraph sessions
+├── chroma/                    # Vector index
+├── bm25.pkl                   # BM25 index
+└── audit/usage.jsonl          # Call audit log
 ```
 
-## 架构
+## Architecture
 
 ```
 ┌─────────────────────────────────────────┐
@@ -302,38 +308,38 @@ data/
     ▼             ▼             ▼
   Hot          Warm           Cold
 core_profile  Hindsight/    Chroma + BM25
-              JSON memory   (文档原文)
+              JSON memory   (document source)
                   │
                   ▼
-            run_shell（工作区终端）
+            run_shell (workspace terminal)
 ```
 
-- **Hot**：`core_profile.json`（Pinned 核心事实）
-- **Warm**：Hindsight / JSON memory（长期记忆）
-- **Cold**：Chroma + BM25 混合检索（文档原文）
-- **Agent**：LangGraph 工具循环，按需 JIT 召回
+- **Hot**: `core_profile.json` (pinned core facts)
+- **Warm**: Hindsight / JSON memory (long-term memory)
+- **Cold**: Chroma + BM25 hybrid retrieval (document source)
+- **Agent**: LangGraph tool loop with on-demand JIT recall
 
-详见 [docs/PRD.md](docs/PRD.md) 和 [docs/TDD.md](docs/TDD.md)。
+See [docs/PRD.md](docs/PRD.md) and [docs/TDD.md](docs/TDD.md).
 
-## 开发
+## Development
 
 ```bash
-# 单元 + 集成测试（隔离临时目录，不依赖 Ollama）
+# Unit + integration tests (temp dirs; no Ollama required)
 pytest
 
-# 端到端：subprocess 调用 LA 命令
+# End-to-end: subprocess LA commands
 pytest tests/e2e -m e2e
 
-# 含真实 Ollama 对话（需本地已 pull 对话模型）
+# Live Ollama chat (needs a pulled chat model locally)
 pytest tests/e2e -m e2e_live
 ```
 
-## 安全与隐私
+## Security & privacy
 
-- **切勿提交** `.env` 或 `data/` 下的运行时数据；仓库已通过 `.gitignore` 排除
-- API Key 仅保存在本机 `.env` 中
-- 记忆与对话档案默认仅存本地，不上传云端
-- 若曾在其他环境泄露过 API Key，请立即在对应平台轮换密钥
+- **Never commit** `.env` or runtime data under `data/`; both are gitignored
+- API keys live only in local `.env`
+- Memories and chat archives stay on-device by default — not uploaded
+- If a key was ever exposed elsewhere, rotate it on that platform immediately
 
 ## License
 
