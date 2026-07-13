@@ -1,7 +1,7 @@
 [project]
 name = "la-localagent"
-version = "0.2.0"
-description = "完全本地的主动式 AI 助手：模糊意图会追问；Hindsight 长期多层次记忆（ChatGPT 历史/个人文档/对话）；联网搜索 + 本地 Shell，打通本机、用户画像与互联网"
+dynamic = ["version"]
+description = "完全本地的主动式 AI 助手：模糊意图会追问；Mem0 长期多层次记忆（ChatGPT 历史/个人文档/对话）；联网搜索 + 本地 Shell，打通本机、用户画像与互联网"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -31,12 +31,16 @@ dependencies = [
     "langchain-core>=0.3.0",
     "langchain-ollama>=0.2.0",
     "chromadb>=0.5.0",
+    # [nlp]=spaCy lemmas/entities; fastembed=Qdrant BM25 (avoid full mem0ai[extras] bloat)
+    "mem0ai[nlp]>=1.0.0",
+    # spaCy model is not a transitive dep of mem0ai[nlp]; pin so install (not first chat) fetches it
+    "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
+    "fastembed>=0.3.1",
 ]
 
 [project.optional-dependencies]
 # full 已并入默认依赖，保留空 extra 以兼容旧安装命令
 full = []
-hindsight = ["hindsight-all>=0.8.0; python_version >= '3.11'"]
 dev = [
     "pytest>=8.0.0",
     "ruff>=0.3.0",
@@ -54,6 +58,12 @@ LA = "localagent.cli:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/localagent/__init__.py"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/localagent"]
@@ -78,7 +88,7 @@ include = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "tests/e2e"]
+pythonpath = ["src", "tests/e2e", "."]
 addopts = "-m 'not e2e and not e2e_live'"
 markers = [
     "e2e: subprocess end-to-end tests against installed LA CLI",

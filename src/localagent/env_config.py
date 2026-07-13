@@ -23,7 +23,7 @@ LA_MODEL_SERVERS_KEY = "LA_MODEL_SERVERS"
 
 STANDALONE_KEYS: dict[str, str] = {
     "tavily": "TAVILY_API_KEY",
-    "hindsight": "LA_HINDSIGHT_LLM_API_KEY",
+    "mem0": "LA_MEM0_LLM_API_KEY",
 }
 
 # Flat env-style keys → provider api_key in model_servers.yaml
@@ -671,7 +671,7 @@ def apply_simple_config(
 
     Recognized keys:
     - provider / base_url / model / api_key / timeout — upsert that provider
-    - TAVILY_API_KEY / LA_HINDSIGHT_LLM_API_KEY (or tavily / hindsight)
+    - TAVILY_API_KEY / LA_MEM0_LLM_API_KEY (or tavily / mem0)
     - OPENROUTER_API_KEY / CURSOR_API_KEY / MINIMAX_API_KEY / AIPING_API_KEY
     - servers: optional list of full ModelServer objects
     """

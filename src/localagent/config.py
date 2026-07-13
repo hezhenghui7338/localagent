@@ -58,6 +58,10 @@ else:
     # 兼容从子目录或已安装 CLI 启动：cwd 向上查找 .env
     load_dotenv(override=False)
 
+# Local-first: disable Mem0→PostHog telemetry unless the user opts in via .env.
+# Must run before any ``import mem0`` (mem0 reads MEM0_TELEMETRY at import time).
+os.environ.setdefault("MEM0_TELEMETRY", "False")
+
 # 首次运行：自动从模板创建 config/model_servers.yaml 并写入 .env 指针
 from localagent.env_config import auto_bootstrap_model_servers_config  # noqa: E402
 
@@ -103,8 +107,8 @@ SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt", ".xlsx"}
 DEFAULT_USER_ID = "default_user"
 
 
-def hindsight_profile() -> str:
-    """Hindsight embed profile; isolated per LA_DATA_DIR override."""
+def memory_user_id() -> str:
+    """Mem0 user_id / bank isolation key; isolated per LA_DATA_DIR override."""
     if not _DATA_OVERRIDE:
         return "localagent"
     digest = hashlib.sha256(str(Path(_DATA_OVERRIDE).resolve()).encode()).hexdigest()[:16]
@@ -112,12 +116,24 @@ def hindsight_profile() -> str:
 
 
 def default_bank_id() -> str:
-    """Hindsight memory bank; follows hindsight_profile for isolation."""
-    return hindsight_profile()
+    """Warm-layer memory scope id (Mem0 user_id)."""
+    return memory_user_id()
 
 
 # Back-compat alias (prefer default_bank_id() when LA_DATA_DIR may be set)
 DEFAULT_BANK_ID = "localagent"
+
+
+def mem0_dir() -> Path:
+    return DATA_DIR / "mem0"
+
+
+def mem0_qdrant_path() -> Path:
+    return mem0_dir() / "qdrant"
+
+
+def mem0_history_db() -> Path:
+    return mem0_dir() / "history.db"
 
 # --- Workspace ---
 LA_WORKSPACE = _env("LA_WORKSPACE")
@@ -262,15 +278,20 @@ INGEST_MEMORY_MAX_FACTS = _env_int("LA_INGEST_MEMORY_MAX_FACTS", "50")
 
 # --- Memory enrichment ---
 MEMORY_ENRICH_USE_LLM = _env_bool("LA_MEMORY_ENRICH_LLM", "0")
-MEMORY_BACKEND = _env("LA_MEMORY_BACKEND", "auto").lower()
+MEMORY_BACKEND = _env("LA_MEMORY_BACKEND", "mem0").lower()
 
-# --- Hindsight LLM (fact extraction during retain) ---
-HINDSIGHT_LLM_PROVIDER = _env("LA_HINDSIGHT_LLM_PROVIDER").lower()
-HINDSIGHT_LLM_MODEL = _env("LA_HINDSIGHT_LLM_MODEL")
-HINDSIGHT_LLM_BASE_URL = _env("LA_HINDSIGHT_LLM_BASE_URL")
-HINDSIGHT_LLM_API_KEY = _env("LA_HINDSIGHT_LLM_API_KEY")
-HINDSIGHT_RETAIN_JSON_FALLBACK = _env_bool("LA_HINDSIGHT_RETAIN_JSON_FALLBACK", "1")
-HINDSIGHT_EXTRACTION_MODE = _env("LA_HINDSIGHT_EXTRACTION_MODE", "auto").lower()
+# --- Mem0 (Warm-layer semantic index) ---
+MEM0_INFER = _env_bool("LA_MEM0_INFER", "0")
+MEM0_RETAIN_JSON_FALLBACK = _env_bool("LA_MEM0_RETAIN_JSON_FALLBACK", "1")
+MEM0_LLM_PROVIDER = _env("LA_MEM0_LLM_PROVIDER").lower()
+MEM0_LLM_MODEL = _env("LA_MEM0_LLM_MODEL")
+MEM0_LLM_BASE_URL = _env("LA_MEM0_LLM_BASE_URL")
+MEM0_LLM_API_KEY = _env("LA_MEM0_LLM_API_KEY")
+MEM0_EMBEDDER_PROVIDER = _env("LA_MEM0_EMBEDDER_PROVIDER").lower()
+MEM0_EMBEDDER_MODEL = _env("LA_MEM0_EMBEDDER_MODEL")
+MEM0_EMBEDDER_BASE_URL = _env("LA_MEM0_EMBEDDER_BASE_URL")
+MEM0_EMBEDDER_API_KEY = _env("LA_MEM0_EMBEDDER_API_KEY")
+MEM0_EMBEDDER_DIMS = _env_int("LA_MEM0_EMBEDDER_DIMS", "0")
 
 # --- Agent intent clarification ---
 INTENT_CLARIFY_ENABLED = _env_bool("LA_INTENT_CLARIFY", "1")
@@ -278,5 +299,15 @@ INTENT_CLARIFY_ENABLED = _env_bool("LA_INTENT_CLARIFY", "1")
 
 def ensure_data_dirs() -> None:
     """Create runtime data directories if missing."""
-    for path in (DATA_DIR, KB_DIR, CONVERSATIONS_DIR, CHATGPT_DATA_DIR, CHROMA_DIR, TASK_LOGS_DIR, AUDIT_DIR):
+    for path in (
+        DATA_DIR,
+        KB_DIR,
+        CONVERSATIONS_DIR,
+        CHATGPT_DATA_DIR,
+        CHROMA_DIR,
+        mem0_dir(),
+        mem0_qdrant_path(),
+        TASK_LOGS_DIR,
+        AUDIT_DIR,
+    ):
         path.mkdir(parents=True, exist_ok=True)

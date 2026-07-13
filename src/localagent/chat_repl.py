@@ -13,6 +13,7 @@ from localagent.agent.runtime import run_agent_turn
 from localagent.completion import install_repl_readline_completer
 from localagent.memory.core_profile import default_core_profile
 from localagent.memory.exit_extract import schedule_session_memory_extract
+from localagent.memory.backend import shutdown_memory_backend
 from localagent.models.router import get_model_router, shutdown_cursor_sdk
 from localagent.persist.conversations import append_message, new_session_id
 from localagent.session_commands import (
@@ -182,6 +183,7 @@ class ChatREPL:
 
     def _on_exit(self) -> None:
         schedule_session_memory_extract(self.session_id)
+        shutdown_memory_backend()
         shutdown_cursor_sdk()
 
 

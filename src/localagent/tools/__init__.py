@@ -15,7 +15,7 @@ from localagent import config
 from localagent.audit.usage import log_usage
 from localagent.knowledge.hybrid import get_hybrid_retriever
 from localagent.memory.display import format_memory_hits
-from localagent.memory.hindsight_client import get_memory_backend
+from localagent.memory.backend import get_memory_backend
 from localagent.memory.query import list_memory_tags, query_memories
 from localagent.memory.store import MemoryFact, get_memory_store
 
@@ -319,7 +319,7 @@ def deep_search(
 
 
 def reflect_memory(query: str) -> str:
-    """Reason over memories (Hindsight reflect); falls back to recall on JSON backend."""
+    """Reason over memories (Mem0 search + LLM); falls back to recall on JSON backend."""
     backend = get_memory_backend()
     answer = backend.reflect(query)
     if answer:
@@ -330,12 +330,12 @@ def reflect_memory(query: str) -> str:
         if hits:
             body = _format_memory_hits(hits, query=query)
             return (
-                "（当前为 JSON 记忆后端，无 Hindsight reflect；以下为 recall 结果）\n"
+                "（当前为 JSON 记忆后端，无跨记忆推理；以下为 recall 结果）\n"
                 + body
             )
         return (
-            "推理召回需要 Hindsight 引擎。"
-            "请使用 Python 3.11+ 并安装: pip install 'la-localagent[hindsight]'"
+            "推理召回需要 Mem0 记忆引擎。"
+            "请确认已安装 mem0ai，并将 LA_MEMORY_BACKEND 设为 mem0。"
         )
 
     return "未能从记忆中推理出答案。"
@@ -396,7 +396,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "name": "reflect_memory",
         "description": (
             "对记忆进行推理综合，处理矛盾、歧义或需要跨多条记忆归纳的问题；"
-            "需要 Hindsight 引擎，JSON 后端会降级为 recall"
+            "需要 Mem0 引擎（search + LLM）；JSON 后端会降级为 recall"
         ),
         "parameters": {"query": "需要推理的问题"},
     },

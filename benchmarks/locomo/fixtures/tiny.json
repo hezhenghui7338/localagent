@@ -1,0 +1,61 @@
+[
+  {
+    "sample_id": "conv-tiny",
+    "conversation": {
+      "speaker_a": "Alice",
+      "speaker_b": "Bob",
+      "session_1_date_time": "10:00 am on 1 May, 2023",
+      "session_1": [
+        {
+          "speaker": "Alice",
+          "dia_id": "D1:1",
+          "text": "Hey Bob! I adopted a golden retriever named Sunny yesterday."
+        },
+        {
+          "speaker": "Bob",
+          "dia_id": "D1:2",
+          "text": "That's awesome! I started a pottery class last week."
+        }
+      ],
+      "session_2_date_time": "3:00 pm on 8 May, 2023",
+      "session_2": [
+        {
+          "speaker": "Alice",
+          "dia_id": "D2:1",
+          "text": "Sunny loves the park near the lake."
+        },
+        {
+          "speaker": "Bob",
+          "dia_id": "D2:2",
+          "text": "My pottery teacher is named Clara."
+        }
+      ]
+    },
+    "qa": [
+      {
+        "question": "What is the name of Alice's dog?",
+        "answer": "Sunny",
+        "evidence": ["D1:1"],
+        "category": 4
+      },
+      {
+        "question": "When did Alice adopt Sunny?",
+        "answer": "30 April 2023",
+        "evidence": ["D1:1"],
+        "category": 2
+      },
+      {
+        "question": "What class did Bob start?",
+        "answer": "pottery class",
+        "evidence": ["D1:2"],
+        "category": 4
+      },
+      {
+        "question": "What color is Bob's car?",
+        "evidence": [],
+        "category": 5,
+        "adversarial_answer": "red"
+      }
+    ]
+  }
+]

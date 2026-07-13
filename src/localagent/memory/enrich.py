@@ -1,7 +1,6 @@
 """Memory enrichment at write time (title, tags, summary).
 
-Inspired by Mem0 (categories + structured extraction) and Hindsight
-(metadata + tags + automatic fact decomposition).
+Inspired by Mem0 (categories + structured extraction).
 """
 
 from __future__ import annotations

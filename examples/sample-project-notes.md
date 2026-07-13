@@ -7,7 +7,7 @@
 2026 年 7 月，LocalAgent 采用 **Hot / Warm / Cold** 三层记忆架构：
 
 - **Hot**：`core_profile.json` 存放核心画像（姓名、偏好、长期目标）
-- **Warm**：JSON memory / Hindsight 存放从对话与导入中提取的长期事实
+- **Warm**：JSON memory / Mem0 存放从对话与导入中提取的长期事实
 - **Cold**：Chroma + BM25 混合检索，保留文档原文片段
 
 设计原则是：换模型不换身份，记忆写入可审计、可撤销。

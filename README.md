@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.png" alt="LocalAgent" width="360">
+  <img src="assets/logo.png" alt="LocalAgent" width="360">
 </p>
 
 <p align="center">
@@ -10,7 +10,7 @@
   <a href="./README.md">English</a> · <a href="./README.zh-CN.md">中文</a>
 </p>
 
-# <img src="assets/LA%20logo.png" alt="LA" width="36" valign="middle"> LocalAgent
+# <img src="assets/logo-icon.png" alt="LA" width="36" valign="middle"> LocalAgent
 
 > **Fully local · Asks first · Knows you long-term — machine · profile · internet, actually usable.**
 
@@ -19,11 +19,12 @@ LocalAgent (`LA`) is not another chat client. It is a **proactive personal AI th
 1. **Fully local** — default Ollama `qwen3.5:4b`; chat, memory, retrieval, and execution all run on-device; identity and data never leave your machine  
 2. **Proactive awareness** — when intent is vague, it asks 1–2 key clarifying questions before acting, instead of guessing wrong and breaking things  
 3. **Long-term, multi-layer memory** — Hot / Warm / Cold layers; an assistant that actually knows you across sessions  
-4. **Where memory comes from** — **ChatGPT history**, personal documents, and live chats all ingest into one pipeline, powered by the **Hindsight** memory engine  
+4. **Where memory comes from** — **ChatGPT history**, personal documents, and live chats all ingest into one pipeline, powered by the **Mem0** memory engine  
 5. **Actually usable** — web search + local Shell, connecting **your machine · your profile · the internet**
 
 ```bash
-pipx install "git+https://github.com/hezhenghui7338/localagent.git"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.2.0"
+la --version                    # expect: la-localagent 0.2.0
 la                              # asks before installing Ollama (you can skip)
 ```
 
@@ -31,7 +32,7 @@ la                              # asks before installing Ollama (you can skip)
 | --- | --- |
 | Cloud or half-local; data boundary unclear | **Fully local** — identity and memory stay on device |
 | Guesses unclear references and edits anyway | **Asks first**, then calls tools after confirmation |
-| Forgets after the session | **Long-term multi-layer memory** + Hindsight |
+| Forgets after the session | **Long-term multi-layer memory** + Mem0 |
 | Memory only from this chat | **ChatGPT history / docs / chats** as cold-start sources |
 | Can't search the web or run commands | **Web search** + **local shell** — machine · profile · internet |
 
@@ -42,7 +43,7 @@ Optional OpenRouter / Cursor / Tavily for extras — **identity and data stay on
 - **Fully local**: default `qwen3.5:4b` — chat, memory write, retrieval, workspace awareness, and Shell execution all run on-device; optional cloud models, data still owned locally
 - **Proactive awareness**: vague requests get 1–2 clarifying questions first; file writes also have hallucination detection
 - **Long-term multi-layer memory**: Hot (core profile) / Warm (long-term) / Cold (document source) with JIT recall — an assistant that knows you
-- **Hindsight + multi-source ingest**: ChatGPT history, personal docs, and live chats → one pipeline; powered by the **Hindsight** memory engine
+- **Mem0 + multi-source ingest**: ChatGPT history, personal docs, and live chats → one pipeline; powered by the **Mem0** memory engine
 - **Machine · profile · internet**: workspace awareness + `run_shell` + Tavily web search — three layers that make it actually usable
 - **Document knowledge base**: symlink personal files in; Chroma + BM25 hybrid search
 - **Multi-model chat**: unified Ollama / OpenRouter / Cursor entry; `auto` mode falls back by priority
@@ -50,7 +51,7 @@ Optional OpenRouter / Cursor / Tavily for extras — **identity and data stay on
 
 ## Requirements
 
-- Python 3.10+ (Hindsight memory engine needs 3.11+)
+- Python 3.10+ (Mem0 memory engine needs Python 3.10+)
 - [Ollama](https://ollama.com/) + `qwen3.5:4b` (recommended; also the project default)
 - Optional: [pipx](https://pipx.pypa.io/) (recommended for a global `la` command)
 
@@ -58,17 +59,40 @@ Optional OpenRouter / Cursor / Tavily for extras — **identity and data stay on
 
 ### One-command install (recommended)
 
+Current release: **v0.2.0** (same as `src/localagent/__init__.py` / `la --version`).
+
 ```bash
-# Install CLI (first chat asks before installing Ollama; you can skip)
+# Install a pinned tag (recommended, reproducible)
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.2.0"
+
+# Or track the default branch tip (no version pin)
 pipx install "git+https://github.com/hezhenghui7338/localagent.git"
 
 # Or with pip into the current environment
-pip install "git+https://github.com/hezhenghui7338/localagent.git"
+pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.2.0"
 
-# Optional: Hindsight long-term memory (Python 3.11+)
-pipx inject la-localagent 'la-localagent[hindsight]'
-# or: pip install 'la-localagent[hindsight]'
+# mem0ai ships with the core install — no extra memory extra required
 ```
+
+Check version and upgrade:
+
+```bash
+la --version                  # or la -V → la-localagent 0.2.0
+
+# Move to a new tag (change @vX.Y.Z, then --force reinstall)
+pipx install --force "git+https://github.com/hezhenghui7338/localagent.git@v0.2.0"
+
+# When tracking the default branch, pull the latest tip
+pipx upgrade la-localagent
+# or
+pipx install --force "git+https://github.com/hezhenghui7338/localagent.git"
+
+# Same idea with pip
+pip install --upgrade --force-reinstall \
+  "git+https://github.com/hezhenghui7338/localagent.git@v0.2.0"
+```
+
+Available versions: GitHub [Releases](https://github.com/hezhenghui7338/localagent/releases) / [Tags](https://github.com/hezhenghui7338/localagent/tags).
 
 Then from **any directory**:
 
@@ -93,7 +117,7 @@ la config my.json
 la config list
 ```
 
-> After the package is published to PyPI: `pipx install la-localagent`
+> After the package is published to PyPI: `pipx install la-localagent==0.2.0` / `pipx upgrade la-localagent`
 
 ### Develop from source
 
@@ -102,11 +126,38 @@ git clone git@github.com:hezhenghui7338/localagent.git
 cd LocalAgent
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-# Optional Hindsight (Python 3.11+)
-pip install -e ".[hindsight]"
 ```
 
 In a source checkout, config/data stay in the repo (`.env`, `data/`). After a normal install they live under `~/.localagent/`.
+
+### Uninstall
+
+Remove the CLI (pick the method you used to install):
+
+```bash
+# pipx
+pipx uninstall la-localagent
+
+# pip (current environment)
+pip uninstall la-localagent
+```
+
+Optional: delete local config and data (API keys, memory, knowledge base, etc.). **If you keep this directory, a reinstall will reuse the old data.**
+
+```bash
+# Normal install (pipx / pip)
+rm -rf ~/.localagent
+
+# Source checkout: delete the repo, or clean `.env` and `data/` inside it
+```
+
+Ollama and pulled models are separate; uninstalling LocalAgent does **not** remove them. To clean those up as well:
+
+```bash
+ollama rm qwen3.5:4b   # remove the model if you want
+# On macOS, uninstall the Ollama app separately if desired
+```
+
 ## Feature highlights
 
 ### Fully local
@@ -196,20 +247,19 @@ The repo includes a full walkthrough covering the core scenarios:
 open examples/walkthrough.md
 ```
 
-### Hindsight long-term memory — remembers you end-to-end
+### Mem0 long-term memory — remembers you end-to-end
 
-Memory inputs include **ChatGPT history, personal documents, and live chats**. The Warm layer is powered by the [Hindsight](https://github.com/hindsight/hindsight) engine (`pip install 'la-localagent[hindsight]'`, Python 3.11+): **Retain → 4-way Recall → Reflect → Consolidation**. The repo includes an “architecture decision evolution” narrative demo covering write, semantic recall, time awareness, tag browsing, and cross-memory reasoning:
+Memory inputs include **ChatGPT history, personal documents, and live chats**. The Warm layer is powered by the [Mem0](https://github.com/mem0ai/mem0) engine (`mem0ai` is a core dependency): **Retain → Recall → Reflect (search + LLM)**. The repo includes an “architecture decision evolution” narrative demo covering write, semantic recall, time awareness, tag browsing, and cross-memory reasoning:
 
 ```bash
-# Install Hindsight (Python 3.11+)
-pip install 'la-localagent[hindsight]'
-# From a source checkout: pip install -e ".[hindsight]"
+# From a source checkout
+pip install -e ".[dev]"
 
 # One-shot demo (isolated under /tmp — does not touch data/)
-bash examples/hindsight-demo.sh
+bash examples/mem0-demo.sh
 
 # Or read the step-by-step guide
-open examples/hindsight-demo.md
+open examples/mem0-demo.md
 ```
 
 Demo highlights:
@@ -217,18 +267,33 @@ Demo highlights:
 | Step | Command | Shows |
 |------|---------|-------|
 | Write evolution chain | `LA add` × 4 | Retain + auto title/tags/event time |
-| Semantic recall | `LA search "memory engine choice"` | Hindsight multi-path parallel recall |
+| Semantic recall | `LA search "memory engine choice"` | Mem0 semantic recall |
 | Time awareness | `LA search "May 2026 decision"` | Re-rank by event time |
 | Tag browse | `LA memories --tag decision` | Structured query |
-| Cross-memory reasoning | `LA reflect "how did the choice evolve?"` | Hindsight reflect |
+| Cross-memory reasoning | `LA reflect "how did the choice evolve?"` | Mem0 reflect |
 
 Example files:
 
 - [examples/walkthrough.md](examples/walkthrough.md) — **step-by-step tutorial** (local qwen3.5:4b first)
-- [examples/hindsight-demo.md](examples/hindsight-demo.md) — Hindsight deep dive (Retain / Recall / Reflect)
+- [examples/mem0-demo.md](examples/mem0-demo.md) — Mem0 deep dive (Retain / Recall / Reflect)
+- [benchmarks/locomo/README.md](benchmarks/locomo/README.md) — **LoCoMo long-term memory benchmark**
 - [examples/sample-project-notes.md](examples/sample-project-notes.md) — sample doc for `add-file`
 - [examples/audit-report-sample.md](examples/audit-report-sample.md) — sample audit report (Ollama $0)
 - [examples/env.local-only.example](examples/env.local-only.example) — fully local `.env` template
+
+### Benchmark: LoCoMo long-term conversational memory
+
+Evaluate Warm-layer cross-session memory with ACL 2024 [LoCoMo](https://github.com/snap-research/locomo).  
+**Current recall scores (2026-07-13, `conv-26`, JSON backend, n=150):** Hit@1 **0.307** / Hit@5 **0.473** / Hit@8 **0.540**.
+
+```bash
+python -m benchmarks.locomo.run download
+python -m benchmarks.locomo.measure_recall \
+  --skip-ingest --sample-ids conv-26 \
+  --work-dir benchmarks/data/runs/locomo-cursor
+```
+
+Per-category table and reproduction steps: [benchmarks/locomo/README.md](benchmarks/locomo/README.md).
 
 ### Shell completion
 
@@ -287,7 +352,7 @@ commands:
                    delete|pause|resume|restart|logs <task_id>] Manage background index tasks
     sync-file      [--force] Scan and index all docs under data/kb/
     reset-memory   [--keep-knowledge] Clear memory and sync_index
-    memory-status  Diagnose Warm memory backend (Hindsight / JSON)
+    memory-status  Diagnose Warm memory backend (Mem0 / JSON)
     rebuild-memory
                    Clear memory then force-rebuild kb/ index
     forget         <id> [--yes] Delete one memory
@@ -296,7 +361,7 @@ commands:
     import-chatgpt
                    [path] [--dir DIR] [--force] [--interactive] Import ChatGPT export
     search         <query> [--knowledge] [--top-k N] [--verbose] Search memory or knowledge base
-    reflect        <query> Cross-memory reasoning (Hindsight reflect)
+    reflect        <query> Cross-memory reasoning (Mem0 reflect)
     memories       [query] [--tag TAG] [--since DATE] [--sort
                    newest|oldest|relevance] Browse / query memories
     workspace      [--days N] [--cwd PATH] [--todos-only] Workspace / git / todo snapshot
@@ -328,7 +393,7 @@ data/
 
 ## Architecture
 
-Narrative arc: **fully local** → **ask first** → **long-term multi-layer memory (Hindsight)** → **multi-source ingest** → **machine · profile · internet**.
+Narrative arc: **fully local** → **ask first** → **long-term multi-layer memory (Mem0)** → **multi-source ingest** → **machine · profile · internet**.
 
 ```
 ┌─────────────────────────────────────────┐
@@ -340,12 +405,12 @@ Narrative arc: **fully local** → **ask first** → **long-term multi-layer mem
     ┌─────────────┼─────────────┬──────────────┐
     ▼             ▼             ▼              ▼
   Hot          Warm           Cold         Web / Shell
-core_profile  Hindsight     Chroma+BM25   Tavily / run_shell
+core_profile  Mem0     Chroma+BM25   Tavily / run_shell
 (profile)     (long-term)   (docs)        (internet · machine)
 ```
 
 - **Hot**: `core_profile.json` (pinned core facts / user profile)
-- **Warm**: Hindsight memory engine (long-term; ChatGPT / chat extract)
+- **Warm**: Mem0 memory engine (long-term; ChatGPT / chat extract)
 - **Cold**: Chroma + BM25 (personal document source)
 - **Agent**: LangGraph tool loop; JIT memory recall, plus web search and local Shell
 

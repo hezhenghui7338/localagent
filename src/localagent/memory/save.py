@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from typing import Any
 
-from localagent.memory.hindsight_client import get_memory_backend
+from localagent.memory.backend import get_memory_backend
 
 
 def save_facts(
