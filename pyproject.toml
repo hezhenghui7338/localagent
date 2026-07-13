@@ -1,5 +1,5 @@
 [project]
-name = "localagent"
+name = "la-localagent"
 version = "0.2.0"
 description = "完全本地的主动式 AI 助手：模糊意图会追问；Hindsight 长期多层次记忆（ChatGPT 历史/个人文档/对话）；联网搜索 + 本地 Shell，打通本机、用户画像与互联网"
 readme = "README.md"
@@ -26,21 +26,26 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pyyaml>=6.0.0",
     "cursor-sdk>=0.1.9",
-]
-
-[project.optional-dependencies]
-full = [
     "langgraph>=0.2.0",
     "langgraph-checkpoint-sqlite>=2.0.0",
     "langchain-core>=0.3.0",
     "langchain-ollama>=0.2.0",
     "chromadb>=0.5.0",
 ]
+
+[project.optional-dependencies]
+# full 已并入默认依赖，保留空 extra 以兼容旧安装命令
+full = []
 hindsight = ["hindsight-all>=0.8.0; python_version >= '3.11'"]
 dev = [
     "pytest>=8.0.0",
     "ruff>=0.3.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/hezhenghui7338/localagent"
+Repository = "https://github.com/hezhenghui7338/localagent"
+Issues = "https://github.com/hezhenghui7338/localagent/issues"
 
 [project.scripts]
 la = "localagent.cli:main"
@@ -52,6 +57,24 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/localagent"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/localagent/resources/env.example" = "localagent/resources/env.example"
+"src/localagent/resources/model_servers.yaml.example" = "localagent/resources/model_servers.yaml.example"
+"src/localagent/resources/core_profile.example.json" = "localagent/resources/core_profile.example.json"
+"src/localagent/resources/config.example.json" = "localagent/resources/config.example.json"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/README.md",
+    "/LICENSE",
+    "/pyproject.toml",
+    "/.env.example",
+    "/config/model_servers.yaml.example",
+    "/config/config.example.json",
+    "/data/core_profile.example.json",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

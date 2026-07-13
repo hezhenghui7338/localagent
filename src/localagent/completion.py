@@ -30,6 +30,15 @@ def _get_subparsers(parser: argparse.ArgumentParser) -> dict[str, argparse.Argum
     return {}
 
 
+def subparser_names(parser: argparse.ArgumentParser | None = None) -> list[str]:
+    """Return sorted top-level CLI subcommand names."""
+    if parser is None:
+        from localagent.cli import build_parser
+
+        parser = build_parser()
+    return sorted(_get_subparsers(parser))
+
+
 def _option_strings(parser: argparse.ArgumentParser) -> list[str]:
     flags: list[str] = []
     for action in parser._actions:
@@ -73,6 +82,15 @@ def _memory_ids(limit: int = 30) -> list[str]:
         return []
 
 
+def _memory_tags(limit: int = 50) -> list[str]:
+    try:
+        from localagent.memory.query import list_memory_tags
+
+        return [tag for tag, _count in list_memory_tags(limit=limit)]
+    except Exception:
+        return []
+
+
 def _expand_path(prefix: str) -> list[str]:
     if not prefix:
         return [_FILE_SENTINEL]
@@ -89,6 +107,15 @@ def _expand_path(prefix: str) -> list[str]:
     return out or [_FILE_SENTINEL]
 
 
+def _find_option_action(
+    parser: argparse.ArgumentParser, flag: str
+) -> argparse.Action | None:
+    for action in parser._actions:
+        if flag in action.option_strings:
+            return action
+    return None
+
+
 def _completing_option(args: list[str], current: str, parser: argparse.ArgumentParser) -> list[str]:
     flags = _option_strings(parser)
     if current.startswith("-"):
@@ -98,23 +125,27 @@ def _completing_option(args: list[str], current: str, parser: argparse.ArgumentP
         return _prefix_match(flags, current)
 
     prev = args[-1]
+    if not prev.startswith("-"):
+        return _prefix_match(flags, current)
+
     if prev in ("--provider", "-p"):
-        return _prefix_match(_CHAT_PROVIDERS, current)
+        return _prefix_match(list(_CHAT_PROVIDERS), current)
     if prev in ("--session-id", "--session"):
         return _prefix_match(_session_ids(), current)
-    if prev in ("--limit", "--tail", "--top-k"):
+    if prev == "--tag":
+        return _prefix_match(_memory_tags(), current)
+
+    action = _find_option_action(parser, prev)
+    if action is not None:
+        if action.choices is not None:
+            return _prefix_match([str(c) for c in action.choices], current)
+        if isinstance(
+            action,
+            (argparse._StoreTrueAction, argparse._StoreFalseAction, argparse._HelpAction),
+        ):
+            return _prefix_match(flags, current)
+        # Value-taking flag without fixed choices (--since, --limit, …)
         return []
-
-    choice_flags = {
-        "--provider": _CHAT_PROVIDERS,
-        "-p": _CHAT_PROVIDERS,
-    }
-    if prev in choice_flags:
-        return _prefix_match(list(choice_flags[prev]), current)
-
-    for flag, choices in choice_flags.items():
-        if flag in args:
-            return _prefix_match(list(choices), current)
 
     return _prefix_match(flags, current)
 
@@ -208,6 +239,150 @@ def run_complete(argv: list[str]) -> int:
     for item in suggest_completions(words):
         print(item)
     return 0
+
+
+def _session_provider_choices() -> list[str]:
+    """``auto`` plus providers from the loaded model-servers config."""
+    return ["auto", *config.VALID_PROVIDERS]
+
+
+def _session_model_choices() -> list[str]:
+    """Model IDs for the current REPL provider (best-effort; empty on failure)."""
+    from localagent.models.router import get_model_router
+    from localagent.session_commands import get_repl_provider
+
+    router = get_model_router()
+    provider = router.resolve_effective_provider(get_repl_provider())
+    try:
+        return router.list_provider_models(provider)
+    except Exception:
+        return []
+
+
+def _filter_prefix(candidates: list[str], text: str) -> list[str]:
+    if not text:
+        return candidates
+    return [c for c in candidates if c.startswith(text)]
+
+
+def _session_arg_completions(cmd: str, argv: list[str], text: str) -> list[str]:
+    """Complete arguments after a session slash command name.
+
+    ``argv`` is tokens after the command name (may include the current word).
+    ``text`` is the readline current word being completed.
+    """
+    if cmd == "provider":
+        needle = text.lower()
+        return [c for c in _session_provider_choices() if c.startswith(needle)]
+    if cmd == "model":
+        # Avoid dumping hundreds of models on bare Tab (readline "Display all N?").
+        # Require a filter prefix; then match by prefix or substring.
+        needle = text.strip()
+        if not needle:
+            return []
+        models = _session_model_choices()
+        exact = [m for m in models if m.startswith(needle)]
+        if exact:
+            return exact[:50]
+        return [m for m in models if needle.lower() in m.lower()][:50]
+
+    # Reuse outer CLI completion for subcommands exposed as slash commands
+    # (e.g. ``/memories --sort`` → newest|oldest|relevance).
+    from localagent.cli import build_parser
+
+    parser = build_parser()
+    if cmd not in _get_subparsers(parser):
+        return []
+
+    completed = list(argv)
+    if text and completed and completed[-1] == text:
+        completed = completed[:-1]
+    return suggest_completions(["LA", cmd, *completed, text], parser)
+
+
+def suggest_session_slash_completions(line: str, text: str = "") -> list[str]:
+    """Tab-completion candidates for a chat REPL line starting with ``/`` or ``:``.
+
+    Completes command names, and for ``/provider`` / ``/p`` also completes
+    configured provider paths (``auto``, ``ollama``, ``cursor``, …). For
+    ``/model`` completes models only when a filter prefix is typed. For CLI
+    subcommands like ``/memories``, reuses shell option/value completion.
+    """
+    stripped = line.lstrip()
+    if not stripped or stripped[0] not in ("/", ":"):
+        return []
+
+    prefix = stripped[0]
+    rest = stripped[1:]
+
+    from localagent.session_commands import list_slash_command_names
+
+    # Past the command name → complete args (readline ``text`` is the current word)
+    if rest and any(ch.isspace() for ch in rest):
+        parts = rest.split()
+        if not parts:
+            return []
+        cmd = parts[0].lower()
+        if cmd in ("p", "provider"):
+            cmd = "provider"
+        elif cmd == "model":
+            cmd = "model"
+        elif cmd in ("mem", "memories"):
+            cmd = "memories"
+        return _session_arg_completions(cmd, parts[1:], text)
+
+    needle = rest.lower()
+    hits = [name for name in list_slash_command_names() if name.startswith(needle)]
+
+    # Fully typed ``/provider`` or ``/p``: offer ``/provider ollama`` style so Tab
+    # can insert a space and list configured providers.
+    if needle in ("provider", "p") and needle in hits:
+        canonical = "provider" if needle == "provider" else needle
+        expanded = [f"{prefix}{canonical} {c}" for c in _session_provider_choices()]
+        return _filter_prefix(expanded, text)
+
+    # Do not expand ``/model`` into hundreds of ``/model <id>`` candidates.
+    if needle == "model" and needle in hits:
+        return _filter_prefix([f"{prefix}{needle}"], text)
+
+    candidates = [f"{prefix}{name}" for name in hits]
+    return _filter_prefix(candidates, text)
+
+
+def install_repl_readline_completer() -> bool:
+    """Install readline Tab completion for session slash commands. Returns True if installed."""
+    try:
+        import readline
+    except ImportError:
+        return False
+
+    # Keep ``/`` and ``:`` inside the completion word (``/help``, not ``help``).
+    delims = readline.get_completer_delims()
+    for ch in "/:":
+        delims = delims.replace(ch, "")
+    readline.set_completer_delims(delims)
+
+    matches: list[str] = []
+
+    def completer(text: str, state: int) -> str | None:
+        nonlocal matches
+        if state == 0:
+            line = readline.get_line_buffer()
+            matches = suggest_session_slash_completions(line, text)
+        if state < len(matches):
+            return matches[state]
+        return None
+
+    readline.set_completer(completer)
+
+    doc = getattr(readline, "__doc__", "") or ""
+    if "libedit" in doc:
+        # macOS / libedit
+        readline.parse_and_bind("bind ^I rl_complete")
+    else:
+        readline.parse_and_bind("tab: complete")
+        readline.parse_and_bind("set show-all-if-ambiguous on")
+    return True
 
 
 def zsh_completion_script() -> str:

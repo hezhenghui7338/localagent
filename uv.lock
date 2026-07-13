@@ -2477,6 +2477,56 @@ wheels = [
 ]
 
 [[package]]
+name = "la-localagent"
+version = "0.2.0"
+source = { editable = "." }
+dependencies = [
+    { name = "chromadb" },
+    { name = "cursor-sdk" },
+    { name = "httpx" },
+    { name = "langchain-core" },
+    { name = "langchain-ollama" },
+    { name = "langgraph" },
+    { name = "langgraph-checkpoint-sqlite" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "openpyxl" },
+    { name = "python-dotenv" },
+    { name = "pyyaml" },
+    { name = "rank-bm25" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "ruff" },
+]
+hindsight = [
+    { name = "hindsight-all", marker = "python_full_version >= '3.11'" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "chromadb", specifier = ">=0.5.0" },
+    { name = "cursor-sdk", specifier = ">=0.1.9" },
+    { name = "hindsight-all", marker = "python_full_version >= '3.11' and extra == 'hindsight'", specifier = ">=0.8.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "langchain-core", specifier = ">=0.3.0" },
+    { name = "langchain-ollama", specifier = ">=0.2.0" },
+    { name = "langgraph", specifier = ">=0.2.0" },
+    { name = "langgraph-checkpoint-sqlite", specifier = ">=2.0.0" },
+    { name = "numpy", specifier = ">=1.26.0" },
+    { name = "openpyxl", specifier = ">=3.1.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "pyyaml", specifier = ">=6.0.0" },
+    { name = "rank-bm25", specifier = ">=0.2.2" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3.0" },
+]
+provides-extras = ["full", "hindsight", "dev"]
+
+[[package]]
 name = "langchain-core"
 version = "1.4.9"
 source = { registry = "https://pypi.org/simple" }
@@ -2653,58 +2703,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/6b/5d/2dfda0e057511ba24
 wheels = [
     { url = "https://files.pythonhosted.org/packages/50/54/760eb0a5ffbfdb57364963e5330abe542b1292f7163a51963e88eb649a8d/litellm-1.91.2-py3-none-any.whl", hash = "sha256:9f78f82f818bc3644ba6aec770adc6e67b063e2b1ff4ebf8b5c3b085488f711e", size = 16670494, upload-time = "2026-07-11T06:04:14.941Z" },
 ]
-
-[[package]]
-name = "localagent"
-version = "0.2.0"
-source = { editable = "." }
-dependencies = [
-    { name = "cursor-sdk" },
-    { name = "httpx" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
-    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "openpyxl" },
-    { name = "python-dotenv" },
-    { name = "pyyaml" },
-    { name = "rank-bm25" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "ruff" },
-]
-full = [
-    { name = "chromadb" },
-    { name = "langchain-core" },
-    { name = "langchain-ollama" },
-    { name = "langgraph" },
-    { name = "langgraph-checkpoint-sqlite" },
-]
-hindsight = [
-    { name = "hindsight-all", marker = "python_full_version >= '3.11'" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "chromadb", marker = "extra == 'full'", specifier = ">=0.5.0" },
-    { name = "cursor-sdk", specifier = ">=0.1.9" },
-    { name = "hindsight-all", marker = "python_full_version >= '3.11' and extra == 'hindsight'", specifier = ">=0.8.0" },
-    { name = "httpx", specifier = ">=0.27.0" },
-    { name = "langchain-core", marker = "extra == 'full'", specifier = ">=0.3.0" },
-    { name = "langchain-ollama", marker = "extra == 'full'", specifier = ">=0.2.0" },
-    { name = "langgraph", marker = "extra == 'full'", specifier = ">=0.2.0" },
-    { name = "langgraph-checkpoint-sqlite", marker = "extra == 'full'", specifier = ">=2.0.0" },
-    { name = "numpy", specifier = ">=1.26.0" },
-    { name = "openpyxl", specifier = ">=3.1.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
-    { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "pyyaml", specifier = ">=6.0.0" },
-    { name = "rank-bm25", specifier = ">=0.2.2" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3.0" },
-]
-provides-extras = ["full", "hindsight", "dev"]
 
 [[package]]
 name = "lxml"

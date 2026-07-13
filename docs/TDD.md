@@ -19,7 +19,8 @@ LA CLI → chat REPL / ingest / pending
 ```
 src/localagent/
 ├── cli.py                 # 全部 LA 命令
-├── chat_repl.py           # REPL + :deepsearch + 意图澄清状态机
+├── chat_repl.py           # REPL + slash 命令 (/…) + 意图澄清状态机
+├── session_commands.py    # 会话内 / 命令分发（与外层 CLI 共享）
 ├── agent/
 │   ├── runtime.py         # Agent 工具循环
 │   └── intent_clarification.py  # 意图评估与澄清追问

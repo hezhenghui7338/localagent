@@ -23,10 +23,8 @@ LocalAgent（`LA`）不是又一个 Chat 客户端，而是跑在你本机上的
 5. **真正可用** — 联网查询 + 本地 Shell，打通**电脑本地 · 用户画像 · 互联网**三层能力
 
 ```bash
-ollama pull qwen3.5:4b          # 约 2.5GB，普通 Mac 可跑
-pip install -e ".[full]"
-cp examples/env.local-only.example .env
-LA chat --provider ollama       # 纯本地，数据不出本机
+pipx install "git+https://github.com/hezhenghui7338/localagent.git"
+la                              # 首次若无 Ollama 会询问是否安装（可跳过）
 ```
 
 | 普通本地 Chat | LocalAgent |
@@ -54,32 +52,61 @@ LA chat --provider ollama       # 纯本地，数据不出本机
 
 - Python 3.10+（Hindsight 记忆引擎需 3.11+）
 - [Ollama](https://ollama.com/) + `qwen3.5:4b`（推荐，也是项目默认配置）
+- 可选：[pipx](https://pipx.pypa.io/)（推荐，用于全局 `la` 命令）
 
 ## 快速开始
+
+### 一键安装（推荐）
+
+```bash
+# 安装 CLI（首次对话若无 Ollama，会询问是否本地安装，可跳过）
+pipx install "git+https://github.com/hezhenghui7338/localagent.git"
+
+# 或用 pip 装进当前 Python 环境
+pip install "git+https://github.com/hezhenghui7338/localagent.git"
+
+# 可选：Hindsight 长期记忆（Python 3.11+）
+pipx inject la-localagent 'la-localagent[hindsight]'
+# 或：pip install 'la-localagent[hindsight]'
+```
+
+然后在**任意目录**：
+
+```bash
+la                 # 等同于 la chat；无 Ollama 时询问是否安装
+la setup           # 单独引导安装/拉取（可答 n 跳过）
+la setup -y        # 无需确认，直接安装并拉取 qwen3.5:4b
+la chat --provider ollama
+```
+
+首次运行会在 `~/.localagent/` 创建配置、`.env` 与数据目录。填写 API Key：
+
+```bash
+# 极简参数
+la config --provider ollama --base_url "http://localhost:11434" --model qwen3.5:4b --TAVILY_API_KEY "tvly-..."
+
+# 或复制模板改写后加载
+la config-example > my.json   # 查看/保存模板
+la config my.json
+
+# 查看当前配置
+la config list
+```
+
+> 发布到 PyPI 后可直接：`pipx install la-localagent`
+
+### 源码开发安装
 
 ```bash
 git clone git@github.com:hezhenghui7338/localagent.git
 cd LocalAgent
 python3 -m venv .venv && source .venv/bin/activate
-
-# 基础安装（BM25 + 核心 CLI）
 pip install -e ".[dev]"
-
-# 完整安装（LangGraph + Chroma 向量检索）
-pip install -e ".[full,dev]"
-
-# 推荐：Hindsight 记忆引擎（Python 3.11+，全方位长期记忆）
+# 可选 Hindsight（Python 3.11+）
 pip install -e ".[hindsight]"
 ```
 
-复制环境变量模板并填入你的 API Key：
-
-```bash
-cp .env.example .env
-# 编辑 .env，至少配置一个模型服务；可选配置 Ollama/OpenRouter / Cursor / Tavily（联网搜索）
-```
-
-首次运行会自动在 `data/` 下创建运行时目录。可将 `data/core_profile.example.json` 复制为 `data/core_profile.json` 作为核心画像模板。
+源码 checkout 时配置与数据仍在仓库内（`.env`、`data/`）；普通安装后则落在 `~/.localagent/`。
 
 ## 功能示例
 
@@ -158,7 +185,7 @@ LA chat --provider ollama
 | --- | -------------------- | --------------------------------------- |
 | 1   | 单条记忆写入与召回            | `LA add` → `LA search`                  |
 | 2   | Markdown 文件导入与召回     | `LA add-file` → `LA search --knowledge` |
-| 3   | 联网搜索最近新闻             | `LA chat` 或 `:deepsearch`（需 Tavily）     |
+| 3   | 联网搜索最近新闻             | `LA chat` 或 `/deepsearch`（需 Tavily）     |
 | 4   | **纯本地运行** qwen3.5:4b | `LA chat --provider ollama`             |
 | 5   | 回答本地工作内容             | `LA workspace` / `LA chat --cwd .`      |
 | 6   | **主动追问澄清意图**         | `LA chat` → 「帮我改个文件」→ 补充说明 → 执行     |
@@ -172,11 +199,12 @@ open examples/walkthrough.md
 
 ### 亮点：Hindsight 长期记忆 —— 全方位记住你
 
-记忆输入支持 **ChatGPT 历史对话、个人文档、日常对话**；Warm 层接入强大的 [Hindsight](https://github.com/hindsight/hindsight) 引擎（`pip install -e ".[hindsight]"`，需 Python 3.11+），提供 **Retain → 4 路 Recall → Reflect → Consolidation** 完整记忆链路。仓库提供一条「架构决策演变」叙事演示，覆盖写入、语义召回、时间感知、标签浏览与跨记忆推理：
+记忆输入支持 **ChatGPT 历史对话、个人文档、日常对话**；Warm 层接入强大的 [Hindsight](https://github.com/hindsight/hindsight) 引擎（`pip install 'la-localagent[hindsight]'`，需 Python 3.11+），提供 **Retain → 4 路 Recall → Reflect → Consolidation** 完整记忆链路。仓库提供一条「架构决策演变」叙事演示，覆盖写入、语义召回、时间感知、标签浏览与跨记忆推理：
 
 ```bash
 # 安装 Hindsight（Python 3.11+）
-pip install -e ".[full,hindsight]"
+pip install 'la-localagent[hindsight]'
+# 源码开发：pip install -e ".[hindsight]"
 
 # 一键演示（隔离 /tmp，不污染 data/）
 bash examples/hindsight-demo.sh
@@ -216,7 +244,7 @@ source ~/.zshrc
 
 - 默认模型 `qwen3.5:4b`；若未安装，LA 会尝试匹配已安装的同名 tag
 - Qwen3 系列默认生成大量 thinking token，LocalAgent 默认 `OLLAMA_THINK=0` 关闭思考模式
-- 本地 Ollama 较慢时，`auto` 模式会在 12 秒内降级到 OpenRouter；也可在 chat 中输入 `:provider openrouter` 手动切换
+- 本地 Ollama 较慢时，`auto` 模式会在 12 秒内降级到 OpenRouter；也可在 chat 中输入 `/provider openrouter` 手动切换
 
 ## 配置
 
@@ -279,7 +307,7 @@ options:
 使用 LA <command> -h 查看某个命令的完整说明。
 ```
 
-`LA chat` 进入 REPL 后，还可使用 `:provider`（切换模型）、`:deepsearch <主题>`（深度研究）、`:q`（退出）。
+进入 `LA` / `LA chat` 后，可用 `/` 前缀执行与外层相同的全部命令（Claude Code 风格；`:` 为兼容别名）。例如：`/help`、`/add "…"`、`/search …`、`/provider ollama`、`/model qwen3.5:4b`、`/deepsearch <主题>`、`/q`。外层 `LA <command>` 与会话内 `/<command>` 等价（会话内禁止再开 `/chat`）。
 
 ## 数据目录
 

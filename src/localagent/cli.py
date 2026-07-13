@@ -33,6 +33,36 @@ def _print_ingest_result(result) -> None:
     )
 
 
+def _ensure_ollama_for_chat() -> None:
+    """Offer optional Ollama install/pull before entering chat (user can decline)."""
+    from localagent.ollama_setup import ensure_ollama_ready
+
+    result = ensure_ollama_ready(prompt=True)
+    if result.declined or result.skipped:
+        if result.message:
+            print(f"[setup] {result.message}")
+        return
+    if result.installed_now or result.pulled_now:
+        print(f"[setup] {result.message}")
+    elif not result.model_ready:
+        print(f"[setup] 警告: {result.message}")
+
+
+def cmd_setup(args: argparse.Namespace) -> int:
+    from localagent.ollama_setup import ensure_ollama_ready
+
+    result = ensure_ollama_ready(
+        prompt=not getattr(args, "yes", False),
+        assume_yes=bool(getattr(args, "yes", False)),
+    )
+    print(f"[setup] {result.message}")
+    if result.declined or result.skipped:
+        return 0
+    if not result.installed or not result.model_ready:
+        return 1
+    return 0
+
+
 def cmd_chat(args: argparse.Namespace) -> int:
     try:
         provider = config.normalize_provider_choice(args.provider)
@@ -41,6 +71,8 @@ def cmd_chat(args: argparse.Namespace) -> int:
         return 1
     if args.cwd:
         _apply_workspace_cwd(args.cwd)
+    if provider in ("auto", "ollama"):
+        _ensure_ollama_for_chat()
     return run_chat(session_id=args.session_id, provider=provider)
 
 
@@ -446,7 +478,7 @@ def cmd_memory_status(_args: argparse.Namespace) -> int:
         print(f"  错误:         {info['error']}")
     if info["active_backend"] == "json" and info["preference"] == "auto":
         print("\n提示: 安装 Hindsight 后可获得 4 路并行 recall + reflect + consolidation")
-        print("  python3.11 -m venv .venv311 && pip install -e '.[full,hindsight]'")
+        print("  pip install 'la-localagent[hindsight]'  # 需要 Python 3.11+")
     return 0
 
 
@@ -565,55 +597,190 @@ def _print_config_ensure_result(result) -> None:
         print(f"[config] 生效优先级: {'→'.join(result.priority_after)}")
 
 
+def _print_simple_config_result(result) -> None:
+    print(f"[config] 环境文件: {result.env_path}")
+    if result.config_path:
+        print(f"[config] 模型配置: {result.config_path}")
+    print("[config] 已写入:")
+    for line in result.change_lines():
+        print(f"  · {line}")
+    print("[config] 立即生效于当前进程；新开终端也会读取上述文件")
+
+
+def _has_simple_config_flags(args: argparse.Namespace) -> bool:
+    return any(
+        getattr(args, name, None) is not None
+        for name in (
+            "provider",
+            "base_url",
+            "model",
+            "api_key",
+            "timeout",
+            "tavily_api_key",
+            "openrouter_api_key",
+            "cursor_api_key",
+            "minimax_api_key",
+        )
+    )
+
+
+def _add_simple_config_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--provider", help="模型路径，如 ollama / openrouter / cursor")
+    parser.add_argument(
+        "--base_url",
+        "--base-url",
+        dest="base_url",
+        help="API base URL",
+    )
+    parser.add_argument("--model", help="模型名称，如 qwen3.5:4b")
+    parser.add_argument(
+        "--api_key",
+        "--api-key",
+        dest="api_key",
+        help="该 provider 的 API Key",
+    )
+    parser.add_argument("--timeout", type=float, help="请求超时秒数")
+    parser.add_argument(
+        "--TAVILY_API_KEY",
+        "--tavily-api-key",
+        dest="tavily_api_key",
+        help="Tavily 联网搜索 Key（可为空字符串）",
+    )
+    parser.add_argument(
+        "--OPENROUTER_API_KEY",
+        "--openrouter-api-key",
+        dest="openrouter_api_key",
+        help="OpenRouter API Key",
+    )
+    parser.add_argument(
+        "--CURSOR_API_KEY",
+        "--cursor-api-key",
+        dest="cursor_api_key",
+        help="Cursor API Key",
+    )
+    parser.add_argument(
+        "--MINIMAX_API_KEY",
+        "--minimax-api-key",
+        dest="minimax_api_key",
+        help="MiniMax API Key",
+    )
+
+
+def _config_list(env_path) -> int:
+    from localagent import env_config
+
+    print(f"[config] 环境文件: {env_path}")
+    config_file = env_config.resolve_model_servers_file(env_path)
+    inline = env_config.read_env_value(env_path, env_config.LA_MODEL_SERVERS_KEY)
+    if config_file and config_file.is_file():
+        print(f"[config] 模型配置: {config_file}")
+    elif inline:
+        print("[config] 模型配置: .env 内 LA_MODEL_SERVERS（建议迁移到 config/model_servers.yaml）")
+    else:
+        print("[config] 模型配置: 内置默认（首次运行会自动创建 config/model_servers.yaml）")
+    priority_override = env_config.read_priority_override(env_path)
+    file_order = [s.provider for s in env_config.read_model_servers(env_path)]
+    mem_order = [s.provider for s in config.MODEL_SERVERS]
+    if file_order != mem_order:
+        print(
+            "[config] 警告: 磁盘配置与内存不一致，请保存 YAML 后执行 LA config init"
+        )
+        print(f"[config] 磁盘顺序: {'→'.join(file_order)}")
+        print(f"[config] 内存顺序: {'→'.join(mem_order)}")
+    effective = list(config.MODEL_PROVIDER_PRIORITY)
+    print(f"[config] 生效优先级: {'→'.join(effective)}")
+    if priority_override:
+        print(f"[config] LA_MODEL_PROVIDER_PRIORITY 覆盖: {priority_override}")
+    else:
+        print("[config] 未设置 LA_MODEL_PROVIDER_PRIORITY，按配置文件列表顺序")
+    print()
+    for index, server in enumerate(config.MODEL_SERVERS, start=1):
+        item = env_config.ServerStatus(server=server, index=index)
+        status = "已配置" if server.is_configured else "未配置"
+        model = server.model or "-"
+        base = server.base_url or "-"
+        print(
+            f"  {item.index}. {server.provider:<12} model={model:<24} "
+            f"key={item.masked_key:<16} ({status})"
+        )
+        if base != "-":
+            print(f"      base_url={base}  timeout={server.timeout}")
+    print()
+    for alias, env_var in env_config.STANDALONE_KEYS.items():
+        value = env_config.read_env_value(env_path, env_var)
+        status = "已配置" if value else "未配置"
+        print(f"  {alias:<12} {env_var:<28} {env_config.mask_secret(value):<16} ({status})")
+    print()
+    print("快速配置:")
+    print('  la config --provider ollama --base_url "http://localhost:11434" --model qwen3.5:4b')
+    print('  la config --TAVILY_API_KEY "tvly-..."')
+    print("  la config my.json          # 见 la config-example")
+    return 0
+
+
+def cmd_config_example(_args: argparse.Namespace) -> int:
+    from localagent import env_config
+
+    try:
+        print(env_config.config_example_text(), end="")
+    except FileNotFoundError as exc:
+        print(f"[config-example] {exc}")
+        return 1
+    return 0
+
+
 def cmd_config(args: argparse.Namespace) -> int:
     from localagent import env_config
 
     env_path = env_config.resolve_env_file()
     env_config.ensure_config(env_path=env_path)
 
-    if args.config_cmd == "list":
-        print(f"[config] 环境文件: {env_path}")
-        config_file = env_config.resolve_model_servers_file(env_path)
-        inline = env_config.read_env_value(env_path, env_config.LA_MODEL_SERVERS_KEY)
-        if config_file and config_file.is_file():
-            print(f"[config] 模型配置: {config_file}")
-        elif inline:
-            print("[config] 模型配置: .env 内 LA_MODEL_SERVERS（建议迁移到 config/model_servers.yaml）")
-        else:
-            print("[config] 模型配置: 内置默认（首次运行会自动创建 config/model_servers.yaml）")
-        priority_override = env_config.read_priority_override(env_path)
-        file_order = [s.provider for s in env_config.read_model_servers(env_path)]
-        mem_order = [s.provider for s in config.MODEL_SERVERS]
-        if file_order != mem_order:
-            print(
-                "[config] 警告: 磁盘配置与内存不一致，请保存 YAML 后执行 LA config init"
+    config_cmd = getattr(args, "config_cmd", None)
+
+    # Flat mode: la config --provider ... / la config set --provider ...
+    if config_cmd in (None, "set") and _has_simple_config_flags(args):
+        try:
+            result = env_config.apply_config_flags(
+                provider=getattr(args, "provider", None),
+                base_url=getattr(args, "base_url", None),
+                model=getattr(args, "model", None),
+                api_key=getattr(args, "api_key", None),
+                timeout=getattr(args, "timeout", None),
+                tavily_api_key=getattr(args, "tavily_api_key", None),
+                openrouter_api_key=getattr(args, "openrouter_api_key", None),
+                cursor_api_key=getattr(args, "cursor_api_key", None),
+                minimax_api_key=getattr(args, "minimax_api_key", None),
+                env_path=env_path,
             )
-            print(f"[config] 磁盘顺序: {'→'.join(file_order)}")
-            print(f"[config] 内存顺序: {'→'.join(mem_order)}")
-        effective = list(config.MODEL_PROVIDER_PRIORITY)
-        print(f"[config] 生效优先级: {'→'.join(effective)}")
-        if priority_override:
-            print(f"[config] LA_MODEL_PROVIDER_PRIORITY 覆盖: {priority_override}")
-        else:
-            print("[config] 未设置 LA_MODEL_PROVIDER_PRIORITY，按配置文件列表顺序")
-        print()
-        for index, server in enumerate(config.MODEL_SERVERS, start=1):
-            item = env_config.ServerStatus(server=server, index=index)
-            status = "已配置" if server.is_configured else "未配置"
-            model = server.model or "-"
-            base = server.base_url or "-"
-            print(
-                f"  {item.index}. {server.provider:<12} model={model:<24} "
-                f"key={item.masked_key:<16} ({status})"
-            )
-            if base != "-":
-                print(f"      base_url={base}  timeout={server.timeout}")
-        print()
-        for alias, env_var in env_config.STANDALONE_KEYS.items():
-            value = env_config.read_env_value(env_path, env_var)
-            status = "已配置" if value else "未配置"
-            print(f"  {alias:<12} {env_var:<28} {env_config.mask_secret(value):<16} ({status})")
+        except (ValueError, FileNotFoundError) as exc:
+            print(f"[config] {exc}")
+            return 1
+        _print_simple_config_result(result)
         return 0
+
+    if config_cmd == "apply" or (config_cmd is None and getattr(args, "config_file", None)):
+        path = getattr(args, "config_file", None) or getattr(args, "apply_path", None)
+        if not path:
+            print("[config] 请指定 JSON 文件，例如: la config my.json")
+            return 1
+        try:
+            result = env_config.apply_config_file(path, env_path=env_path)
+        except (ValueError, FileNotFoundError) as exc:
+            print(f"[config] {exc}")
+            return 1
+        _print_simple_config_result(result)
+        return 0
+
+    if config_cmd == "set":
+        print(
+            "[config] 用法: la config --provider ollama --base_url "
+            '"http://localhost:11434" --model qwen3.5:4b [--TAVILY_API_KEY ...]'
+        )
+        print("[config] 或: la config my.json   （模板: la config-example）")
+        return 1
+
+    if config_cmd in (None, "list"):
+        return _config_list(env_path)
 
     if args.config_cmd == "add":
         try:
@@ -698,6 +865,7 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "直接运行 LA（无子命令）等价于 LA chat，进入对话模式。\n"
+            "进入对话后可用 /<command> 执行相同命令（输入 /help；: 为兼容别名）。\n"
             "使用 LA <command> -h 查看某个命令的完整说明。"
         ),
     )
@@ -924,14 +1092,63 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_config = sub.add_parser(
         "config",
-        help="init | list | add | remove | set-key  管理模型 YAML 配置",
-        description="管理 config/model_servers.yaml（增删改 API Key）",
+        help="[--provider …] | <file.json> | init|list|add|remove|set-key  快速配置 / 管理模型",
+        description=(
+            "快速写入模型与 API Key。\n"
+            "  la config --provider ollama --base_url http://localhost:11434 --model qwen3.5:4b\n"
+            "  la config --TAVILY_API_KEY tvly-...\n"
+            "  la config my.json\n"
+            "  la config-example\n"
+            "亦支持 init / list / add / remove / set-key 子命令。"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    from localagent import env_config
 
+    def _add_simple_config_flags(parser: argparse.ArgumentParser) -> None:
+        parser.add_argument("--provider", help="模型路径，如 ollama / openrouter / cursor")
+        parser.add_argument(
+            "--base_url",
+            "--base-url",
+            dest="base_url",
+            help="API base URL",
+        )
+        parser.add_argument("--model", help="模型名称，如 qwen3.5:4b")
+        parser.add_argument(
+            "--api_key",
+            "--api-key",
+            dest="api_key",
+            help="该 provider 的 API Key",
+        )
+        parser.add_argument("--timeout", type=float, help="请求超时秒数")
+        parser.add_argument(
+            "--TAVILY_API_KEY",
+            "--tavily-api-key",
+            dest="tavily_api_key",
+            help="Tavily 联网搜索 Key（可为空字符串）",
+        )
+        parser.add_argument(
+            "--OPENROUTER_API_KEY",
+            "--openrouter-api-key",
+            dest="openrouter_api_key",
+            help="OpenRouter API Key",
+        )
+        parser.add_argument(
+            "--CURSOR_API_KEY",
+            "--cursor-api-key",
+            dest="cursor_api_key",
+            help="Cursor API Key",
+        )
+        parser.add_argument(
+            "--MINIMAX_API_KEY",
+            "--minimax-api-key",
+            dest="minimax_api_key",
+            help="MiniMax API Key",
+        )
+
+    _add_simple_config_flags(p_config)
     config_sub = p_config.add_subparsers(
         dest="config_cmd",
-        required=True,
+        required=False,
         metavar="<action>",
         title="操作",
     )
@@ -943,6 +1160,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_config_init.set_defaults(func=cmd_config)
     p_config_list = config_sub.add_parser("list", help="列出模型服务与独立 Key（脱敏）")
     p_config_list.set_defaults(func=cmd_config)
+
+    p_config_set = config_sub.add_parser(
+        "set",
+        help="极简写入：--provider / --base_url / --model / --TAVILY_API_KEY …",
+    )
+    _add_simple_config_flags(p_config_set)
+    p_config_set.set_defaults(func=cmd_config)
+
+    p_config_apply = config_sub.add_parser(
+        "apply",
+        help="<file.json>  从 JSON 文件加载配置",
+    )
+    p_config_apply.add_argument("config_file", help="JSON 配置文件路径")
+    p_config_apply.set_defaults(func=cmd_config)
 
     p_config_add = config_sub.add_parser(
         "add",
@@ -976,7 +1207,49 @@ def build_parser() -> argparse.ArgumentParser:
     p_config_set_key.set_defaults(func=cmd_config)
     p_config.set_defaults(func=cmd_config)
 
+    p_config_example = sub.add_parser(
+        "config-example",
+        help="打印 config.example.json（复制后改写再用 la config <file>）",
+        description="输出极简配置模板 JSON",
+    )
+    p_config_example.set_defaults(func=cmd_config_example)
+
+    p_setup = sub.add_parser(
+        "setup",
+        help="[--yes]  询问后安装 Ollama 并拉取 qwen3.5:4b（可跳过）",
+        description=(
+            "检查本机 Ollama；未安装时询问是否本地安装，"
+            "缺少默认模型时询问是否拉取。加 -y 跳过确认。"
+        ),
+    )
+    p_setup.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help="无需确认，直接安装/拉取",
+    )
+    p_setup.set_defaults(func=cmd_setup)
+
     return parser
+
+
+_CONFIG_SUBCOMMANDS = frozenset(
+    {"init", "list", "add", "remove", "set-key", "set", "apply", "-h", "--help"}
+)
+
+
+def _normalize_config_argv(argv: list[str]) -> list[str]:
+    """Rewrite ``la config <file.json>`` / ``la config --flags`` into subcommands."""
+    if not argv or argv[0] != "config" or len(argv) < 2:
+        return argv
+    second = argv[1]
+    if second in _CONFIG_SUBCOMMANDS:
+        return argv
+    if second.startswith("-"):
+        return ["config", "set", *argv[1:]]
+    # Treat as JSON config file path
+    return ["config", "apply", second, *argv[2:]]
+
 
 
 def _dispatch_complete(argv: list[str]) -> int | None:
@@ -1012,18 +1285,16 @@ def main(argv: list[str] | None = None) -> int:
     if not argv:
         argv = ["chat"]
 
+    argv = _normalize_config_argv(argv)
+
     from localagent import env_config
+    from localagent.session_commands import dispatch_cli_argv
 
     env_config.ensure_config()
     config.ensure_data_dirs()
     get_task_store().reconcile_stale()
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    if not getattr(args, "cmd", None):
-        argv = ["chat"]
-        args = parser.parse_args(argv)
     try:
-        return args.func(args)
+        return dispatch_cli_argv(argv, allow_chat=True)
     except KeyboardInterrupt:
         from localagent.models.router import shutdown_cursor_sdk
 

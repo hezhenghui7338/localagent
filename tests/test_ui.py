@@ -73,7 +73,10 @@ def test_render_welcome_shows_project_basics():
     assert "记忆 12 · kb 3" in out
     assert "main · 干净" in out
     assert "session s-test123" in out
-    assert ":provider" in out
+    assert "/provider" in out
+    assert "/model" in out
+    assert "/help" in out
+    assert "Tab" in out
     assert "╮" in out
     assert "│" in out
 
@@ -82,10 +85,11 @@ def test_cli_bare_la_defaults_to_chat():
     from localagent.cli import main
 
     with patch("localagent.cli.run_chat", return_value=0) as mock_chat:
-        with patch("localagent.env_config.ensure_config"):
-            with patch("localagent.cli.get_task_store") as mock_store:
-                mock_store.return_value.reconcile_stale = MagicMock()
-                rc = main([])
+        with patch("localagent.cli._ensure_ollama_for_chat"):
+            with patch("localagent.env_config.ensure_config"):
+                with patch("localagent.cli.get_task_store") as mock_store:
+                    mock_store.return_value.reconcile_stale = MagicMock()
+                    rc = main([])
     assert rc == 0
     mock_chat.assert_called_once()
     kwargs = mock_chat.call_args.kwargs

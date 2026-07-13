@@ -231,7 +231,7 @@ def _looks_like_tool_attempt(text: str) -> bool:
 
 
 _EMPTY_RESPONSE_FALLBACK = (
-    "模型未返回有效内容（可能是工具调用被截断）。请重试一次，或使用 :provider openrouter。"
+    "模型未返回有效内容（可能是工具调用被截断）。请重试一次，或使用 /provider openrouter。"
 )
 
 _TOOL_FORMAT_RETRY = (
@@ -596,7 +596,7 @@ def run_agent_turn(
             if needs_retry:
                 clean = (
                     "未能实际写入文件：模型未调用 write_file 或 run_shell。"
-                    "请重试，或使用 :provider openrouter 等更强模型。"
+                    "请重试，或使用 /provider openrouter 等更强模型。"
                 )
             if not clean.strip():
                 clean = _EMPTY_RESPONSE_FALLBACK
@@ -646,7 +646,7 @@ def build_agent_graph():
     try:
         from langgraph.graph import END, StateGraph
     except ImportError as exc:
-        raise ImportError("安装完整依赖: pip install -e '.[full]'") from exc
+        raise ImportError("缺少 LangGraph 依赖，请重新安装: pip install la-localagent") from exc
 
     def call_model(state: AgentState) -> AgentState:
         last_user = ""

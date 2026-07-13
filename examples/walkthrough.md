@@ -5,14 +5,18 @@
 **前置条件：**
 
 ```bash
-# 1. 安装 Ollama 并拉取模型（普通 Mac 即可，约 2.5GB）
-ollama pull qwen3.5:4b
+# 1. 一键安装 LocalAgent（全局 la 命令）
+pipx install "git+https://github.com/hezhenghui7338/localagent.git"
+# 或源码开发：pip install -e ".[dev]"
 
-# 2. 安装 LocalAgent（完整版，含向量检索）
-pip install -e ".[full,dev]"
+# 2. 首次 la / la setup 会询问是否安装 Ollama 并拉取 qwen3.5:4b（可答 n 跳过）
+la setup
+# 或无需确认：la setup -y
 
-# 3. 使用纯本地配置（可选，见 examples/env.local-only.example）
-cp examples/env.local-only.example .env
+# 3. 使用纯本地配置（可选）
+# 普通安装：编辑 ~/.localagent/.env 或：
+#   la config --provider ollama --base_url "http://localhost:11434" --model qwen3.5:4b
+# 源码开发：cp examples/env.local-only.example .env
 ```
 
 ---
@@ -139,7 +143,7 @@ LA chat --provider ollama
 **方式 B：深度研究**
 
 ```text
-你> :deepsearch 2026年7月 大模型开源动态
+你> /deepsearch 2026年7月 大模型开源动态
 助手> [多轮搜索 + 本地模型归纳，输出结构化报告]
 ```
 
@@ -261,7 +265,7 @@ LA audit --since 7d --report examples/my-audit.md
 
 ```bash
 export LA_DATA_DIR=/tmp/la-demo
-pip install -e ".[full,dev]" -q
+pip install -e ".[dev]" -q
 
 LA add "2026年7月决定为 LocalAgent 补充 examples 目录"
 LA search "examples"

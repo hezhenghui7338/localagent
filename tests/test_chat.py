@@ -136,14 +136,32 @@ def test_chat_deepsearch_persisted(monkeypatch):
         lambda _session_id: None,
     )
 
-    with patch("localagent.chat_repl.deep_search", return_value="深度研究报告"):
+    with patch("localagent.tools.deep_search", return_value="深度研究报告"):
         ChatREPL(session_id="s-deep").run()
 
     messages = load_conversation("s-deep")
     assert len(messages) == 2
-    assert ":deepsearch" in messages[0]["content"]
+    assert "deepsearch" in messages[0]["content"]
     assert messages[1].get("tool") == "deepsearch"
     assert "深度研究报告" in messages[1]["content"]
+
+
+def test_chat_slash_help_and_quit(monkeypatch, capsys):
+    inputs = iter(["/help", "/q"])
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr(
+        "localagent.chat_repl.schedule_session_memory_extract",
+        lambda _session_id: None,
+    )
+
+    with patch("localagent.chat_repl.run_agent_turn") as mock_turn:
+        ChatREPL(session_id="s-help-quit").run()
+
+    mock_turn.assert_not_called()
+    out = capsys.readouterr().out
+    assert "/provider" in out
+    assert "/model" in out
+    assert "add" in out
 
 
 def test_chat_provider_switch_passes_to_agent(monkeypatch):

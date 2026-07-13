@@ -1,0 +1,52 @@
+# =============================================================================
+# 模型服务配置 — 复制为 model_servers.yaml 后编辑
+# cp config/model_servers.yaml.example config/model_servers.yaml
+# =============================================================================
+#
+# 列表顺序 = auto 模式默认优先级（可用 .env 中 LA_MODEL_PROVIDER_PRIORITY 覆盖）
+#
+# 通用字段（OpenAI 兼容 API）:
+#   provider   唯一标识，小写字母/数字/下划线/连字符
+#   base_url   API 根路径，如 https://aiping.cn/api/v1
+#   api_key    API Key（含敏感信息，勿提交 Git）
+#   model      模型名称
+#   timeout    请求超时秒数，默认 120
+#
+# ollama 专用: think, num_predict, num_ctx, keep_alive, chat_timeout, chat_stream
+# cursor 专用: cwd, max_retries
+
+- provider: ollama
+  base_url: http://localhost:11434
+  model: qwen3.5:4b
+  timeout: 90
+  think: false
+  # 512 对工具后综合回答偏紧，易截成「根据」；本地小模型建议 ≥2048
+  num_predict: 2048
+  num_ctx: 8192
+  keep_alive: 30m
+  chat_timeout: 12
+  chat_stream: true
+
+# - provider: aiping
+#   base_url: https://aiping.cn/api/v1
+#   api_key: ""
+#   model: GLM-5.2
+#   timeout: 30
+
+- provider: minimax
+  base_url: https://api.minimax.io/v1
+  api_key: ""
+  model: MiniMax-M3
+  timeout: 120
+
+- provider: openrouter
+  base_url: https://openrouter.ai/api/v1
+  api_key: ""
+  model: anthropic/claude-sonnet-4
+  timeout: 120
+
+- provider: cursor
+  api_key: ""
+  model: composer-2.5
+  timeout: 120
+  max_retries: 2

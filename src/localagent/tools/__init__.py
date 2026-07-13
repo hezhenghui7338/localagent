@@ -335,7 +335,7 @@ def reflect_memory(query: str) -> str:
             )
         return (
             "推理召回需要 Hindsight 引擎。"
-            "请使用 Python 3.11+ 并安装: pip install -e \".[hindsight]\""
+            "请使用 Python 3.11+ 并安装: pip install 'la-localagent[hindsight]'"
         )
 
     return "未能从记忆中推理出答案。"

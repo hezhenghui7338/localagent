@@ -23,10 +23,8 @@ LocalAgent (`LA`) is not another chat client. It is a **proactive personal AI th
 5. **Actually usable** — web search + local Shell, connecting **your machine · your profile · the internet**
 
 ```bash
-ollama pull qwen3.5:4b          # ~2.5GB, runs on a regular Mac
-pip install -e ".[full]"
-cp examples/env.local-only.example .env
-LA chat --provider ollama       # fully local — data never leaves your machine
+pipx install "git+https://github.com/hezhenghui7338/localagent.git"
+la                              # asks before installing Ollama (you can skip)
 ```
 
 | Typical local chat | LocalAgent |
@@ -54,33 +52,61 @@ Optional OpenRouter / Cursor / Tavily for extras — **identity and data stay on
 
 - Python 3.10+ (Hindsight memory engine needs 3.11+)
 - [Ollama](https://ollama.com/) + `qwen3.5:4b` (recommended; also the project default)
+- Optional: [pipx](https://pipx.pypa.io/) (recommended for a global `la` command)
 
 ## Quick start
+
+### One-command install (recommended)
+
+```bash
+# Install CLI (first chat asks before installing Ollama; you can skip)
+pipx install "git+https://github.com/hezhenghui7338/localagent.git"
+
+# Or with pip into the current environment
+pip install "git+https://github.com/hezhenghui7338/localagent.git"
+
+# Optional: Hindsight long-term memory (Python 3.11+)
+pipx inject la-localagent 'la-localagent[hindsight]'
+# or: pip install 'la-localagent[hindsight]'
+```
+
+Then from **any directory**:
+
+```bash
+la                 # same as: la chat; prompts if Ollama is missing
+la setup           # guided install/pull (answer n to skip)
+la setup -y        # install + pull qwen3.5:4b without prompting
+la chat --provider ollama
+```
+
+First run creates `~/.localagent/` (config, `.env`, data). Set API keys:
+
+```bash
+# Minimal flags
+la config --provider ollama --base_url "http://localhost:11434" --model qwen3.5:4b --TAVILY_API_KEY "tvly-..."
+
+# Or copy the example JSON, edit, then load
+la config-example > my.json
+la config my.json
+
+# Inspect current config
+la config list
+```
+
+> After the package is published to PyPI: `pipx install la-localagent`
+
+### Develop from source
 
 ```bash
 git clone git@github.com:hezhenghui7338/localagent.git
 cd LocalAgent
 python3 -m venv .venv && source .venv/bin/activate
-
-# Base install (BM25 + core CLI)
 pip install -e ".[dev]"
-
-# Full install (LangGraph + Chroma vector retrieval)
-pip install -e ".[full,dev]"
-
-# Recommended: Hindsight memory engine (Python 3.11+ — long-term memory that knows you)
+# Optional Hindsight (Python 3.11+)
 pip install -e ".[hindsight]"
 ```
 
-Copy the env template and fill in your API keys:
-
-```bash
-cp .env.example .env
-# Edit .env — configure at least one model provider; optionally Ollama / OpenRouter / Cursor / Tavily (web search)
-```
-
-First run creates runtime dirs under `data/`. You can copy `data/core_profile.example.json` to `data/core_profile.json` as a core profile template.
-
+In a source checkout, config/data stay in the repo (`.env`, `data/`). After a normal install they live under `~/.localagent/`.
 ## Feature highlights
 
 ### Fully local
@@ -158,7 +184,7 @@ The repo includes a full walkthrough covering the core scenarios:
 | --- | --- | --- |
 | 1 | Write & recall a single memory | `LA add` → `LA search` |
 | 2 | Import & recall a Markdown file | `LA add-file` → `LA search --knowledge` |
-| 3 | Search recent news online | `LA chat` or `:deepsearch` (needs Tavily) |
+| 3 | Search recent news online | `LA chat` or `/deepsearch` (needs Tavily) |
 | 4 | **Fully local** qwen3.5:4b | `LA chat --provider ollama` |
 | 5 | Answer about local work | `LA workspace` / `LA chat --cwd .` |
 | 6 | **Proactive awareness** | `LA chat` → “help me edit a file” → clarify → execute |
@@ -172,11 +198,12 @@ open examples/walkthrough.md
 
 ### Hindsight long-term memory — remembers you end-to-end
 
-Memory inputs include **ChatGPT history, personal documents, and live chats**. The Warm layer is powered by the [Hindsight](https://github.com/hindsight/hindsight) engine (`pip install -e ".[hindsight]"`, Python 3.11+): **Retain → 4-way Recall → Reflect → Consolidation**. The repo includes an “architecture decision evolution” narrative demo covering write, semantic recall, time awareness, tag browsing, and cross-memory reasoning:
+Memory inputs include **ChatGPT history, personal documents, and live chats**. The Warm layer is powered by the [Hindsight](https://github.com/hindsight/hindsight) engine (`pip install 'la-localagent[hindsight]'`, Python 3.11+): **Retain → 4-way Recall → Reflect → Consolidation**. The repo includes an “architecture decision evolution” narrative demo covering write, semantic recall, time awareness, tag browsing, and cross-memory reasoning:
 
 ```bash
 # Install Hindsight (Python 3.11+)
-pip install -e ".[full,hindsight]"
+pip install 'la-localagent[hindsight]'
+# From a source checkout: pip install -e ".[hindsight]"
 
 # One-shot demo (isolated under /tmp — does not touch data/)
 bash examples/hindsight-demo.sh
@@ -216,7 +243,7 @@ After that, `LA add` + Tab suggests `add` / `add-file` and other subcommands.
 
 - Default model is `qwen3.5:4b`; if missing, LA tries to match an installed tag with the same name
 - Qwen3 often emits many thinking tokens; LocalAgent defaults `OLLAMA_THINK=0` to disable thinking mode
-- When local Ollama is slow, `auto` falls back to OpenRouter within ~12s; or switch manually in chat with `:provider openrouter`
+- When local Ollama is slow, `auto` falls back to OpenRouter within ~12s; or switch manually in chat with `/provider openrouter`
 
 ## Configuration
 
@@ -279,7 +306,7 @@ commands:
 Use LA <command> -h for full help on a command.
 ```
 
-In `LA chat` REPL you can also use `:provider` (switch model), `:deepsearch <topic>` (deep research), `:q` (quit).
+In `LA` / `LA chat` REPL, prefix any CLI command with `/` (Claude Code style; `:` is a legacy alias). Examples: `/help`, `/add "…"`, `/search …`, `/provider ollama`, `/model qwen3.5:4b`, `/deepsearch <topic>`, `/q`. Outer `LA <command>` and in-session `/<command>` are equivalent (`/chat` is rejected inside the session).
 
 ## Data directory
 

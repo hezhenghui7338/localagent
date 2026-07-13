@@ -22,7 +22,7 @@
 python3.11 -m venv .venv311 && source .venv311/bin/activate
 
 # 完整安装 + Hindsight
-pip install -e ".[full,hindsight,dev]"
+pip install -e ".[hindsight,dev]"
 
 # 本地 Ollama（对话与 reflect 推理）
 ollama pull qwen3.5:4b
