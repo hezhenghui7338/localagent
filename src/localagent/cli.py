@@ -696,14 +696,17 @@ def build_parser() -> argparse.ArgumentParser:
         prog="LA",
         description="LocalAgent — 本地 AI 个人助手",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="使用 LA <command> -h 查看某个命令的完整说明。",
+        epilog=(
+            "直接运行 LA（无子命令）等价于 LA chat，进入对话模式。\n"
+            "使用 LA <command> -h 查看某个命令的完整说明。"
+        ),
     )
     sub = parser.add_subparsers(
         dest="cmd",
-        required=True,
+        required=False,
         metavar="<command>",
         title="命令",
-        description="主要参数与选项（括号内为可选）：",
+        description="主要参数与选项（括号内为可选）；省略时默认 chat：",
     )
 
     p_chat = sub.add_parser(
@@ -1005,6 +1008,10 @@ def main(argv: list[str] | None = None) -> int:
     if complete_rc is not None:
         return complete_rc
 
+    # LA ≡ LA chat：无子命令时进入对话模式
+    if not argv:
+        argv = ["chat"]
+
     from localagent import env_config
 
     env_config.ensure_config()
@@ -1012,6 +1019,9 @@ def main(argv: list[str] | None = None) -> int:
     get_task_store().reconcile_stale()
     parser = build_parser()
     args = parser.parse_args(argv)
+    if not getattr(args, "cmd", None):
+        argv = ["chat"]
+        args = parser.parse_args(argv)
     try:
         return args.func(args)
     except KeyboardInterrupt:

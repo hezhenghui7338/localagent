@@ -32,6 +32,27 @@ def test_chat_shows_response_provider(capsys, monkeypatch):
     assert "[via openrouter/anthropic/claude-sonnet-4]" in output
 
 
+def test_chat_shows_error_for_empty_response(capsys, monkeypatch):
+    inputs = iter(["你好", ":q"])
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr(
+        "localagent.chat_repl.schedule_session_memory_extract",
+        lambda _session_id: None,
+    )
+
+    with patch("localagent.chat_repl.run_agent_turn") as mock_turn:
+        mock_turn.return_value = AgentResult(response="   ")
+        with patch("localagent.chat_repl.get_model_router") as mock_get_router:
+            router = mock_get_router.return_value
+            router.format_last_source.return_value = "ollama/qwen3.5:4b"
+            router._ollama_slow = False
+            ChatREPL(session_id="s-empty-resp").run()
+
+    output = capsys.readouterr().out
+    assert "模型返回了空内容" in output
+    assert "[via ollama/qwen3.5:4b]" in output
+
+
 def test_chat_persists_conversation_to_jsonl(monkeypatch):
     """PRD §4: chat 对话持久化到 data/conversations/*.jsonl."""
     inputs = iter(["你好", ":q"])
