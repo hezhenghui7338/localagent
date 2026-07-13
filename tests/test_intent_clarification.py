@@ -18,6 +18,12 @@ def test_should_skip_for_greeting():
     assert should_skip_intent_assessment("你好") is True
 
 
+def test_should_skip_for_clear_line_count():
+    assert should_skip_intent_assessment("统计当前项目的代码行数") is True
+    assert should_skip_intent_assessment("当前项目,localagent,给我提供详细的代码行数") is True
+    assert should_skip_intent_assessment("帮我改一下") is False
+
+
 def test_should_skip_for_specific_path():
     assert should_skip_intent_assessment("请分析 src/localagent/agent/runtime.py") is True
 
@@ -31,6 +37,12 @@ def test_should_skip_for_session_recall():
     assert should_skip_intent_assessment("我们刚才聊了什么") is True
     assert should_skip_intent_assessment("总结一下今天的对话") is True
     assert should_skip_intent_assessment("今天的聊天记录") is True
+
+
+def test_should_skip_for_personal_memory_queries():
+    assert should_skip_intent_assessment("你知道我住在哪里吗?") is True
+    assert should_skip_intent_assessment("记录一下:我居住在深圳") is True
+    assert should_skip_intent_assessment("我是谁") is True
 
 
 def test_is_session_recall_query():

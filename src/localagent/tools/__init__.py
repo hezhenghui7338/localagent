@@ -148,6 +148,25 @@ def query_memories_tool(
     return f"{header}\n\n{body}"
 
 
+def retain_memory(content: str, *, source: str = "chat_explicit") -> str:
+    """Immediately retain a user-stated fact into long-term memory."""
+    text = content.strip()
+    if not text:
+        return "未提供可记住的内容。"
+
+    from localagent.memory.save import save_facts
+    from localagent.memory.value_filter import filter_facts
+
+    facts = filter_facts([text])
+    if not facts:
+        # Explicit "记住/记录一下" should still persist short personal facts.
+        facts = [text]
+    ids = save_facts(facts, metadata={"source": source, "type": "fact"})
+    if not ids:
+        return "记忆写入失败，请稍后重试。"
+    return f"已记住并写入长期记忆：{facts[0]}"
+
+
 def search_memory(
     query: str,
     *,
@@ -217,16 +236,20 @@ def derive_search_params(query: str) -> dict[str, Any]:
     news_markers = ("新闻", "时事", "头条", "热点", "快讯", "news", "breaking")
     recent_markers = ("最近", "最新", "今日", "今天", "昨天", "本周", "近期", "当下", "现在", "latest", "recent")
     today_markers = ("今天", "今日", "today", "刚刚")
+    time_markers = ("几点", "当前时间", "现在时间", "今天几号", "今天日期", "what time", "current time")
 
     is_news = any(marker in query or marker in q for marker in news_markers)
     is_recent = any(marker in query or marker in q for marker in recent_markers)
     is_today = any(marker in query or marker in q for marker in today_markers)
+    is_time = any(marker in query or marker in q for marker in time_markers)
 
     if is_news:
         opts["topic"] = "news"
         opts["days"] = 1 if is_today else 7
+    elif is_time or is_today:
+        opts["time_range"] = "day"
     elif is_recent:
-        opts["time_range"] = "day" if is_today else "week"
+        opts["time_range"] = "week"
     return opts
 
 
@@ -347,6 +370,14 @@ def write_file(
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
+        "name": "retain_memory",
+        "description": (
+            "将用户明确要求记住的事实立即写入长期记忆；"
+            "用于「记住/记录一下/记下」等指令，写入后可跨会话召回"
+        ),
+        "parameters": {"content": "要记住的事实内容"},
+    },
+    {
         "name": "search_memory",
         "description": "搜索用户长期记忆；未命中时自动回退到知识库 RAG 与文档原文",
         "parameters": {"query": "搜索关键词"},
@@ -417,6 +448,15 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 
 
 def execute_tool(name: str, arguments: dict[str, Any]) -> str:
+    if name == "retain_memory":
+        content = str(
+            arguments.get("content")
+            or arguments.get("fact")
+            or arguments.get("text")
+            or arguments.get("query")
+            or ""
+        )
+        return retain_memory(content)
     if name == "search_memory":
         return search_memory(arguments.get("query", ""))
     if name == "search_knowledge":

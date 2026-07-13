@@ -423,7 +423,7 @@ class ModelRouter:
                         if not line:
                             continue
                         data = json.loads(line)
-                        chunk = data.get("message", {}).get("content", "")
+                        chunk = data.get("message", {}).get("content") or ""
                         if chunk:
                             parts.append(chunk)
                             on_token(chunk)
@@ -443,7 +443,8 @@ class ModelRouter:
             "prompt_tokens": int(data.get("prompt_eval_count", 0)),
             "completion_tokens": int(data.get("eval_count", 0)),
         }
-        return data["message"]["content"], usage
+        # Qwen3+ may return content=null; never propagate None into the agent loop.
+        return data.get("message", {}).get("content") or "", usage
 
     def _raise_ollama_model_error(self, resp: httpx.Response, model: str) -> None:
         if resp.status_code != 404:
@@ -499,7 +500,8 @@ class ModelRouter:
             "prompt_tokens": int(usage_raw.get("prompt_tokens", 0)),
             "completion_tokens": int(usage_raw.get("completion_tokens", 0)),
         }
-        return data["choices"][0]["message"]["content"], usage
+        message = data["choices"][0]["message"]
+        return message.get("content") or "", usage
 
     def _chat_cursor(self, server: ModelServer, messages: list[ChatMessage], *, temperature: float) -> str:
         del temperature  # Cursor SDK selects model behavior server-side.

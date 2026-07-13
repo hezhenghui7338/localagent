@@ -29,8 +29,8 @@ class ModelServer:
     timeout: float = 120.0
     # ollama
     think: bool = False
-    num_predict: int = 512
-    num_ctx: int = 4096
+    num_predict: int = 2048
+    num_ctx: int = 8192
     keep_alive: str = "30m"
     chat_timeout: float = 12.0
     chat_stream: bool = True
@@ -69,6 +69,10 @@ class ModelServer:
             if item.name == "timeout" and value == 120.0:
                 continue
             if item.name == "max_retries" and value == 2:
+                continue
+            if item.name == "num_predict" and value == 2048:
+                continue
+            if item.name == "num_ctx" and value == 8192:
                 continue
             if item.name == "num_predict" and value == 512:
                 continue
@@ -278,8 +282,8 @@ def build_legacy_model_servers(project_root: str | None = None) -> list[ModelSer
             model=_env_str("OLLAMA_MODEL", "qwen3.5:4b"),
             timeout=_env_float("OLLAMA_TIMEOUT", "90"),
             think=_env_bool("OLLAMA_THINK", "0"),
-            num_predict=_env_int("OLLAMA_NUM_PREDICT", "512"),
-            num_ctx=_env_int("OLLAMA_NUM_CTX", "4096"),
+            num_predict=_env_int("OLLAMA_NUM_PREDICT", "2048"),
+            num_ctx=_env_int("OLLAMA_NUM_CTX", "8192"),
             keep_alive=_env_str("OLLAMA_KEEP_ALIVE", "30m"),
             chat_timeout=_env_float("LA_OLLAMA_CHAT_TIMEOUT", "12"),
             chat_stream=_env_bool("OLLAMA_CHAT_STREAM", "1"),
