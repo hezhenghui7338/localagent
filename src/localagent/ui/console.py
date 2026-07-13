@@ -19,6 +19,28 @@ def prepare_for_input() -> None:
         sys.stdout.flush()
 
 
+def _uses_libedit() -> bool:
+    try:
+        import readline
+    except ImportError:
+        return False
+    doc = getattr(readline, "__doc__", "") or ""
+    return "libedit" in doc
+
+
+def read_repl_line(prompt: str = "> ") -> str:
+    """Read a REPL line; keep prompt out of libedit's redraw buffer on macOS.
+
+    Passing the prompt into ``input()`` lets libedit re-paint it after Tab
+    completion lists, which can leave undeletable ghost characters (e.g. ``>``).
+    """
+    if sys.stdin.isatty() and _uses_libedit():
+        sys.stdout.write(prompt)
+        sys.stdout.flush()
+        return input()
+    return input(prompt)
+
+
 class ActivityIndicator:
     """Status lines for long operations; always newline-based (no \\r overlays)."""
 

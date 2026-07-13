@@ -8,7 +8,11 @@ from typing import Any, Literal
 from localagent import config
 from localagent.memory.core_profile import load_core_profile
 from localagent.memory.backend import get_memory_backend
-from localagent.memory.scoped_recall import _semantic_score, _temporal_score
+from localagent.memory.scoped_recall import (
+    _intent_temporal_score,
+    _semantic_score,
+    _storage_time,
+)
 from localagent.memory.store import MemoryFact, get_memory_store
 from localagent.memory.temporal import memory_effective_time
 from localagent.memory.temporal_intent import parse_temporal_intent
@@ -160,8 +164,25 @@ def query_memories(
                 metadata=fact_like.metadata,
                 created_at=fact_like.created_at,
             )
-            temp = _temporal_score(effective_at, intent.anchor_date if intent else None)
-            blended = config.SEMANTIC_WEIGHT * sem + (1 - config.SEMANTIC_WEIGHT) * temp
+            storage_at = _storage_time(
+                metadata=fact_like.metadata,
+                created_at=fact_like.created_at,
+            )
+            temp = (
+                _intent_temporal_score(
+                    effective_at=effective_at,
+                    storage_at=storage_at,
+                    intent=intent,
+                )
+                if intent
+                else 0.5
+            )
+            sem_weight = (
+                min(float(config.SEMANTIC_WEIGHT), 0.60)
+                if intent and intent.raises_temporal_weight
+                else float(config.SEMANTIC_WEIGHT)
+            )
+            blended = sem_weight * sem + (1 - sem_weight) * temp
             hit = dict(hit)
             hit["score"] = blended
             hit["semantic_score"] = sem

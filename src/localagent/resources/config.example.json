@@ -4,6 +4,8 @@
   "model": "qwen3.5:4b",
   "api_key": "",
   "TAVILY_API_KEY": "",
+  "LA_WEB_SEARCH_PROVIDER": "auto",
+  "LA_SEARXNG_URL": "",
   "OPENROUTER_API_KEY": "",
   "CURSOR_API_KEY": "",
   "MINIMAX_API_KEY": ""

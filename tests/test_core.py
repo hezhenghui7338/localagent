@@ -32,6 +32,7 @@ def test_should_retain_as_memory():
 
 def test_temporal_intent_month():
     intent = parse_temporal_intent("2026年5月 做了什么决定？")
+    assert intent.intent_kind == "range"
     assert intent.anchor_date == "2026-05-15"
     assert intent.scope_start == "2026-05-01"
     assert intent.scope_end == "2026-05-31"
@@ -39,6 +40,7 @@ def test_temporal_intent_month():
 
 def test_temporal_intent_year():
     intent = parse_temporal_intent("2024年我在做什么项目？")
+    assert intent.intent_kind == "range"
     assert intent.anchor_date is not None
     assert "2024" in intent.anchor_date
 
@@ -52,7 +54,7 @@ def test_rrf_fusion():
 
 
 def test_scoped_recall_finds_added_memory():
-    main(["add", "2026年7月决定使用 Hindsight 作为记忆引擎"])
+    main(["memory", "add", "2026年7月决定使用 Hindsight 作为记忆引擎"])
     hits = scoped_recall("Hindsight 记忆引擎", max_results=3)
     assert hits
     assert any("Hindsight" in h["text"] for h in hits)
@@ -60,7 +62,7 @@ def test_scoped_recall_finds_added_memory():
 
 def test_scoped_recall_matches_chinese_preference_query():
     poem = "我喜欢这首诗:才行积雪上,又踏熏风花草路"
-    main(["add", poem])
+    main(["memory", "add", poem])
     hits = scoped_recall("我喜欢什么诗歌?", max_results=5)
     assert hits
     assert any(poem in h["text"] for h in hits)

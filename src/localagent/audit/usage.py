@@ -18,6 +18,8 @@ _DEFAULT_COST_PER_M = {
     "openrouter": float(os.getenv("LA_COST_OPENROUTER_PER_M", "3.0")),
     "cursor": float(os.getenv("LA_COST_CURSOR_PER_CALL", "0.05")),
     "tavily": float(os.getenv("LA_COST_TAVILY_PER_CALL", "0.01")),
+    "ddgs": 0.0,
+    "searxng": 0.0,
 }
 
 

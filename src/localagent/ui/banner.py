@@ -31,12 +31,29 @@ _WHITE = f"{_CSI}97m"
 class WelcomeInfo:
     version: str
     provider_line: str
+    web_search_line: str
     cwd_display: str
     session_id: str
     memory_count: int
     kb_count: int
     git_line: str
     tagline: str = "Your AI. Your Data. Your Mac."
+
+
+_WEB_SEARCH_LABELS = {
+    "tavily": "Tavily",
+    "ddgs": "ddgs（免费）",
+    "searxng": "SearXNG",
+}
+
+
+def format_web_search_hint() -> str:
+    """Human-readable web backend for the welcome banner (resolved from config)."""
+    from localagent.tools.web_search import resolve_web_search_provider
+
+    provider = resolve_web_search_provider()
+    label = _WEB_SEARCH_LABELS.get(provider, provider)
+    return f"联网 · {label}"
 
 
 def _use_color() -> bool:
@@ -182,6 +199,7 @@ def collect_welcome_info(
     return WelcomeInfo(
         version=__version__,
         provider_line=provider_line,
+        web_search_line=format_web_search_hint(),
         cwd_display=_home_display(workspace),
         session_id=session_id,
         memory_count=_memory_count(),
@@ -246,6 +264,7 @@ def render_welcome(info: WelcomeInfo, *, width: int | None = None, color: bool |
         _center(_c(info.tagline, _DIM, enabled=use_color)),
         "",
         _center(_c(_truncate(info.provider_line, inner), _CYAN, enabled=use_color)),
+        _center(_c(_truncate(info.web_search_line, inner), _DIM, enabled=use_color)),
         _center(_c(_truncate(info.cwd_display, inner), _DIM, enabled=use_color)),
     ]
 

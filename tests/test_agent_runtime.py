@@ -14,6 +14,7 @@ from localagent.agent.runtime import (
     _prefetch_session_context,
     _prefetch_web_context,
     _strip_tool_blocks,
+    _tool_followup_instruction,
     _truncate_for_llm,
     run_agent_turn,
 )
@@ -307,6 +308,44 @@ def test_prefetch_web_skips_session_recall_question():
     search.assert_not_called()
 
 
+def test_prefetch_web_stale_results_allow_research():
+    stale = (
+        "【检索基准日】2026年7月14日\n"
+        "【核对失败】没有与检索基准日相符的结果。\n"
+        "过期结果（仅供排查，不可当作当前事实）:\n"
+        "- [过期·2026-03-15] 深圳天气: 大雨"
+    )
+    with patch("localagent.tools.web_search", return_value=stale):
+        ctx = _prefetch_web_context("深圳今天天气怎么样")
+    assert "时效核对未通过" in ctx
+    assert "可再调用 web_search" in ctx
+    assert "勿再调用 web_search" not in ctx
+
+
+def test_tool_followup_allows_research_on_freshness_failure():
+    result = "【核对失败】没有与检索基准日相符的结果。"
+    text = _tool_followup_instruction("web_search", result)
+    assert "可再调用一次 web_search" in text
+    assert "禁止把过期结果当作今日事实" in text
+
+
+def test_tool_followup_checks_basics_on_ok_search():
+    text = _tool_followup_instruction("web_search", "摘要: 今日多云\n- [匹配] 深圳天气")
+    assert "时间/地点" in text
+    assert "不要再次调用工具" in text
+    assert "完整链接" in text
+
+
+def test_prefetch_web_requires_source_citation():
+    with patch(
+        "localagent.tools.web_search",
+        return_value="摘要: 今日多云\n链接: https://example.com/wx\n【引用要求】须标注来源",
+    ):
+        ctx = _prefetch_web_context("北京今天天气怎么样")
+    assert "标题与完整链接" in ctx
+    assert "勿再调用 web_search" in ctx
+
+
 def test_prefetch_session_context_loads_today_messages(isolated_data):
     from localagent.persist.conversations import append_message
 
@@ -350,6 +389,8 @@ def test_build_system_prompt_includes_prefetched_context():
     assert "姓名: 测试" in prompt
     assert "摘要: 新闻" in prompt
     assert "search_memory" in prompt
+    assert "证据核对" in prompt
+    assert "今天是" in prompt
 
 
 def test_run_agent_turn_prefetches_without_tool_round(isolated_data, monkeypatch):

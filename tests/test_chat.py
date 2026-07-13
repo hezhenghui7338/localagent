@@ -233,7 +233,7 @@ def test_chat_clarification_flow_before_agent(monkeypatch):
     )
 
     assessment = IntentAssessment(
-        needs_clarification=True,
+        mode="clarify",
         questions=["你想修改哪个文件？", "是要重构还是修 bug？"],
     )
     with patch("localagent.chat_repl.assess_intent", return_value=assessment):

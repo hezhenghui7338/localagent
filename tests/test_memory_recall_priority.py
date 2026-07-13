@@ -131,3 +131,36 @@ def test_retain_memory_tool(isolated_data):
     assert "已记住" in msg
     hits = scoped_recall("我喜欢喝什么", max_results=3)
     assert any("美式咖啡" in h["text"] for h in hits)
+
+
+def test_expand_recall_queries_strips_wh_words():
+    from localagent.memory.scoped_recall import expand_recall_queries
+
+    variants = expand_recall_queries("What did Caroline research?")
+    assert variants[0] == "What did Caroline research?"
+    assert any("research" in v.lower() and "what" not in v.lower().split() for v in variants)
+
+
+def test_extract_occurred_at_english_locomo_date():
+    from localagent.memory.temporal import extract_occurred_at, memory_effective_time
+
+    assert extract_occurred_at("1:56 pm on 8 May, 2023") == "2023-05-08"
+    assert extract_occurred_at("May 8, 2023") == "2023-05-08"
+    effective = memory_effective_time(
+        metadata={"date_time": "7:55 pm on 9 June, 2023"},
+        created_at="2099-01-01T00:00:00",
+    )
+    assert effective.startswith("2023-06-09")
+
+
+def test_rrf_fuse_hits_prefers_overlap():
+    from localagent.memory.scoped_recall import rrf_fuse_hits
+
+    fused = rrf_fuse_hits(
+        [
+            [{"id": "a", "text": "A", "score": 0.9}, {"id": "b", "text": "B", "score": 0.8}],
+            [{"id": "b", "text": "B", "score": 0.7}, {"id": "c", "text": "C", "score": 0.6}],
+        ]
+    )
+    assert fused[0]["id"] == "b"
+    assert fused[0]["rrf_score"] > fused[1]["rrf_score"]

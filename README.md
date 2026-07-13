@@ -17,7 +17,7 @@
 LocalAgent (`LA`) is not another chat client. It is a **proactive personal AI that runs on your machine**. Core narrative:
 
 1. **Fully local** — default Ollama `qwen3.5:4b`; chat, memory, retrieval, and execution all run on-device; identity and data never leave your machine  
-2. **Proactive awareness** — when intent is vague, it asks 1–2 key clarifying questions before acting, instead of guessing wrong and breaking things  
+2. **Proactive awareness** — interrupt sparingly: act when clear, assume+state when mild ambiguity is reversible, ask one question only when a wrong guess is costly  
 3. **Long-term, multi-layer memory** — Hot / Warm / Cold layers; an assistant that actually knows you across sessions  
 4. **Where memory comes from** — **ChatGPT history**, personal documents, and live chats all ingest into one pipeline, powered by the **Mem0** memory engine  
 5. **Actually usable** — web search + local Shell, connecting **your machine · your profile · the internet**
@@ -41,10 +41,11 @@ Optional OpenRouter / Cursor / Tavily for extras — **identity and data stay on
 ## Features
 
 - **Fully local**: default `qwen3.5:4b` — chat, memory write, retrieval, workspace awareness, and Shell execution all run on-device; optional cloud models, data still owned locally
-- **Proactive awareness**: vague requests get 1–2 clarifying questions first; file writes also have hallucination detection
+- **Proactive awareness**: three-way gate (act / assume / clarify); file writes also have hallucination detection
 - **Long-term multi-layer memory**: Hot (core profile) / Warm (long-term) / Cold (document source) with JIT recall — an assistant that knows you
 - **Mem0 + multi-source ingest**: ChatGPT history, personal docs, and live chats → one pipeline; powered by the **Mem0** memory engine
-- **Machine · profile · internet**: workspace awareness + `run_shell` + Tavily web search — three layers that make it actually usable
+- **Machine · profile · internet**: workspace awareness + `run_shell` + web search (ddgs by default; optional Tavily / SearXNG) — three layers that make it actually usable
+- **Approve before execute**: `run_shell` / `write_file` require your confirmation by default; dangerous commands get an extra warning
 - **Document knowledge base**: symlink personal files in; Chroma + BM25 hybrid search
 - **Multi-model chat**: unified Ollama / OpenRouter / Cursor entry; `auto` mode falls back by priority
 - **Auditable**: token usage, cost estimates, sensitive-file scan — exportable Markdown reports
@@ -167,13 +168,13 @@ LocalAgent’s core path — **chat, memory write, memory recall, document retri
 | Capability | Needs cloud API? | Notes |
 | --- | --- | --- |
 | Chat `LA chat` | No | Default `qwen3.5:4b`, runs on a regular Mac |
-| Single memory `LA add` | No | Local model extracts title/tags |
-| File import `LA add-file` | No | Heuristic extraction by default; no LLM |
-| Memory/knowledge search `LA search` | No | BM25 + Chroma locally |
+| Single memory `LA memory add` | No | Local model extracts title/tags |
+| File import `LA memory add-file` | No | Heuristic extraction by default; no LLM |
+| Memory/knowledge search `LA memory search` | No | BM25 + Chroma locally |
 | Workspace `LA workspace` | No | Reads local Git / files / TODOs |
 | Agent commands `run_shell` | No | Local 4B model calls shell and summarizes |
 | Audit `LA audit` | No | Reads local usage.jsonl |
-| Web search | Yes (Tavily) | Only optional feature that needs an API key |
+| Web search | No (ddgs by default) | Works out of the box; optional Tavily / self-hosted SearXNG |
 
 ```bash
 # Fully local: regular Mac + Ollama, no paid API
@@ -182,9 +183,9 @@ ollama pull qwen3.5:4b
 LA chat --provider ollama
 ```
 
-### Proactive awareness — clarify vague intent first
+### Proactive awareness — interrupt sparingly
 
-A typical chat that hears “help me edit a file” often guesses a path and overwrites it. LocalAgent has **proactive awareness**: it runs a **light intent pre-check** first (local `qwen3.5:4b`, on by default). When references are unclear it **asks 1–2 concrete questions**, waits for your answers, then merges context and calls tools. File writes also have **hallucination detection**: if the model claims it “wrote” something without calling `write_file`, it retries or errors clearly instead of showing fabricated empty content.
+A typical chat that hears “help me edit a file” often guesses a path and overwrites it. LocalAgent has **proactive awareness**: a **light intent pre-check** (on by default) chooses among **act** / **assume** / **clarify**. It asks **one** concrete question only when a wrong guess is costly; mild ambiguity proceeds with stated assumptions. Personal preference recall (e.g. “what do I like to drink?”) goes straight to memory. File writes also have **hallucination detection**: if the model claims it “wrote” something without calling `write_file`, it retries or errors clearly instead of showing fabricated empty content.
 
 ```text
 > help me edit a file
@@ -221,21 +222,25 @@ A typical chat only tells you to run `find … | wc -l` yourself. LocalAgent’s
 [chat] connecting model (auto(ollama→openrouter→aiping→cursor))…
 [chat] generating…
 [chat] calling run_shell: find . -type f \( -name "*.py" -o -name …
+[chat] waiting for your approval…
+⚠ Agent wants to run a command. Confirm before it executes.
+Command: find . -type f \( -name "*.py" -o -name "*.js" \) …
+Allow? [y/N] y
 [chat] synthesizing tool results (round 2)…
 [chat] ✓ synthesizing tool results (round 2)… (20.4s)
 In the current project (`/Users/hzh/code/LocalAgent`), main language files (Python, JS, TS, Go, Java, C/C++, Rust, etc., excluding hidden dirs) total **13,961 lines**.
 [via ollama/qwen3.5:4b]
 ```
 
-Use cases: LOC counts, listing directories, Git logs, running tests/builds. Commands run in the workspace (`LA_WORKSPACE` or cwd); default timeout 30s.
+Use cases: LOC counts, listing directories, Git logs, running tests/builds. Commands run in the workspace (`LA_WORKSPACE` or cwd); default timeout 30s. **Every shell/file write asks for approval by default**; `rm` / `sudo` / force-git and similar get an extra warning. Set `LA_TOOL_APPROVAL=dangerous` to only gate risky ops, or `off` to disable (not recommended).
 
-The repo includes a full walkthrough covering the core scenarios:
+The repo includes a **product tour** (eight strengths, full I/O, ~30 min) and a shorter walkthrough:
 
 | # | Scenario | Command |
 | --- | --- | --- |
-| 1 | Write & recall a single memory | `LA add` → `LA search` |
-| 2 | Import & recall a Markdown file | `LA add-file` → `LA search --knowledge` |
-| 3 | Search recent news online | `LA chat` or `/deepsearch` (needs Tavily) |
+| 1 | Write & recall a single memory | `LA memory add` → `LA memory search` |
+| 2 | Import & recall a Markdown file | `LA memory add-file` → `LA memory search --knowledge` |
+| 3 | Search recent news online | `LA chat` or `/deepsearch` (no API key required by default) |
 | 4 | **Fully local** qwen3.5:4b | `LA chat --provider ollama` |
 | 5 | Answer about local work | `LA workspace` / `LA chat --cwd .` |
 | 6 | **Proactive awareness** | `LA chat` → “help me edit a file” → clarify → execute |
@@ -243,7 +248,9 @@ The repo includes a full walkthrough covering the core scenarios:
 | 8 | Audit report (Ollama $0) | `LA audit --since 7d` |
 
 ```bash
-# Follow the example walkthrough step by step
+# Full product tour (recommended): 8 strengths · complete input/output
+open examples/product-tour.md
+# Shorter walkthrough
 open examples/walkthrough.md
 ```
 
@@ -266,14 +273,15 @@ Demo highlights:
 
 | Step | Command | Shows |
 |------|---------|-------|
-| Write evolution chain | `LA add` × 4 | Retain + auto title/tags/event time |
-| Semantic recall | `LA search "memory engine choice"` | Mem0 semantic recall |
-| Time awareness | `LA search "May 2026 decision"` | Re-rank by event time |
-| Tag browse | `LA memories --tag decision` | Structured query |
-| Cross-memory reasoning | `LA reflect "how did the choice evolve?"` | Mem0 reflect |
+| Write evolution chain | `LA memory add` × 4 | Retain + auto title/tags/event time |
+| Semantic recall | `LA memory search "memory engine choice"` | Mem0 semantic recall |
+| Time awareness | `LA memory search "May 2026 decision"` | Re-rank by event time |
+| Tag browse | `LA memory query --tag decision` | Structured query |
+| Cross-memory reasoning | `LA memory reflect "how did the choice evolve?"` | Mem0 reflect |
 
 Example files:
 
+- [examples/product-tour.md](examples/product-tour.md) — **Product tour** (8 strengths · full I/O · ~30 min) · [中文](examples/product-tour.zh-CN.md)
 - [examples/walkthrough.md](examples/walkthrough.md) — **step-by-step tutorial** (local qwen3.5:4b first)
 - [examples/mem0-demo.md](examples/mem0-demo.md) — Mem0 deep dive (Retain / Recall / Reflect)
 - [benchmarks/locomo/README.md](benchmarks/locomo/README.md) — **LoCoMo long-term memory benchmark**
@@ -302,7 +310,7 @@ LA complete-init
 source ~/.zshrc
 ```
 
-After that, `LA add` + Tab suggests `add` / `add-file` and other subcommands.
+After that, `LA memory add` + Tab suggests `add` / `add-file` and other subcommands.
 
 ### Ollama tips
 
@@ -319,10 +327,13 @@ See [`.env.example`](.env.example). Common variables:
 | `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | Local Ollama URL and model |
 | `MINIMAX_API_KEY` / `MINIMAX_MODEL` | MiniMax direct (OpenAI-compatible API) |
 | `OPENROUTER_API_KEY` / `CURSOR_API_KEY` | Other cloud fallbacks |
-| `TAVILY_API_KEY` | Web search |
+| `TAVILY_API_KEY` | Optional; when set, `auto` prefers Tavily for web search |
+| `LA_WEB_SEARCH_PROVIDER` | Web backend: `auto` (default) / `ddgs` / `tavily` / `searxng` |
+| `LA_SEARXNG_URL` | Optional self-hosted SearXNG URL (e.g. `http://localhost:8080`) |
 | `LA_MODEL_PROVIDER_PRIORITY` | `auto` priority; default `ollama,minimax,openrouter,cursor` |
 | `LA_WORKSPACE` | Workspace root (Git / files / todos / shell context) |
 | `LA_SHELL_TIMEOUT` / `LA_SHELL_MAX_OUTPUT` | Agent `run_shell` timeout (s) and output cap (default 30s / 12000 chars) |
+| `LA_TOOL_APPROVAL` | Approve before tools run: `always` (default) / `dangerous` / `off` |
 | `LA_INTENT_CLARIFY` | Clarify intent before acting (default `1`; set `0` to disable) |
 | `LA_DATA_DIR` | Custom data dir (for test isolation) |
 
@@ -405,7 +416,7 @@ Narrative arc: **fully local** → **ask first** → **long-term multi-layer mem
     ┌─────────────┼─────────────┬──────────────┐
     ▼             ▼             ▼              ▼
   Hot          Warm           Cold         Web / Shell
-core_profile  Mem0     Chroma+BM25   Tavily / run_shell
+core_profile  Mem0     Chroma+BM25   web_search / run_shell
 (profile)     (long-term)   (docs)        (internet · machine)
 ```
 
@@ -434,6 +445,7 @@ pytest tests/e2e -m e2e_live
 - **Never commit** `.env` or runtime data under `data/`; both are gitignored
 - API keys live only in local `.env`
 - Memories and chat archives stay on-device by default — not uploaded
+- **Local execution gate**: `run_shell` / `write_file` require your confirmation by default (`LA_TOOL_APPROVAL=always`); dangerous commands get an extra warning. Extremely destructive commands (e.g. `rm -rf /`) are blocked outright. Non-interactive runs without an approval callback are denied
 - If a key was ever exposed elsewhere, rotate it on that platform immediately
 
 ## License

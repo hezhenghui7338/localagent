@@ -2,21 +2,11 @@
 
 from __future__ import annotations
 
-import re
 import subprocess
-from typing import Any
 
 from localagent import config
+from localagent.tools.approval import classify_shell_command
 from localagent.workspace.context import resolve_workspace
-
-_BLOCKED_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\brm\s+(-\w*f\w*\s+)?(-\w*r\w*\s+)?/\s*$", re.I), "禁止删除根目录"),
-    (re.compile(r"\brm\s+(-\w*f\w*\s+)?(-\w*r\w*\s+)?/\*", re.I), "禁止删除根目录"),
-    (re.compile(r"\bmkfs\.", re.I), "禁止格式化磁盘"),
-    (re.compile(r"\bdd\s+.*\bof=/dev/", re.I), "禁止直接写入块设备"),
-    (re.compile(r">\s*/dev/sd[a-z]", re.I), "禁止覆写磁盘设备"),
-    (re.compile(r":\(\)\s*\{.*:\|:.*\}.*;", re.I), "禁止 fork bomb"),
-]
 
 _DEFAULT_TIMEOUT = 30.0
 _DEFAULT_MAX_OUTPUT = 12_000
@@ -31,9 +21,9 @@ def _shell_max_output() -> int:
 
 
 def _check_blocked(command: str) -> str | None:
-    for pattern, reason in _BLOCKED_PATTERNS:
-        if pattern.search(command):
-            return reason
+    risk = classify_shell_command(command)
+    if risk.level == "blocked":
+        return risk.reason
     return None
 
 

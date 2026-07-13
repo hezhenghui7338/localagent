@@ -73,5 +73,5 @@ def collect_memory_health() -> MemoryHealth:
         pass
 
     if health.missing_kb_files:
-        health.notes.append("存在 kb/ 文件未索引，运行 LA sync-file")
+        health.notes.append("存在 kb/ 文件未索引，运行 LA memory ingest file")
     return health

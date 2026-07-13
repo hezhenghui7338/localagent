@@ -12,7 +12,7 @@ from localagent.knowledge.bm25_store import tokenize as bm25_tokenize
 from localagent.memory.core_profile import load_core_profile
 from localagent.memory.store import get_memory_store
 from localagent.memory.temporal import memory_effective_time
-from localagent.memory.temporal_intent import parse_temporal_intent
+from localagent.memory.temporal_intent import TemporalIntent, parse_temporal_intent
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]+")
 _TOKEN_RE = re.compile(r"[\u4e00-\u9fff]+|[A-Za-z0-9]+")
@@ -199,35 +199,99 @@ def _combine_lexical_scores(jaccard: float, bm25_norm: float) -> float:
     return max(jaccard, bm25_norm) * 0.65 + min(jaccard, bm25_norm) * 0.35
 
 
+def _parse_day(value: str) -> datetime | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        return parsed.replace(tzinfo=None)
+    except Exception:
+        pass
+    try:
+        return datetime.strptime(text[:10], "%Y-%m-%d")
+    except Exception:
+        return None
+
+
 def _recency_score(effective_at: str) -> float:
     """Higher score for more recently recorded memories (no explicit time intent)."""
     if not effective_at:
         return 0.5
-    try:
-        created = datetime.fromisoformat(effective_at.replace("Z", "+00:00"))
-        now = datetime.now(created.tzinfo) if created.tzinfo else datetime.now()
-        days = max(0.0, (now - created).total_seconds() / 86400.0)
-        half_life = max(config.RECENCY_HALFLIFE_DAYS, 1.0)
-        return math.pow(0.5, days / half_life)
-    except Exception:
+    created = _parse_day(effective_at)
+    if created is None:
         return 0.5
+    now = datetime.now()
+    days = max(0.0, (now - created).total_seconds() / 86400.0)
+    half_life = max(config.RECENCY_HALFLIFE_DAYS, 1.0)
+    return math.pow(0.5, days / half_life)
 
 
-def _temporal_score(effective_at: str, anchor_date: str | None) -> float:
+def _anchor_decay_score(effective_at: str, anchor_date: str | None) -> float:
     if not effective_at:
         return 0.5
     if not anchor_date:
         return _recency_score(effective_at)
-    try:
-        created = datetime.fromisoformat(effective_at.replace("Z", "+00:00"))
-        anchor = datetime.fromisoformat(anchor_date)
-        if created.tzinfo and anchor.tzinfo is None:
-            anchor = anchor.replace(tzinfo=created.tzinfo)
-        days = abs((created - anchor).total_seconds()) / 86400.0
-        half_life = config.TIME_DECAY_HALFLIFE_DAYS
-        return math.pow(0.5, days / half_life)
-    except Exception:
+    created = _parse_day(effective_at)
+    anchor = _parse_day(anchor_date)
+    if created is None or anchor is None:
         return 0.5
+    days = abs((created - anchor).total_seconds()) / 86400.0
+    half_life = max(config.TIME_DECAY_HALFLIFE_DAYS, 1.0)
+    return math.pow(0.5, days / half_life)
+
+
+def _temporal_score(effective_at: str, anchor_date: str | None) -> float:
+    """Backward-compatible helper used by query.py and older call sites."""
+    return _anchor_decay_score(effective_at, anchor_date)
+
+
+def _scope_alignment_score(effective_at: str, intent: TemporalIntent) -> float:
+    """Soft in/near/out window score; never hard-filters undated memories."""
+    if not intent.has_time_scope:
+        return 0.5
+    created = _parse_day(effective_at)
+    start = _parse_day(intent.scope_start or "")
+    end = _parse_day(intent.scope_end or "")
+    if created is None or start is None or end is None:
+        return 0.35
+    if start > end:
+        start, end = end, start
+    if start <= created <= end:
+        return 1.0
+    near = max(float(config.MEMORY_SCOPE_NEAR_DAYS), 1.0)
+    if created < start:
+        gap = (start - created).total_seconds() / 86400.0
+    else:
+        gap = (created - end).total_seconds() / 86400.0
+    if gap <= near:
+        return 0.5
+    return 0.15
+
+
+def _intent_temporal_score(
+    *,
+    effective_at: str,
+    storage_at: str,
+    intent: TemporalIntent,
+) -> float:
+    """Combine anchor decay + scope soft boost according to intent kind."""
+    kind = intent.intent_kind
+    if kind == "as_of_now":
+        # Prefer recently recorded/current states over ancient occurred_at facts.
+        recency = _recency_score(storage_at or effective_at)
+        scope = _scope_alignment_score(effective_at, intent)
+        return 0.7 * recency + 0.3 * scope
+    if kind == "range":
+        decay = _anchor_decay_score(effective_at, intent.anchor_date)
+        scope = _scope_alignment_score(effective_at, intent)
+        return 0.45 * decay + 0.55 * scope
+    if kind in ("when_event", "duration"):
+        # Question usually has no calendar; keep a light recency prior only.
+        return 0.5
+    if intent.anchor_date:
+        return _anchor_decay_score(effective_at, intent.anchor_date)
+    return _recency_score(storage_at or effective_at)
 
 
 def _compactness_bonus(text: str) -> float:
@@ -240,9 +304,245 @@ def _compactness_bonus(text: str) -> float:
     return 0.0
 
 
-def _blend_score(sem: float, temp: float, text: str) -> float:
-    blended = config.SEMANTIC_WEIGHT * sem + (1 - config.SEMANTIC_WEIGHT) * temp
+def _storage_time(*, metadata: dict[str, Any] | None, created_at: str = "") -> str:
+    """Prefer write/index time for recency when the query has no temporal anchor."""
+    meta = metadata or {}
+    for key in ("recorded_at", "indexed_at", "created_at"):
+        value = str(meta.get(key) or "").strip()
+        if value:
+            return value
+    return (created_at or "").strip()
+
+
+def _semantic_weight_for_intent(intent: TemporalIntent) -> float:
+    if intent.raises_temporal_weight:
+        # Raise temporal share from ~25% to ~40% for range / as_of_now.
+        return min(float(config.SEMANTIC_WEIGHT), 0.60)
+    return float(config.SEMANTIC_WEIGHT)
+
+
+def _blend_score(
+    sem: float,
+    temp: float,
+    text: str,
+    intent: TemporalIntent | None = None,
+) -> float:
+    weight = _semantic_weight_for_intent(intent) if intent is not None else float(config.SEMANTIC_WEIGHT)
+    blended = weight * sem + (1 - weight) * temp
     return min(1.0, blended + _compactness_bonus(text))
+
+
+def _hybrid_weights(intent: TemporalIntent) -> tuple[float, float, float, float]:
+    """RRF / base / jaccard / temporal weights for Mem0 finalize_hybrid_rank."""
+    if intent.raises_temporal_weight:
+        return (0.55, 0.15, 0.10, 0.20)
+    if intent.prefers_event_neighbors:
+        # WHEN/duration: keep RRF dominant; time barely helps without an anchor.
+        return (0.70, 0.15, 0.12, 0.03)
+    return (0.70, 0.15, 0.10, 0.05)
+
+_EN_RECALL_STOPWORDS = _EN_QUERY_STOPWORDS | frozenset(
+    {
+        "caroline",
+        "melanie",
+        "mel",
+        "when",
+        "what",
+        "where",
+        "who",
+        "whom",
+        "which",
+        "why",
+        "how",
+        "whose",
+    }
+)
+
+
+def expand_recall_queries(query: str) -> list[str]:
+    """Build lexical variants that recover keyword-heavy dialog turns."""
+    raw = " ".join((query or "").split())
+    if not raw:
+        return []
+    variants = [raw]
+    # Drop possessives: "Caroline's identity" → "Caroline identity"
+    variants.append(re.sub(r"'s\b", "", raw, flags=re.IGNORECASE))
+    tokens = _TOKEN_RE.findall(raw.lower())
+    content = [
+        tok
+        for tok in tokens
+        if tok not in _EN_RECALL_STOPWORDS
+        and tok not in _QUERY_STOP_CHARS
+        and tok not in _QUERY_STOP_PHRASES
+        and len(tok) > 2
+    ]
+    if content:
+        variants.append(" ".join(content))
+    # Keep multi-word quoted phrases as dedicated queries.
+    for phrase in re.findall(r'"([^"]{2,80})"|“([^”]{2,80})”', raw):
+        text = (phrase[0] or phrase[1]).strip()
+        if text:
+            variants.append(text)
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in variants:
+        cleaned = " ".join(item.split())
+        key = cleaned.lower()
+        if cleaned and key not in seen:
+            seen.add(key)
+            out.append(cleaned)
+    return out
+
+
+def rrf_fuse_hits(
+    ranked_lists: list[list[dict[str, Any]]],
+    *,
+    k: int | None = None,
+) -> list[dict[str, Any]]:
+    """Reciprocal Rank Fusion over multiple recall lists (by memory id)."""
+    rrf_k = config.MEMORY_RECALL_RRF_K if k is None else k
+    scores: dict[str, float] = {}
+    best: dict[str, dict[str, Any]] = {}
+    for hits in ranked_lists:
+        for rank, hit in enumerate(hits):
+            hit_id = str(hit.get("id") or "")
+            if not hit_id:
+                # Fall back to text fingerprint so anonymous hits still fuse.
+                hit_id = f"text:{hash(str(hit.get('text') or ''))}"
+            scores[hit_id] = scores.get(hit_id, 0.0) + 1.0 / (rrf_k + rank + 1)
+            prev = best.get(hit_id)
+            if prev is None or float(hit.get("score") or 0.0) >= float(prev.get("score") or 0.0):
+                best[hit_id] = hit
+    fused: list[dict[str, Any]] = []
+    for hit_id, rrf_score in sorted(scores.items(), key=lambda item: item[1], reverse=True):
+        hit = dict(best[hit_id])
+        hit["rrf_score"] = rrf_score
+        # Preserve a usable base score for downstream temporal blending.
+        hit["score"] = max(float(hit.get("score") or 0.0), rrf_score)
+        fused.append(hit)
+    return fused
+
+
+def expand_dialog_neighbors(
+    hits: list[dict[str, Any]],
+    facts: list[Any],
+    *,
+    window: int | None = None,
+) -> list[dict[str, Any]]:
+    """Pull ±N dialog turns from the same session into the candidate pool."""
+    neighbor_window = config.MEMORY_RECALL_NEIGHBOR_WINDOW if window is None else window
+    if neighbor_window <= 0 or not hits or not facts:
+        return hits
+
+    by_dia: dict[str, Any] = {}
+    for fact in facts:
+        dia = str((getattr(fact, "metadata", None) or {}).get("dia_id") or "")
+        if dia:
+            by_dia[dia] = fact
+
+    dia_re = re.compile(r"^D(\d+):(\d+)$", re.IGNORECASE)
+    existing_ids = {str(hit.get("id") or "") for hit in hits}
+    existing_dias = {
+        str((hit.get("metadata") or {}).get("dia_id") or "")
+        for hit in hits
+        if (hit.get("metadata") or {}).get("dia_id")
+    }
+    extras: list[dict[str, Any]] = []
+    for hit in hits:
+        dia = str((hit.get("metadata") or {}).get("dia_id") or "")
+        match = dia_re.match(dia)
+        if not match:
+            continue
+        session_num = int(match.group(1))
+        turn_num = int(match.group(2))
+        base_score = float(hit.get("score") or 0.0) * 0.85
+        for delta in range(-neighbor_window, neighbor_window + 1):
+            if delta == 0:
+                continue
+            neighbor_dia = f"D{session_num}:{turn_num + delta}"
+            if neighbor_dia in existing_dias:
+                continue
+            fact = by_dia.get(neighbor_dia)
+            if fact is None or str(fact.id) in existing_ids:
+                continue
+            existing_dias.add(neighbor_dia)
+            existing_ids.add(str(fact.id))
+            extras.append(
+                {
+                    "id": fact.id,
+                    "text": fact.text,
+                    "score": base_score,
+                    "source_file": fact.source_file,
+                    "section_heading": fact.section_heading,
+                    "created_at": memory_effective_time(
+                        metadata=fact.metadata,
+                        created_at=fact.created_at,
+                    ),
+                    "metadata": fact.metadata,
+                    "source": "neighbor",
+                }
+            )
+    return hits + extras
+
+
+def finalize_hybrid_rank(
+    query: str,
+    hits: list[dict[str, Any]],
+    *,
+    max_results: int = 10,
+) -> list[dict[str, Any]]:
+    """Polish hybrid candidates while keeping RRF as the dominant signal.
+
+    Full BM25 re-ranking over a neighbor-expanded pool previously drowned
+    vector/RRF winners under common dialog keywords (speaker names, etc.).
+    Time weight rises for range / as_of_now; WHEN/duration stays RRF-led.
+    """
+    if not hits:
+        return []
+    profile = load_core_profile()
+    intent = parse_temporal_intent(query, profile)
+    w_rrf, w_base, w_jac, w_temp = _hybrid_weights(intent)
+
+    rrf_values = [float(hit.get("rrf_score") or 0.0) for hit in hits]
+    rrf_norm = _normalize_scores(rrf_values)
+    base_values = [float(hit.get("score") or 0.0) for hit in hits]
+    base_norm = _normalize_scores(base_values)
+
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for index, hit in enumerate(hits):
+        searchable = _hit_searchable_text(hit)
+        jaccard = _semantic_score(query, searchable) if query.strip() else 0.0
+        effective_at = memory_effective_time(
+            metadata=hit.get("metadata"),
+            created_at=str(hit.get("created_at") or ""),
+        )
+        storage_at = _storage_time(
+            metadata=hit.get("metadata"),
+            created_at=str(hit.get("created_at") or ""),
+        )
+        temp = _intent_temporal_score(
+            effective_at=effective_at,
+            storage_at=storage_at,
+            intent=intent,
+        )
+        blended = (
+            w_rrf * (rrf_norm[index] if index < len(rrf_norm) else 0.0)
+            + w_base * (base_norm[index] if index < len(base_norm) else 0.0)
+            + w_jac * jaccard
+            + w_temp * temp
+        )
+        if str(hit.get("source") or "") == "neighbor":
+            blended *= 0.92
+        enriched = dict(hit)
+        enriched["score"] = blended
+        enriched["semantic_score"] = jaccard if query.strip() else None
+        enriched["temporal_score"] = temp
+        enriched["anchor"] = intent.to_dict()
+        scored.append((blended, enriched))
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [item for _, item in scored[:max_results]]
 
 
 def rerank_hits_temporally(
@@ -251,36 +551,33 @@ def rerank_hits_temporally(
     *,
     max_results: int = 10,
 ) -> list[dict[str, Any]]:
-    """Re-rank recall hits with temporal intent (for Mem0 / engine recall results)."""
+    """Re-rank engine recall hits with lexical overlap + temporal intent."""
+    if not hits:
+        return []
     profile = load_core_profile()
     intent = parse_temporal_intent(query, profile)
 
     scored: list[tuple[float, dict[str, Any]]] = []
     for hit in hits:
-        meta = hit.get("metadata") or {}
         text = str(hit.get("text") or "")
-        searchable = " ".join(
-            part for part in (
-                text,
-                str(meta.get("title") or ""),
-                str(meta.get("summary") or ""),
-                " ".join(meta.get("tags") or []),
-                str(hit.get("section_heading") or ""),
-                str(meta.get("speaker") or ""),
-                str(meta.get("dia_id") or ""),
-                str(meta.get("date_time") or ""),
-            )
-            if part
-        )
-        sem = _semantic_score(query, searchable) if query.strip() else hit.get("score", 1.0)
+        searchable = _hit_searchable_text(hit)
+        sem = _semantic_score(query, searchable) if query.strip() else float(hit.get("score") or 1.0)
         effective_at = memory_effective_time(
             metadata=hit.get("metadata"),
             created_at=str(hit.get("created_at") or ""),
         )
-        temp = _temporal_score(effective_at, intent.anchor_date)
+        storage_at = _storage_time(
+            metadata=hit.get("metadata"),
+            created_at=str(hit.get("created_at") or ""),
+        )
+        temp = _intent_temporal_score(
+            effective_at=effective_at,
+            storage_at=storage_at,
+            intent=intent,
+        )
         base_score = float(hit.get("score") or 0.0)
         if query.strip():
-            blended = _blend_score(max(float(sem), base_score * 0.5), temp, text)
+            blended = _blend_score(max(float(sem), base_score * 0.5), temp, text, intent)
         else:
             blended = base_score
         enriched = dict(hit)
@@ -292,6 +589,24 @@ def rerank_hits_temporally(
 
     scored.sort(key=lambda item: item[0], reverse=True)
     return [item for _, item in scored[:max_results]]
+
+
+def _hit_searchable_text(hit: dict[str, Any]) -> str:
+    meta = hit.get("metadata") or {}
+    return " ".join(
+        part
+        for part in (
+            str(hit.get("text") or ""),
+            str(meta.get("title") or ""),
+            str(meta.get("summary") or ""),
+            " ".join(meta.get("tags") or []),
+            str(hit.get("section_heading") or ""),
+            str(meta.get("speaker") or ""),
+            str(meta.get("dia_id") or ""),
+            str(meta.get("date_time") or ""),
+        )
+        if part
+    )
 
 
 def scoped_recall(
@@ -319,8 +634,13 @@ def scoped_recall(
         if lexical <= 0:
             continue
         effective_at = memory_effective_time(metadata=fact.metadata, created_at=fact.created_at)
-        temp = _temporal_score(effective_at, intent.anchor_date)
-        blended = _blend_score(lexical, temp, fact.text)
+        storage_at = _storage_time(metadata=fact.metadata, created_at=fact.created_at)
+        temp = _intent_temporal_score(
+            effective_at=effective_at,
+            storage_at=storage_at,
+            intent=intent,
+        )
+        blended = _blend_score(lexical, temp, fact.text, intent)
         scored.append((
             blended,
             {
@@ -341,3 +661,29 @@ def scoped_recall(
 
     scored.sort(key=lambda x: x[0], reverse=True)
     return [item for _, item in scored[:max_results]]
+
+
+def scoped_recall_multi(
+    queries: list[str],
+    *,
+    max_results: int = 10,
+    facts: list[Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Run lexical recall for several query variants and keep the best score per fact."""
+    cleaned = [" ".join(q.split()) for q in queries if q and q.strip()]
+    if not cleaned:
+        return []
+    if len(cleaned) == 1:
+        return scoped_recall(cleaned[0], max_results=max_results, facts=facts)
+
+    best: dict[str, dict[str, Any]] = {}
+    for query in cleaned:
+        for hit in scoped_recall(query, max_results=max(max_results * 2, 20), facts=facts):
+            hit_id = str(hit.get("id") or "")
+            if not hit_id:
+                continue
+            prev = best.get(hit_id)
+            if prev is None or float(hit.get("score") or 0.0) > float(prev.get("score") or 0.0):
+                best[hit_id] = hit
+    ranked = sorted(best.values(), key=lambda item: float(item.get("score") or 0.0), reverse=True)
+    return ranked[:max_results]

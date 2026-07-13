@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 import sys
 
+from localagent.memory.rememorize import mark_chat_ingested
 from localagent.memory.save import confirm_save_facts
 from localagent.memory.value_filter import filter_facts
 from localagent.models.router import get_model_router
@@ -30,6 +31,7 @@ def extract_session_memories(
     messages = load_conversation(session_id)
     user_texts = _user_texts_from_messages(messages)
     if not user_texts:
+        mark_chat_ingested(session_id, saved_count=0)
         return []
 
     combined = "\n".join(user_texts[-5:])
@@ -40,14 +42,17 @@ def extract_session_memories(
 
     facts = filter_facts(facts)
     if not facts:
+        mark_chat_ingested(session_id, saved_count=0)
         return []
 
-    return confirm_save_facts(
+    ids = confirm_save_facts(
         facts,
         metadata={"source": "chat", "session_id": session_id},
         title=f"从对话 {session_id} 提取到 {len(facts)} 条记忆",
         interactive=interactive,
     )
+    mark_chat_ingested(session_id, saved_count=len(ids))
+    return ids
 
 
 def schedule_session_memory_extract(session_id: str) -> None:

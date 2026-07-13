@@ -70,16 +70,23 @@ data/
 | 记忆引擎 | Mem0（主依赖）+ JSON fallback / 注册表 |
 | 知识检索 | Chroma + BM25 + RRF |
 | 编排 | LangGraph + SQLite Checkpointer |
-| 联网 | Tavily（Agent 自动触发） |
+| 联网 | ddgs 默认（可选 Tavily / SearXNG） |
 | 模型 | Ollama 优先，OpenRouter/Cursor 降级 |
 
 ## 5. 时间召回
 
-- `TemporalIntentParser` 从问题解析时间锚点
-- `scoped_recall` / Mem0 recall 后：语义 75% + 距锚点 25% 混合排序
+- `parse_temporal_intent` 分类意图：`range` / `as_of_now` / `when_event` / `duration` / `none`
+- 有日历窗（`range`、`as_of_now`）时：锚点衰减 + scope 软奖惩；词法路径时间权重约 40%，Mem0 hybrid 约 20%
+- `when_event`（When did…）：时间几乎不主导排序；默认自动扩 ±1 邻轮，靠事件关键词召回后由 LLM 读记忆日期作答
+- scope 只做 soft boost（窗内 1.0 / 近窗 0.5 / 窗外 0.15），不硬过滤缺日期记忆
 
 ## 6. 主动意图澄清
 
 ```
-用户输入 → assess_intent()（轻量 LLM 预检）
+用户输入 → assess_intent()
+  ├─ act     → 直接执行
+  ├─ assume  → 注入假设后执行（不打断）
+  └─ clarify → 追问 1 题后等待补充
 ```
+
+第一原则：少打扰。个人偏好/记忆回忆、读操作走 act；仅高代价模糊才 clarify。

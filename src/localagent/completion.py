@@ -181,10 +181,9 @@ def suggest_completions(words: list[str], parser: argparse.ArgumentParser | None
 
     sub = subparsers[cmd]
 
-    if current.startswith("-") or (tail and tail[-1].startswith("-")):
-        return _completing_option(tail, current, sub)
-
     if cmd == "tasks":
+        if current.startswith("-") or (tail and tail[-1].startswith("-")):
+            return _completing_option(tail, current, sub)
         if not tail:
             actions = list(_TASK_ACTIONS) + _task_ids()
             return _prefix_match(actions, current)
@@ -194,29 +193,42 @@ def suggest_completions(words: list[str], parser: argparse.ArgumentParser | None
             return []
         return _prefix_match(list(_TASK_ACTIONS) + _task_ids(), current)
 
-    if cmd == "add-file":
-        return _expand_path(current)
-
-    if cmd == "import-chatgpt":
-        if current.startswith("-"):
-            return _completing_option(tail, current, sub)
-        if not tail or tail[-1] in ("--file", "--dir"):
+    if cmd == "memory":
+        mem_subs = _get_subparsers(sub)
+        mem_names = sorted(mem_subs)
+        if not tail:
+            return _prefix_match(mem_names, current)
+        mem_cmd = tail[0]
+        mem_tail = tail[1:]
+        if mem_cmd not in mem_subs:
+            return _prefix_match(mem_names, current)
+        mem_parser = mem_subs[mem_cmd]
+        if current.startswith("-") or (mem_tail and mem_tail[-1].startswith("-")):
+            return _completing_option(mem_tail, current, mem_parser)
+        if mem_cmd == "add-file":
             return _expand_path(current)
-        if tail[-1].startswith("--"):
-            return _completing_option(tail, current, sub)
-        return _expand_path(current)
+        if mem_cmd == "forget" and not mem_tail:
+            return _prefix_match(_memory_ids(), current)
+        if mem_cmd == "ingest":
+            sources = ["chat", "file", "chatgpt", "all"]
+            if not mem_tail:
+                return _prefix_match(sources, current)
+            if mem_tail[-1] in ("--file", "--dir"):
+                return _expand_path(current)
+            if mem_tail[0] == "chatgpt" and len(mem_tail) == 1 and not current.startswith("-"):
+                return _expand_path(current)
+            return _completing_option(mem_tail, current, mem_parser)
+        if mem_cmd == "reset" and not mem_tail:
+            return _prefix_match(["chat", "file", "chatgpt", "all"], current)
+        if mem_cmd in ("search", "query", "reflect") and not mem_tail:
+            return _completing_option([], current, mem_parser)
+        return _completing_option(mem_tail, current, mem_parser)
 
-    if cmd == "forget" and not tail:
-        return _memory_ids()
+    if current.startswith("-") or (tail and tail[-1].startswith("-")):
+        return _completing_option(tail, current, sub)
 
     if cmd == "chat" and not tail:
         return _completing_option([], current, sub)
-
-    if cmd == "search" and not tail:
-        return _completing_option([], current, sub)
-
-    if cmd in ("rememorize-chat", "sync-file", "reset-memory", "rebuild-memory"):
-        return _completing_option(tail, current, sub)
 
     if cmd == "config":
         if not tail:
@@ -287,17 +299,18 @@ def _session_arg_completions(cmd: str, argv: list[str], text: str) -> list[str]:
         return [m for m in models if needle.lower() in m.lower()][:50]
 
     # Reuse outer CLI completion for subcommands exposed as slash commands
-    # (e.g. ``/memories --sort`` → newest|oldest|relevance).
+    # (e.g. ``/memory query --sort`` → newest|oldest|relevance).
     from localagent.cli import build_parser
 
     parser = build_parser()
+    cli_argv = [cmd, *argv]
     if cmd not in _get_subparsers(parser):
         return []
 
-    completed = list(argv)
+    completed = list(cli_argv)
     if text and completed and completed[-1] == text:
         completed = completed[:-1]
-    return suggest_completions(["LA", cmd, *completed, text], parser)
+    return suggest_completions(["LA", *completed, text], parser)
 
 
 def suggest_session_slash_completions(line: str, text: str = "") -> list[str]:
@@ -306,7 +319,7 @@ def suggest_session_slash_completions(line: str, text: str = "") -> list[str]:
     Completes command names, and for ``/provider`` / ``/p`` also completes
     configured provider paths (``auto``, ``ollama``, ``cursor``, …). For
     ``/model`` completes models only when a filter prefix is typed. For CLI
-    subcommands like ``/memories``, reuses shell option/value completion.
+    subcommands like ``/memory``, reuses shell option/value completion.
     """
     stripped = line.lstrip()
     if not stripped or stripped[0] not in ("/", ":"):
@@ -327,8 +340,8 @@ def suggest_session_slash_completions(line: str, text: str = "") -> list[str]:
             cmd = "provider"
         elif cmd == "model":
             cmd = "model"
-        elif cmd in ("mem", "memories"):
-            cmd = "memories"
+        elif cmd in ("add", "add-file", "search", "forget", "reflect"):
+            return _session_arg_completions("memory", [cmd, *parts[1:]], text)
         return _session_arg_completions(cmd, parts[1:], text)
 
     needle = rest.lower()
@@ -343,6 +356,11 @@ def suggest_session_slash_completions(line: str, text: str = "") -> list[str]:
 
     # Do not expand ``/model`` into hundreds of ``/model <id>`` candidates.
     if needle == "model" and needle in hits:
+        return _filter_prefix([f"{prefix}{needle}"], text)
+
+    # Exact command name: do not also offer longer prefixes.
+    # Ambiguous Tab listing on macOS libedit often corrupts the line (ghost ``>``).
+    if needle and needle in hits:
         return _filter_prefix([f"{prefix}{needle}"], text)
 
     candidates = [f"{prefix}{name}" for name in hits]
@@ -505,5 +523,5 @@ def run_complete_init(argv: list[str]) -> int:
         for hook in venv_hooks:
             print(f"  {hook}")
     print("[complete-init] 请执行: source", rc_path, "  或重新打开终端")
-    print("[complete-init] 然后试: LA add<Tab>  应出现 add / add-file")
+    print("[complete-init] 然后试: LA memory<Tab>  应出现 memory 子命令")
     return 0

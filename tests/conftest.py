@@ -51,6 +51,7 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
         monkeypatch.setattr(f"localagent.config.{key}", val)
 
     monkeypatch.setattr("localagent.config.MEMORY_BACKEND", "json")
+    monkeypatch.setattr("localagent.config.TOOL_APPROVAL", "off")
     monkeypatch.setattr("localagent.ingest.sync_index.SYNC_INDEX_FILE", paths["SYNC_INDEX_FILE"])
     monkeypatch.setattr("localagent.memory.store.MEMORY_STORE_FILE", paths["MEMORY_STORE_FILE"])
     monkeypatch.setattr("localagent.knowledge.store.KNOWLEDGE_STORE_FILE", paths["KNOWLEDGE_STORE_FILE"])

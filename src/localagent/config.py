@@ -95,6 +95,7 @@ CORE_PROFILE_FILE = DATA_DIR / "core_profile.json"
 CONVERSATIONS_DIR = DATA_DIR / "conversations"
 CHATGPT_DATA_DIR = DATA_DIR / "chatGPTdata"
 CHATGPT_IMPORT_INDEX_FILE = DATA_DIR / "chatgpt_import_index.json"
+CHAT_INGEST_INDEX_FILE = DATA_DIR / "chat_ingest_index.json"
 SESSIONS_DB = DATA_DIR / "sessions.db"
 CHROMA_DIR = DATA_DIR / "chroma"
 BM25_PATH = DATA_DIR / "bm25.pkl"
@@ -141,6 +142,8 @@ LA_WORKSPACE = _env("LA_WORKSPACE")
 # --- Agent shell tool ---
 SHELL_TIMEOUT = _env_float("LA_SHELL_TIMEOUT", "30")
 SHELL_MAX_OUTPUT = _env_int("LA_SHELL_MAX_OUTPUT", "12000")
+# always = 每次 run_shell / write_file 都需确认；dangerous = 仅危险操作；off = 关闭
+TOOL_APPROVAL = _env("LA_TOOL_APPROVAL", "always").lower()
 
 # --- Model routing (LA_MODEL_SERVERS_FILE YAML or legacy env) ---
 DEFAULT_MODEL_PROVIDER = "auto"
@@ -263,13 +266,32 @@ def normalize_provider_choice(value: str | None) -> str:
 
 
 # --- Web search ---
+# auto: Tavily (if key) → SearXNG (if URL) → ddgs (free, no key)
 TAVILY_API_KEY = _env("TAVILY_API_KEY")
+SEARXNG_URL = _env("LA_SEARXNG_URL")
+_raw_web_search = _env("LA_WEB_SEARCH_PROVIDER", "auto").lower() or "auto"
+WEB_SEARCH_PROVIDER = (
+    _raw_web_search
+    if _raw_web_search in ("auto", "ddgs", "tavily", "searxng")
+    else "auto"
+)
 
 # --- Retrieval tuning ---
 SEMANTIC_WEIGHT = _env_float("LA_SEMANTIC_WEIGHT", "0.75")
 TIME_DECAY_HALFLIFE_DAYS = _env_float("LA_TIME_HALFLIFE_DAYS", "90")
 # When the query has no explicit time intent, bias recall toward recently stored facts.
 RECENCY_HALFLIFE_DAYS = _env_float("LA_RECENCY_HALFLIFE_DAYS", "14")
+# Mem0 recall: fuse vector search with full-registry BM25/lexical + optional query expand.
+MEMORY_RECALL_HYBRID = _env_bool("LA_MEMORY_RECALL_HYBRID", "1")
+MEMORY_RECALL_QUERY_EXPAND = _env_bool("LA_MEMORY_RECALL_QUERY_EXPAND", "1")
+MEMORY_RECALL_NEIGHBOR_WINDOW = _env_int("LA_MEMORY_RECALL_NEIGHBOR_WINDOW", "0")
+# Auto ±N dialog neighbors for WHEN/duration questions when NEIGHBOR_WINDOW is 0.
+MEMORY_RECALL_WHEN_EVENT_NEIGHBOR_WINDOW = _env_int(
+    "LA_MEMORY_RECALL_WHEN_EVENT_NEIGHBOR_WINDOW", "1"
+)
+MEMORY_RECALL_RRF_K = _env_int("LA_MEMORY_RECALL_RRF_K", "60")
+# Soft scope: days outside [scope_start, scope_end] still get a medium boost.
+MEMORY_SCOPE_NEAR_DAYS = _env_float("LA_MEMORY_SCOPE_NEAR_DAYS", "30")
 
 # --- Ingest memory ---
 INGEST_USE_LLM = _env_bool("LA_INGEST_USE_LLM", "0")
