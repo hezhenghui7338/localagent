@@ -16,11 +16,34 @@ from localagent.ingest.tasks import TaskStatus, format_task_line, get_task_store
 from localagent.memory.chatgpt_import import import_chatgpt_dir, import_chatgpt_file, import_chatgpt_files
 from localagent.memory.backend import describe_memory_backend, get_memory_backend
 from localagent.memory.query import list_memory_tags, query_memories
-from localagent.memory.rememorize import rememorize_chat
+from localagent.memory.rememorize import ingest_chat
 from localagent.memory.reset import rebuild_memory, reindex_memory_engine, reset_memory
 from localagent.memory.store import get_memory_store
 from localagent.tools import query_memories_tool, reflect_memory, search_knowledge, search_memory
 from localagent.ui.console import emit
+
+# Old flat memory commands → replacement shown to users (no longer executed).
+_DEPRECATED_MEMORY_COMMANDS: dict[str, str] = {
+    "add": "memory add <text>",
+    "add-file": "memory add-file <path>",
+    "sync-file": "memory ingest file [--force]",
+    "reset-memory": "memory reset [chat|file|chatgpt|all]",
+    "rebuild-memory": "memory rebuild",
+    "reindex-memory": "memory reindex",
+    "memory-status": "memory status",
+    "rememorize-chat": "memory ingest chat [--force]",
+    "import-chatgpt": "memory ingest chatgpt …",
+    "forget": "memory forget <id>",
+    "search": "memory search <query>",
+    "memories": "memory query …",
+    "reflect": "memory reflect <query>",
+}
+
+
+def _print_deprecated(old: str) -> int:
+    replacement = _DEPRECATED_MEMORY_COMMANDS[old]
+    print(f"[LA] `{old}` 已废弃，请改用: LA {replacement}")
+    return 2
 
 
 def _print_ingest_result(result) -> None:
@@ -78,15 +101,15 @@ def cmd_chat(args: argparse.Namespace) -> int:
 
 def cmd_add(args: argparse.Namespace) -> int:
     backend = get_memory_backend()
-    emit("add", "写入记忆…")
+    emit("memory add", "写入记忆…")
     fact_id = backend.retain(
         args.text,
-        metadata={"source": "manual_add", "source_file": "LA add", "section_heading": ""},
+        metadata={"source": "manual_add", "source_file": "LA memory add", "section_heading": ""},
     )
     if not fact_id:
-        print("[add] 内容太短或无价值，未写入")
+        print("[memory add] 内容太短或无价值，未写入")
         return 1
-    print(f"[add] 已写入记忆 (id={fact_id[:8]}...)")
+    print(f"[memory add] 已写入记忆 (id={fact_id[:8]}...)")
     fact = get_memory_store().get(fact_id)
     if fact:
         title = fact.metadata.get("title") or fact.text[:30]
@@ -112,31 +135,31 @@ def cmd_add_file(args: argparse.Namespace) -> int:
     source = Path(args.path).expanduser().resolve()
     try:
         if args.background:
-            print(f"[add-file] 源文件: {source} ({_format_file_size(source)})")
+            print(f"[memory add-file] 源文件: {source} ({_format_file_size(source)})")
             target, task, pid = add_file_background(args.path)
-            print(f"[add-file] 软链: {target}")
-            print(f"[add-file] 后台任务 {task.id} (pid={pid})")
+            print(f"[memory add-file] 软链: {target}")
+            print(f"[memory add-file] 后台任务 {task.id} (pid={pid})")
             if task.log_path:
-                print(f"[add-file] 日志: {task.log_path}")
+                print(f"[memory add-file] 日志: {task.log_path}")
             print(f"→ LA tasks {task.id}       查看进度")
             print(f"→ LA tasks logs {task.id}  查看输出")
             return 0
 
-        print(f"[add-file] 源文件: {source} ({_format_file_size(source)})")
-        reporter = ConsoleProgressReporter(prefix="add-file")
+        print(f"[memory add-file] 源文件: {source} ({_format_file_size(source)})")
+        reporter = ConsoleProgressReporter(prefix="memory add-file")
         target, result = add_file(args.path, reporter=reporter)
     except KeyboardInterrupt:
-        print("\n[add-file] 已中断")
+        print("\n[memory add-file] 已中断")
         return 130
     except (FileNotFoundError, ValueError, FileExistsError) as exc:
-        print(f"[add-file] error: {exc}")
+        print(f"[memory add-file] error: {exc}")
         return 1
 
-    print(f"[add-file] 软链: {target}")
+    print(f"[memory add-file] 软链: {target}")
     _print_ingest_result(result)
     if result.status.value == "failed":
         return 1
-    print("[add-file] done")
+    print("[memory add-file] done")
     return 0
 
 
@@ -290,52 +313,61 @@ def cmd_tasks(args: argparse.Namespace) -> int:
     return 1
 
 
-def cmd_sync_file(args: argparse.Namespace) -> int:
-    emit("sync-file", f"扫描 {config.KB_DIR}/ …")
-    reporter = ConsoleProgressReporter(prefix="sync-file")
+def cmd_ingest_file(args: argparse.Namespace) -> int:
+    emit("memory ingest file", f"扫描 {config.KB_DIR}/ …")
+    reporter = ConsoleProgressReporter(prefix="memory ingest file")
     summary = sync_files(force=args.force, reporter=reporter)
     if not summary.results:
-        print(f"[sync-file] no supported files in {config.KB_DIR}/")
+        print(f"[memory ingest file] no supported files in {config.KB_DIR}/")
         return 0
 
     for result in summary.results:
         _print_ingest_result(result)
 
-    print(f"[sync-file] {summary.format_summary()}")
+    print(f"[memory ingest file] {summary.format_summary()}")
     return 1 if summary.failed_count else 0
 
 
 def cmd_reset_memory(args: argparse.Namespace) -> int:
-    reporter = ConsoleProgressReporter(prefix="reset-memory")
-    stats = reset_memory(clear_knowledge=not args.keep_knowledge, reporter=reporter)
-    print("[reset-memory] cleared:")
+    source = getattr(args, "source", "all") or "all"
+    reporter = ConsoleProgressReporter(prefix="memory reset")
+    try:
+        stats = reset_memory(
+            clear_knowledge=not args.keep_knowledge,
+            source=source,
+            reporter=reporter,
+        )
+    except ValueError as exc:
+        print(f"[memory reset] {exc}")
+        return 1
+    print(f"[memory reset] cleared ({stats['source']}):")
     print(f"  memory facts removed: {stats['memory_facts_removed']}")
     print(f"  sync_index entries removed: {stats['sync_index_entries_removed']}")
     if stats["clear_knowledge"]:
         print(f"  knowledge chunks removed: {stats['knowledge_chunks_removed']}")
-    else:
+    elif source in ("all", "file"):
         print("  knowledge index kept (--keep-knowledge)")
-    print("[reset-memory] done (kb/ symlinks and conversations preserved)")
+    print("[memory reset] done (kb/ symlinks and conversations preserved)")
     return 0
 
 
-def cmd_rebuild_memory(args: argparse.Namespace) -> int:
-    reporter = ConsoleProgressReporter(prefix="rebuild-memory")
+def cmd_rebuild_memory(_args: argparse.Namespace) -> int:
+    reporter = ConsoleProgressReporter(prefix="memory rebuild")
     reset_stats, summary = rebuild_memory(reporter=reporter)
-    print("[rebuild-memory] reset:")
+    print("[memory rebuild] reset:")
     print(f"  memory facts removed: {reset_stats['memory_facts_removed']}")
     print(f"  sync_index entries removed: {reset_stats['sync_index_entries_removed']}")
     print(f"  knowledge chunks removed: {reset_stats['knowledge_chunks_removed']}")
     for result in summary.results:
         _print_ingest_result(result)
-    print(f"[rebuild-memory] {summary.format_summary()}")
+    print(f"[memory rebuild] {summary.format_summary()}")
     return 1 if summary.failed_count else 0
 
 
 def cmd_reindex_memory(_args: argparse.Namespace) -> int:
-    reporter = ConsoleProgressReporter(prefix="reindex-memory")
+    reporter = ConsoleProgressReporter(prefix="memory reindex")
     stats = reindex_memory_engine(reporter=reporter)
-    print("[reindex-memory] Warm 引擎重建:")
+    print("[memory reindex] Warm 引擎重建:")
     print(f"  backend:    {stats['backend']}")
     print(f"  reindexed:  {stats['reindexed']}")
     if stats.get("skipped"):
@@ -343,26 +375,27 @@ def cmd_reindex_memory(_args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_rememorize_chat(args: argparse.Namespace) -> int:
-    reporter = ConsoleProgressReporter(prefix="rememorize-chat")
+def cmd_ingest_chat(args: argparse.Namespace) -> int:
+    reporter = ConsoleProgressReporter(prefix="memory ingest chat")
     interactive = True if args.interactive else None
-    ids = rememorize_chat(
+    ids = ingest_chat(
         session_id=args.session,
+        force=args.force,
         reporter=reporter,
         interactive=interactive,
     )
     if not ids:
-        print("[rememorize-chat] 未提取到新记忆")
+        print("[memory ingest chat] 未提取到新记忆")
         return 0
-    print(f"[rememorize-chat] 已保存 {len(ids)} 条记忆")
+    print(f"[memory ingest chat] 已保存 {len(ids)} 条记忆")
     return 0
 
 
-def cmd_import_chatgpt(args: argparse.Namespace) -> int:
-    reporter = ConsoleProgressReporter(prefix="import-chatgpt")
+def cmd_ingest_chatgpt(args: argparse.Namespace) -> int:
+    reporter = ConsoleProgressReporter(prefix="memory ingest chatgpt")
     interactive = args.interactive
     if args.files and args.path:
-        print("[import-chatgpt] 不能同时指定 path 与 --file")
+        print("[memory ingest chatgpt] 不能同时指定 path 与 --file")
         return 1
     if args.files:
         summary = import_chatgpt_files(
@@ -391,7 +424,7 @@ def cmd_import_chatgpt(args: argparse.Namespace) -> int:
     else:
         default_dir = config.CHATGPT_DATA_DIR
         if default_dir.is_dir() and any(default_dir.glob("*.json")):
-            emit("import-chatgpt", f"使用默认目录 {default_dir}")
+            emit("memory ingest chatgpt", f"使用默认目录 {default_dir}")
             summary = import_chatgpt_dir(
                 default_dir,
                 force=args.force,
@@ -400,27 +433,62 @@ def cmd_import_chatgpt(args: argparse.Namespace) -> int:
                 interactive=interactive,
             )
         else:
-            print("[import-chatgpt] 请指定导出文件路径，或使用 --file / --dir")
+            print("[memory ingest chatgpt] 请指定导出文件路径，或使用 --file / --dir")
             print("  对话历史: conversations.json")
             print("  已保存记忆: memory.json / memories.json")
             return 1
 
     for err in summary.errors:
-        print(f"[import-chatgpt] ! {err}")
+        print(f"[memory ingest chatgpt] ! {err}")
 
-    print(f"[import-chatgpt] {summary.format_summary()}")
+    print(f"[memory ingest chatgpt] {summary.format_summary()}")
     if summary.saved_count:
         print(f"→ 已写入 {summary.saved_count} 条记忆")
     elif summary.imported == 0 and not summary.errors:
-        print("[import-chatgpt] 未提取到新的记忆")
+        print("[memory ingest chatgpt] 未提取到新的记忆")
     return 1 if summary.errors and summary.files_processed == 0 else 0
+
+
+def cmd_memory_ingest(args: argparse.Namespace) -> int:
+    source = (args.source or "").strip().lower()
+    if source == "chat":
+        return cmd_ingest_chat(args)
+    if source == "file":
+        return cmd_ingest_file(args)
+    if source == "chatgpt":
+        return cmd_ingest_chatgpt(args)
+    if source == "all":
+        rc = cmd_ingest_chat(args)
+        file_rc = cmd_ingest_file(args)
+        chatgpt_args = argparse.Namespace(
+            path=None,
+            files=None,
+            directory=None,
+            force=args.force,
+            include_disabled=getattr(args, "include_disabled", False),
+            interactive=getattr(args, "interactive", False),
+        )
+        # Skip chatgpt loudly failing when no export data is present.
+        default_dir = config.CHATGPT_DATA_DIR
+        has_chatgpt = (
+            getattr(args, "path", None)
+            or getattr(args, "files", None)
+            or getattr(args, "directory", None)
+            or (default_dir.is_dir() and any(default_dir.glob("*.json")))
+        )
+        chatgpt_rc = 0
+        if has_chatgpt:
+            chatgpt_rc = cmd_ingest_chatgpt(chatgpt_args)
+        return 1 if any(code != 0 for code in (rc, file_rc, chatgpt_rc)) else 0
+    print(f"[memory ingest] 未知来源: {args.source}（可用: chat, file, chatgpt, all）")
+    return 1
 
 
 def cmd_forget(args: argparse.Namespace) -> int:
     backend = get_memory_backend()
     fact = get_memory_store().get(args.id)
     if fact is None:
-        print(f"[forget] 未找到记忆: {args.id}")
+        print(f"[memory forget] 未找到记忆: {args.id}")
         return 1
     if not args.yes:
         preview = fact.text[:120] + ("…" if len(fact.text) > 120 else "")
@@ -430,21 +498,21 @@ def cmd_forget(args: argparse.Namespace) -> int:
             print()
             return 130
         if answer not in ("y", "yes"):
-            print("[forget] 已取消")
+            print("[memory forget] 已取消")
             return 0
     if backend.delete(fact.id):
-        print(f"[forget] 已删除 {fact.id[:8]}…")
+        print(f"[memory forget] 已删除 {fact.id[:8]}…")
         return 0
-    print(f"[forget] 删除失败: {fact.id}")
+    print(f"[memory forget] 删除失败: {fact.id}")
     return 1
 
 
 def cmd_search(args: argparse.Namespace) -> int:
     if args.knowledge:
-        emit("search", f"检索知识库: {args.query}")
+        emit("memory search", f"检索知识库: {args.query}")
         print(search_knowledge(args.query, top_k=args.top_k))
     else:
-        emit("search", f"检索记忆: {args.query}")
+        emit("memory search", f"检索记忆: {args.query}")
         backend = get_memory_backend()
         hits = backend.recall(args.query, max_results=args.top_k)
         result = search_memory(
@@ -456,13 +524,13 @@ def cmd_search(args: argparse.Namespace) -> int:
         )
         print(result)
         if hits:
-            print("→ LA forget <id>  删除某条记忆")
+            print("→ LA memory forget <id>  删除某条记忆")
     return 0
 
 
 def cmd_memory_status(_args: argparse.Namespace) -> int:
     info = describe_memory_backend()
-    print("[memory-status] Warm 层记忆引擎诊断")
+    print("[memory status] Warm 层记忆引擎诊断")
     print(f"  当前后端:     {info['active_backend']} ({info.get('backend_class', '?')})")
     print(f"  配置偏好:     {info['preference']} (LA_MEMORY_BACKEND)")
     print(f"  Python:       {info['python_version']}")
@@ -492,7 +560,7 @@ def cmd_memory_status(_args: argparse.Namespace) -> int:
 
 
 def cmd_reflect(args: argparse.Namespace) -> int:
-    emit("reflect", f"推理记忆: {args.query}")
+    emit("memory reflect", f"推理记忆: {args.query}")
     print(reflect_memory(args.query))
     return 0
 
@@ -523,7 +591,7 @@ def cmd_memories(args: argparse.Namespace) -> int:
         print(json.dumps(hits, ensure_ascii=False, indent=2))
         return 0
 
-    emit("memories", "查询记忆库…")
+    emit("memory query", "查询记忆库…")
     result = query_memories_tool(
         query=args.query or "",
         tags=tags or None,
@@ -536,7 +604,7 @@ def cmd_memories(args: argparse.Namespace) -> int:
     )
     print(result)
     if get_memory_backend().count():
-        print("→ LA forget <id>  删除某条记忆")
+        print("→ LA memory forget <id>  删除某条记忆")
     return 0
 
 
@@ -913,24 +981,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_chat.set_defaults(func=cmd_chat)
 
-    p_add = sub.add_parser("add", help="<text>  直接写入一条记忆", description="直接写入记忆")
-    p_add.add_argument("text", help="记忆文本")
-    p_add.set_defaults(func=cmd_add)
-
-    p_add_file = sub.add_parser(
-        "add-file",
-        help="[-b] <path>  软链到 kb/ 并索引",
-        description="将文件软链到 kb/ 并建立索引",
-    )
-    p_add_file.add_argument("path", help="源文件路径")
-    p_add_file.add_argument(
-        "--background",
-        "-b",
-        action="store_true",
-        help="创建软链后在后台索引",
-    )
-    p_add_file.set_defaults(func=cmd_add_file)
-
     p_tasks = sub.add_parser(
         "tasks",
         help=(
@@ -950,147 +1000,177 @@ def build_parser() -> argparse.ArgumentParser:
     p_tasks.add_argument("--tail", type=int, default=50, help="logs 操作输出的行数（默认 50）")
     p_tasks.set_defaults(func=cmd_tasks)
 
-    p_sync = sub.add_parser(
-        "sync-file",
-        help="[--force]  扫描并索引 data/kb/ 下全部文档",
-        description="扫描并索引 data/kb/ 下全部文档",
+    p_memory = sub.add_parser(
+        "memory",
+        help="add|add-file|ingest|query|search|…  记忆写入 / 消费 / 查询 / 运维",
+        description=(
+            "记忆相关操作统一入口。\n"
+            "  LA memory add \"…\"\n"
+            "  LA memory add-file <path>\n"
+            "  LA memory ingest chat|file|chatgpt|all [--force]\n"
+            "  LA memory query / search / reflect / forget / status / reset / reindex / rebuild"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_sync.add_argument("--force", action="store_true", help="强制重新索引全部文件")
-    p_sync.set_defaults(func=cmd_sync_file)
-
-    p_reset = sub.add_parser(
-        "reset-memory",
-        help="[--keep-knowledge]  清空记忆与 sync_index",
-        description="清空记忆与 sync_index",
+    mem_sub = p_memory.add_subparsers(
+        dest="memory_cmd",
+        required=True,
+        metavar="<action>",
+        title="操作",
     )
-    p_reset.add_argument("--keep-knowledge", action="store_true", help="保留知识库索引")
-    p_reset.set_defaults(func=cmd_reset_memory)
 
-    p_mem_status = sub.add_parser(
-        "memory-status",
-        help="诊断 Warm 层记忆后端（Mem0 / JSON）",
-        description="显示当前记忆引擎、Mem0 配置与记忆条数",
+    p_mem_add = mem_sub.add_parser("add", help="<text>  直接写入一条记忆")
+    p_mem_add.add_argument("text", help="记忆文本")
+    p_mem_add.set_defaults(func=cmd_add)
+
+    p_mem_add_file = mem_sub.add_parser(
+        "add-file",
+        help="[-b] <path>  软链到 kb/ 并索引",
+        description="将文件软链到 kb/ 并建立索引",
     )
-    p_mem_status.set_defaults(func=cmd_memory_status)
+    p_mem_add_file.add_argument("path", help="源文件路径")
+    p_mem_add_file.add_argument(
+        "--background",
+        "-b",
+        action="store_true",
+        help="创建软链后在后台索引",
+    )
+    p_mem_add_file.set_defaults(func=cmd_add_file)
 
-    sub.add_parser(
-        "rebuild-memory",
-        help="清空记忆后强制重建 kb/ 索引",
-        description="清空记忆后执行 sync-file --force",
-    ).set_defaults(func=cmd_rebuild_memory)
-
-    sub.add_parser(
-        "reindex-memory",
-        help="从 memory_store.json 重建 Mem0 向量索引（不删事实）",
-        description="保留 JSON 注册表，清空并重建 Mem0 Warm 引擎索引",
-    ).set_defaults(func=cmd_reindex_memory)
-
-    p_forget = sub.add_parser(
+    p_mem_forget = mem_sub.add_parser(
         "forget",
         help="<id> [--yes]  删除一条记忆",
-        description="删除一条记忆（先用 LA search 查看 id）",
+        description="删除一条记忆（先用 LA memory search / query 查看 id）",
     )
-    p_forget.add_argument("id", help="记忆 id（支持前缀匹配）")
-    p_forget.add_argument("--yes", "-y", action="store_true", help="跳过确认")
-    p_forget.set_defaults(func=cmd_forget)
+    p_mem_forget.add_argument("id", help="记忆 id（支持前缀匹配）")
+    p_mem_forget.add_argument("--yes", "-y", action="store_true", help="跳过确认")
+    p_mem_forget.set_defaults(func=cmd_forget)
 
-    p_remem = sub.add_parser(
-        "rememorize-chat",
-        help="[--session ID] [--interactive]  从对话档案重新提取记忆",
-        description="从对话档案重新提取记忆",
-    )
-    p_remem.add_argument("--session", dest="session", help="指定 session id")
-    p_remem.add_argument(
-        "--interactive",
-        action="store_true",
-        help="逐条确认是否保存（默认自动保存）",
-    )
-    p_remem.set_defaults(func=cmd_rememorize_chat)
-
-    p_import = sub.add_parser(
-        "import-chatgpt",
-        help="[path] [--file PATH ...] [--dir DIR] [--force]  导入 ChatGPT 导出",
+    p_mem_ingest = mem_sub.add_parser(
+        "ingest",
+        help="<chat|file|chatgpt|all> [--force]  记忆化未处理材料",
         description=(
-            "导入 ChatGPT 数据导出并写入本地记忆。"
-            "支持 conversations.json（从对话提取）与 memory.json（已保存记忆，1:1 导入）。"
-            "默认跳过已导入内容；加 --force 可强制重新加载指定文件内的记忆。"
+            "按来源增量消费材料并写入记忆。"
+            "默认跳过已处理项；加 --force 强制重新消费。"
         ),
     )
-    p_import.add_argument("path", nargs="?", help="导出 JSON 文件（conversations.json 或 memory.json）")
-    p_import.add_argument(
+    p_mem_ingest.add_argument(
+        "source",
+        choices=("chat", "file", "chatgpt", "all"),
+        help="材料来源：chat=对话档案，file=kb/ 文档，chatgpt=ChatGPT 导出，all=全部",
+    )
+    p_mem_ingest.add_argument("--force", action="store_true", help="强制重新消费已处理内容")
+    p_mem_ingest.add_argument("--session", help="仅处理指定对话 session id（source=chat）")
+    p_mem_ingest.add_argument(
+        "--interactive",
+        action="store_true",
+        help="逐条确认是否保存（默认自动保存；chat/chatgpt）",
+    )
+    p_mem_ingest.add_argument(
+        "path",
+        nargs="?",
+        help="ChatGPT 导出 JSON（source=chatgpt）",
+    )
+    p_mem_ingest.add_argument(
         "--file",
         dest="files",
         nargs="+",
         metavar="PATH",
-        help="指定一个或多个导出 JSON 文件（可与 --force 联用强制重载）",
+        help="一个或多个 ChatGPT 导出 JSON（source=chatgpt）",
     )
-    p_import.add_argument(
+    p_mem_ingest.add_argument(
         "--dir",
         dest="directory",
-        help="批量导入目录下全部 *.json（默认 data/chatGPTdata/）",
+        help="批量导入目录下全部 *.json（默认 data/chatGPTdata/；source=chatgpt）",
     )
-    p_import.add_argument("--force", action="store_true", help="强制重新导入已处理过的对话/记忆")
-    p_import.add_argument(
+    p_mem_ingest.add_argument(
         "--include-disabled",
         action="store_true",
         help="同时导入 ChatGPT 中已关闭（enabled=false）的记忆",
     )
-    p_import.add_argument(
-        "--interactive",
-        action="store_true",
-        help="逐条确认是否保存（默认自动保存）",
-    )
-    p_import.set_defaults(func=cmd_import_chatgpt)
+    p_mem_ingest.set_defaults(func=cmd_memory_ingest)
 
-    p_search = sub.add_parser(
+    p_mem_reset = mem_sub.add_parser(
+        "reset",
+        help="[chat|file|chatgpt|all] [--keep-knowledge]  按来源清空记忆",
+        description="按来源清空记忆；默认 all",
+    )
+    p_mem_reset.add_argument(
+        "source",
+        nargs="?",
+        default="all",
+        choices=("chat", "file", "chatgpt", "all"),
+        help="清空范围（默认 all）",
+    )
+    p_mem_reset.add_argument("--keep-knowledge", action="store_true", help="保留知识库索引（all/file）")
+    p_mem_reset.set_defaults(func=cmd_reset_memory)
+
+    p_mem_status = mem_sub.add_parser(
+        "status",
+        help="诊断 Warm 层记忆后端（Mem0 / JSON）",
+    )
+    p_mem_status.set_defaults(func=cmd_memory_status)
+
+    mem_sub.add_parser(
+        "rebuild",
+        help="清空全部记忆后强制重建 kb/ 索引",
+        description="等价于 memory reset all + memory ingest file --force，并恢复非文档来源记忆",
+    ).set_defaults(func=cmd_rebuild_memory)
+
+    mem_sub.add_parser(
+        "reindex",
+        help="从 memory_store.json 重建 Mem0 向量索引（不删事实）",
+        description="保留 JSON 注册表，清空并重建 Mem0 Warm 引擎索引",
+    ).set_defaults(func=cmd_reindex_memory)
+
+    p_mem_search = mem_sub.add_parser(
         "search",
-        help="<query> [--knowledge] [--top-k N] [--verbose]  搜索记忆或知识库",
-        description="搜索记忆或知识库",
+        help="<query> [--knowledge] [--top-k N] [--verbose]  语义搜索记忆或知识库",
     )
-    p_search.add_argument("query", help="搜索关键词")
-    p_search.add_argument("--knowledge", action="store_true", help="搜索知识库原文")
-    p_search.add_argument("--top-k", type=int, default=5, help="返回条数（默认 5）")
-    p_search.add_argument("--verbose", action="store_true", help="显示记忆锚点等详情")
-    p_search.set_defaults(func=cmd_search)
+    p_mem_search.add_argument("query", help="搜索关键词")
+    p_mem_search.add_argument("--knowledge", action="store_true", help="搜索知识库原文")
+    p_mem_search.add_argument("--top-k", type=int, default=5, help="返回条数（默认 5）")
+    p_mem_search.add_argument("--verbose", action="store_true", help="显示记忆锚点等详情")
+    p_mem_search.set_defaults(func=cmd_search)
 
-    p_reflect = sub.add_parser(
+    p_mem_reflect = mem_sub.add_parser(
         "reflect",
         help="<query>  跨记忆推理（Mem0 search + LLM）",
         description="对多条记忆进行推理综合，处理矛盾、歧义或需要归纳的问题",
     )
-    p_reflect.add_argument("query", help="需要推理的问题")
-    p_reflect.set_defaults(func=cmd_reflect)
+    p_mem_reflect.add_argument("query", help="需要推理的问题")
+    p_mem_reflect.set_defaults(func=cmd_reflect)
 
-    p_memories = sub.add_parser(
-        "memories",
-        help="[query] [--tag TAG] [--since DATE] [--sort newest|oldest|relevance]  浏览/查询记忆",
+    p_mem_query = mem_sub.add_parser(
+        "query",
+        help="[query] [--tag TAG] [--since DATE] [--sort …]  条件浏览/查询记忆",
         description="浏览或查询记忆库：标签过滤、时间范围、排序、语义匹配",
     )
-    p_memories.add_argument("query", nargs="?", default="", help="可选，语义搜索关键词")
-    p_memories.add_argument(
+    p_mem_query.add_argument("query", nargs="?", default="", help="可选，语义搜索关键词")
+    p_mem_query.add_argument(
         "--tag",
         action="append",
         dest="tag",
         metavar="TAG",
         help="按标签过滤（可多次指定）",
     )
-    p_memories.add_argument("--since", help="起始日期，如 2024-01-01")
-    p_memories.add_argument("--until", help="结束日期，如 2024-12-31")
-    p_memories.add_argument(
+    p_mem_query.add_argument("--since", help="起始日期，如 2024-01-01")
+    p_mem_query.add_argument("--until", help="结束日期，如 2024-12-31")
+    p_mem_query.add_argument(
         "--sort",
         choices=("newest", "oldest", "relevance"),
         default="newest",
         help="排序方式（默认 newest；有 query 时可用 relevance）",
     )
-    p_memories.add_argument("--limit", type=int, default=20, help="返回条数（默认 20）")
-    p_memories.add_argument("--verbose", action="store_true", help="显示评分细节")
-    p_memories.add_argument("--json", action="store_true", help="以 JSON 输出")
-    p_memories.add_argument(
+    p_mem_query.add_argument("--limit", type=int, default=20, help="返回条数（默认 20）")
+    p_mem_query.add_argument("--verbose", action="store_true", help="显示评分细节")
+    p_mem_query.add_argument("--json", action="store_true", help="以 JSON 输出")
+    p_mem_query.add_argument(
         "--list-tags",
         action="store_true",
         help="列出所有记忆标签及数量",
     )
-    p_memories.set_defaults(func=cmd_memories)
+    p_mem_query.set_defaults(func=cmd_memories)
 
     p_workspace = sub.add_parser(
         "workspace",

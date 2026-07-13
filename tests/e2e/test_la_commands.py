@@ -18,21 +18,20 @@ pytestmark = pytest.mark.e2e
 def test_e2e_help():
     result = run_la(["--help"])
     assert result.returncode == 0
-    assert "add-file" in result.stdout
+    assert "memory" in result.stdout
     assert "chat" in result.stdout
-    assert "forget" in result.stdout
+    assert "tasks" in result.stdout
     assert "delete|pause|resume|restart|logs" in result.stdout
-    assert "[-b]" in result.stdout
 
 
 def test_e2e_add(la_env):
-    result = run_la(["add", "2026年7月决定使用 Mem0 作为记忆引擎"], env=la_env)
+    result = run_la(["memory", "add", "2026年7月决定使用 Mem0 作为记忆引擎"], env=la_env)
     assert result.returncode == 0
     assert "已写入记忆" in result.stdout
 
 
 def test_e2e_add_rejects_short_text(la_env):
-    result = run_la(["add", "好的"], env=la_env)
+    result = run_la(["memory", "add", "好的"], env=la_env)
     assert result.returncode == 1
     assert "未写入" in result.stdout
 
@@ -44,7 +43,7 @@ def test_e2e_add_file_and_sync(la_env, tmp_path: Path):
         encoding="utf-8",
     )
 
-    result = run_la(["add-file", str(doc)], env=la_env)
+    result = run_la(["memory", "add-file", str(doc)], env=la_env)
     assert result.returncode == 0
     assert "软链:" in result.stdout
     assert "done" in result.stdout
@@ -52,7 +51,7 @@ def test_e2e_add_file_and_sync(la_env, tmp_path: Path):
     kb_link = Path(la_env["LA_DATA_DIR"]) / "kb" / "diary.md"
     assert kb_link.is_symlink()
 
-    result2 = run_la(["sync-file"], env=la_env)
+    result2 = run_la(["memory", "ingest", "file"], env=la_env)
     assert result2.returncode == 0
     assert "skipped" in result2.stdout
 
@@ -60,16 +59,16 @@ def test_e2e_add_file_and_sync(la_env, tmp_path: Path):
 def test_e2e_sync_file_force(la_env, tmp_path: Path):
     doc = tmp_path / "note.md"
     doc.write_text("# Note\n\nversion one for force sync", encoding="utf-8")
-    run_la(["add-file", str(doc)], env=la_env)
+    run_la(["memory", "add-file", str(doc)], env=la_env)
 
-    result = run_la(["sync-file", "--force"], env=la_env)
+    result = run_la(["memory", "ingest", "file", "--force"], env=la_env)
     assert result.returncode == 0
-    assert "sync-file" in result.stderr + result.stdout or "updated" in result.stdout or "new" in result.stdout
+    assert "updated" in result.stdout or "new" in result.stdout or "ingest file" in result.stdout
 
 
 def test_e2e_search_memory(la_env):
-    run_la(["add", "2026年7月决定使用 Mem0 作为记忆引擎"], env=la_env)
-    result = run_la(["search", "Mem0"], env=la_env)
+    run_la(["memory", "add", "2026年7月决定使用 Mem0 作为记忆引擎"], env=la_env)
+    result = run_la(["memory", "search", "Mem0"], env=la_env)
     assert result.returncode == 0
     assert "Mem0" in result.stdout
     assert "forget" in result.stdout
@@ -78,23 +77,23 @@ def test_e2e_search_memory(la_env):
 def test_e2e_search_knowledge(la_env, tmp_path: Path):
     doc = tmp_path / "spec.md"
     doc.write_text("# 技术方案\n\nLocalAgent 使用 Mem0 管理长期记忆。", encoding="utf-8")
-    run_la(["add-file", str(doc)], env=la_env)
+    run_la(["memory", "add-file", str(doc)], env=la_env)
 
-    result = run_la(["search", "Mem0", "--knowledge"], env=la_env)
+    result = run_la(["memory", "search", "Mem0", "--knowledge"], env=la_env)
     assert result.returncode == 0
     assert "Mem0" in result.stdout
 
 
 def test_e2e_forget_memory(la_env, la_data_dir: Path):
-    run_la(["add", "2026年7月决定使用 Mem0 作为记忆引擎"], env=la_env)
+    run_la(["memory", "add", "2026年7月决定使用 Mem0 作为记忆引擎"], env=la_env)
     store_path = la_data_dir / "memory_store.json"
     fact_id = json.loads(store_path.read_text(encoding="utf-8"))["facts"][0]["id"]
 
-    search = run_la(["search", "Mem0"], env=la_env)
+    search = run_la(["memory", "search", "Mem0"], env=la_env)
     assert search.returncode == 0
     assert fact_id[:8] in search.stdout
 
-    forget = run_la(["forget", fact_id, "--yes"], env=la_env)
+    forget = run_la(["memory", "forget", fact_id, "--yes"], env=la_env)
     assert forget.returncode == 0
     assert "已删除" in forget.stdout
 
@@ -102,23 +101,23 @@ def test_e2e_forget_memory(la_env, la_data_dir: Path):
 def test_e2e_reset_memory(la_env, tmp_path: Path):
     doc = tmp_path / "doc.md"
     doc.write_text("# Doc\n\ncontent for reset test", encoding="utf-8")
-    run_la(["add-file", str(doc)], env=la_env)
+    run_la(["memory", "add-file", str(doc)], env=la_env)
 
-    result = run_la(["reset-memory"], env=la_env)
+    result = run_la(["memory", "reset"], env=la_env)
     assert result.returncode == 0
-    assert "reset-memory" in result.stdout
+    assert "memory reset" in result.stdout
     assert (Path(la_env["LA_DATA_DIR"]) / "kb" / "doc.md").exists()
 
 
 def test_e2e_rebuild_memory(la_env, tmp_path: Path):
     doc = tmp_path / "rebuild.md"
     doc.write_text("# Rebuild\n\nrebuild test content here", encoding="utf-8")
-    run_la(["add-file", str(doc)], env=la_env)
-    run_la(["reset-memory"], env=la_env)
+    run_la(["memory", "add-file", str(doc)], env=la_env)
+    run_la(["memory", "reset"], env=la_env)
 
-    result = run_la(["rebuild-memory"], env=la_env)
+    result = run_la(["memory", "rebuild"], env=la_env)
     assert result.returncode == 0
-    assert "rebuild-memory" in result.stdout
+    assert "memory rebuild" in result.stdout
 
 
 def test_e2e_ollama_model_autodetect():
@@ -155,7 +154,7 @@ def test_e2e_add_file_background(la_env, tmp_path: Path):
     doc = tmp_path / "bg.md"
     doc.write_text("# BG\n\nbackground e2e test content for ingest", encoding="utf-8")
 
-    result = run_la(["add-file", "--background", str(doc)], env=la_env)
+    result = run_la(["memory", "add-file", "--background", str(doc)], env=la_env)
     assert result.returncode == 0
     assert "后台任务" in result.stdout
     assert "软链:" in result.stdout
@@ -180,7 +179,7 @@ def test_e2e_add_file_background(la_env, tmp_path: Path):
 def test_e2e_tasks_list(la_env, tmp_path: Path):
     doc = tmp_path / "list.md"
     doc.write_text("# List\n\ntasks list test", encoding="utf-8")
-    run_la(["add-file", "--background", str(doc)], env=la_env)
+    run_la(["memory", "add-file", "--background", str(doc)], env=la_env)
 
     result = run_la(["tasks"], env=la_env)
     assert result.returncode == 0

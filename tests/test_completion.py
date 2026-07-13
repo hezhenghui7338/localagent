@@ -11,18 +11,33 @@ from localagent.completion import (
 from localagent.session_commands import list_slash_command_names
 
 
-def test_complete_subcommand_prefix_add():
-    hits = suggest_completions(["LA", "add"], build_parser())
-    assert "add" in hits
-    assert "add-file" in hits
+def test_complete_subcommand_prefix_memory():
+    hits = suggest_completions(["LA", "mem"], build_parser())
+    assert "memory" in hits
     assert "approve" not in hits
 
 
 def test_complete_all_subcommands_from_empty():
     hits = suggest_completions(["LA"], build_parser())
     assert "chat" in hits
+    assert "memory" in hits
+    assert "tasks" in hits
+    assert "add-file" not in hits
+    assert "sync-file" not in hits
+
+
+def test_complete_memory_actions():
+    hits = suggest_completions(["LA", "memory", ""], build_parser())
+    assert "add" in hits
     assert "add-file" in hits
-    assert "sync-file" in hits
+    assert "ingest" in hits
+    assert "query" in hits
+    assert "search" in hits
+
+
+def test_complete_memory_ingest_sources():
+    hits = suggest_completions(["LA", "memory", "ingest", ""], build_parser())
+    assert hits == ["chat", "file", "chatgpt", "all"]
 
 
 def test_list_slash_command_names_excludes_chat():
@@ -34,8 +49,9 @@ def test_list_slash_command_names_excludes_chat():
     assert "model" in names
     assert "deepsearch" in names
     assert "q" in names
+    assert "memory" in names
     assert "add" in names
-    assert "add-file" in names
+    assert "mem" not in names
     assert "search" in names
 
 
@@ -43,6 +59,7 @@ def test_session_slash_tab_lists_all_on_slash():
     hits = suggest_session_slash_completions("/", text="/")
     assert "/help" in hits
     assert "/add" in hits
+    assert "/memory" in hits
     assert "/provider" in hits
     assert "/model" in hits
     assert "/deepsearch" in hits
@@ -99,10 +116,11 @@ def test_session_slash_tab_model_values(monkeypatch):
         "anthropic/claude-sonnet-4"
     ]
     assert suggest_session_slash_completions("/model", text="/model") == ["/model"]
-    # /m is not a model alias (ambiguous with memories)
+    # /m is not a model alias (ambiguous with memory)
     assert "/m" not in suggest_session_slash_completions("/m", text="/m")
-    hits_mem = suggest_session_slash_completions("/mem", text="/mem")
-    assert "/mem" in hits_mem or "/memories" in hits_mem
+    assert suggest_session_slash_completions("/mem", text="/mem") == ["/memory"]
+    assert suggest_session_slash_completions("/memory", text="/memory") == ["/memory"]
+    assert "/memories" not in suggest_session_slash_completions("/mem", text="/mem")
 
 
 def test_install_repl_readline_completer():
@@ -122,41 +140,41 @@ def test_complete_chat_provider_values():
     assert hits == ["ollama"]
 
 
-def test_complete_memories_flags():
-    hits = suggest_completions(["LA", "memories", "-"], build_parser())
+def test_complete_memory_query_flags():
+    hits = suggest_completions(["LA", "memory", "query", "-"], build_parser())
     assert "--sort" in hits
     assert "--tag" in hits
     assert "--list-tags" in hits
 
 
-def test_complete_memories_sort_values():
-    hits = suggest_completions(["LA", "memories", "--sort", ""], build_parser())
+def test_complete_memory_query_sort_values():
+    hits = suggest_completions(["LA", "memory", "query", "--sort", ""], build_parser())
     assert hits == ["newest", "oldest", "relevance"]
-    assert suggest_completions(["LA", "memories", "--sort", "re"], build_parser()) == [
+    assert suggest_completions(["LA", "memory", "query", "--sort", "re"], build_parser()) == [
         "relevance"
     ]
 
 
-def test_complete_memories_tag_values(monkeypatch):
+def test_complete_memory_query_tag_values(monkeypatch):
     monkeypatch.setattr(
         "localagent.completion._memory_tags",
         lambda limit=50: ["偏好", "家庭", "工作"],
     )
-    hits = suggest_completions(["LA", "memories", "--tag", ""], build_parser())
+    hits = suggest_completions(["LA", "memory", "query", "--tag", ""], build_parser())
     assert hits == ["偏好", "家庭", "工作"]
-    assert suggest_completions(["LA", "memories", "--tag", "家"], build_parser()) == ["家庭"]
+    assert suggest_completions(["LA", "memory", "query", "--tag", "家"], build_parser()) == ["家庭"]
 
 
-def test_session_slash_tab_memories_options():
-    hits = suggest_session_slash_completions("/memories ", text="")
+def test_session_slash_tab_memory_query_options():
+    hits = suggest_session_slash_completions("/memory query ", text="")
     assert "--sort" in hits
     assert "--tag" in hits
-    assert suggest_session_slash_completions("/memories --sort ", text="") == [
+    assert suggest_session_slash_completions("/memory query --sort ", text="") == [
         "newest",
         "oldest",
         "relevance",
     ]
-    assert suggest_session_slash_completions("/mem --sort re", text="re") == ["relevance"]
+    assert suggest_session_slash_completions("/memory query --sort re", text="re") == ["relevance"]
 
 
 def test_complete_tasks_actions():
@@ -165,7 +183,7 @@ def test_complete_tasks_actions():
 
 
 def test_complete_cli_entry():
-    rc = main(["complete", "--", "LA", "add"])
+    rc = main(["complete", "--", "LA", "mem"])
     assert rc == 0
 
 

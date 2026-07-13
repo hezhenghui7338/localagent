@@ -26,13 +26,12 @@ def test_is_session_command_slash_and_colon():
 
 
 def test_normalize_session_argv_aliases_and_quotes():
-    assert normalize_session_argv('/add "hello world"') == ["add", "hello world"]
+    assert normalize_session_argv('/add "hello world"') == ["memory", "add", "hello world"]
     assert normalize_session_argv(":p ollama") == ["provider", "ollama"]
     assert normalize_session_argv("/q") == ["q"]
     assert normalize_session_argv("/h") == ["help"]
     assert normalize_session_argv("/model qwen3.5:4b") == ["model", "qwen3.5:4b"]
-    assert normalize_session_argv("/mem foo") == ["memories", "foo"]
-    assert normalize_session_argv("/memories") == ["memories"]
+    assert normalize_session_argv("/memory query foo") == ["memory", "query", "foo"]
     assert normalize_session_argv("/deepsearch 主题 A") == ["deepsearch", "主题", "A"]
 
 
@@ -64,10 +63,12 @@ def test_dispatch_session_help(capsys):
     assert result.exit_code == 0
     out = capsys.readouterr().out
     assert "add" in out
+    assert "memory" in out
     assert "/provider" in out
     assert "/model" in out
-    assert "/memories" in out
-    assert "/mem" in out
+    assert "/memory" in out
+    assert "/mem" not in out.replace("/memory", "")
+    assert "/memories" not in out
     assert "/deepsearch" in out
     assert "/m [" not in out and "/model, /m" not in out
 
@@ -173,7 +174,8 @@ def test_dispatch_session_rejects_ambiguous_m(capsys):
     out = capsys.readouterr().out
     assert "/m 已弃用" in out
     assert "/model" in out
-    assert "/memories" in out or "/mem" in out
+    assert "/memory query" in out
+    assert "/mem" not in out.replace("/memory", "")
 
 
 def test_dispatch_session_exit():
@@ -288,5 +290,5 @@ def test_outer_cli_still_dispatches_add(isolated_data, capsys):
         with patch("localagent.env_config.ensure_config"):
             from localagent.cli import main
 
-            rc = main(["add", "outer channel memory"])
+            rc = main(["memory", "add", "outer channel memory"])
     assert rc == 0

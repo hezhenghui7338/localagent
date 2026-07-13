@@ -27,7 +27,7 @@ def test_e2e_rememorize_chat(la_env, la_data_dir: Path):
     if not ollama_completion_models():
         pytest.skip("需要 Ollama 对话模型以提取记忆")
 
-    result = run_la(["rememorize-chat", "--session", session_id], env=la_env, timeout=300)
+    result = run_la(["memory", "ingest", "chat", "--session", session_id], env=la_env, timeout=300)
     assert result.returncode == 0
     assert "已保存" in result.stdout or "未提取" in result.stdout
 

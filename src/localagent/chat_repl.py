@@ -6,6 +6,7 @@ from localagent import config
 from localagent.agent.intent_clarification import (
     PendingClarification,
     assess_intent,
+    format_assumed_intent,
     format_clarification_response,
     merge_clarified_intent,
 )
@@ -22,8 +23,9 @@ from localagent.session_commands import (
     is_session_command,
     set_repl_provider,
 )
+from localagent.tools.approval import ToolRisk, prompt_tool_approval
 from localagent.ui.banner import print_welcome
-from localagent.ui.console import ActivityIndicator, prepare_for_input
+from localagent.ui.console import ActivityIndicator, prepare_for_input, read_repl_line
 
 
 class ChatREPL:
@@ -60,7 +62,7 @@ class ChatREPL:
         while True:
             try:
                 prepare_for_input()
-                line = input("> ").strip()
+                line = read_repl_line("> ").strip()
                 interrupt_count = 0
             except EOFError:
                 print()
@@ -136,9 +138,21 @@ class ChatREPL:
                         activity.begin_streaming()
                         print(response)
                         return
+                    if assessment.mode == "assume" and assessment.assumptions:
+                        agent_input = format_assumed_intent(
+                            user_input, assessment.assumptions
+                        )
 
                 self.history.append({"role": "user", "content": user_input})
                 user_appended = True
+
+                def on_tool_approve(
+                    tool_name: str,
+                    arguments: dict,
+                    risk: ToolRisk,
+                ) -> bool:
+                    return prompt_tool_approval(tool_name, arguments, risk)
+
                 result = run_agent_turn(
                     agent_input,
                     self.history[:-1],
@@ -146,6 +160,7 @@ class ChatREPL:
                     session_id=self.session_id,
                     on_status=activity.update,
                     on_token=on_token,
+                    on_tool_approve=on_tool_approve,
                 )
                 response = result.response
                 provider_source = get_model_router().format_last_source()

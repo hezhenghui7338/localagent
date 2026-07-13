@@ -23,7 +23,7 @@ _MODEL_PAGE_NEXT = frozenset({"next", ">"})
 _MODEL_PAGE_PREV = frozenset({"prev", "<"})
 
 # Short aliases → canonical session/CLI name.
-# Avoid bare ``/m``: it collides mentally with both model and memories.
+# Avoid bare ``/m``: it collides mentally with both model and memory.
 _ALIASES: dict[str, str] = {
     "q": "q",
     "quit": "quit",
@@ -33,9 +33,16 @@ _ALIASES: dict[str, str] = {
     "p": "provider",
     "provider": "provider",
     "model": "model",
-    "mem": "memories",
-    "memories": "memories",
     "deepsearch": "deepsearch",
+}
+
+# 会话内快捷入口 → memory 子命令（外层 LA add 等已废弃）
+_SESSION_MEMORY_SHORTCUTS: dict[str, tuple[str, str]] = {
+    "add": ("memory", "add"),
+    "add-file": ("memory", "add-file"),
+    "search": ("memory", "search"),
+    "forget": ("memory", "forget"),
+    "reflect": ("memory", "reflect"),
 }
 
 # Last known REPL provider (for Tab completion of /model)
@@ -147,6 +154,7 @@ def list_slash_command_names() -> list[str]:
     names = set(subparser_names(build_parser()))
     names.discard("chat")
     names.update(_ALIASES)
+    names.update(_SESSION_MEMORY_SHORTCUTS)
     return sorted(names)
 
 
@@ -167,6 +175,8 @@ def normalize_session_argv(line: str) -> list[str]:
     if not parts:
         return []
     head = parts[0].lower()
+    if head in _SESSION_MEMORY_SHORTCUTS:
+        return [*_SESSION_MEMORY_SHORTCUTS[head], *parts[1:]]
     canonical = _ALIASES.get(head, head)
     return [canonical, *parts[1:]]
 
@@ -183,7 +193,7 @@ def print_session_help() -> None:
     print("  /provider, /p [name]   查看或切换模型路径")
     print("  /model [name|N]        查看/翻页/切换当前路径模型（写入配置）")
     print("                          翻页: next|prev|page N；序号为本页 1–10")
-    print("  /memories, /mem [q]    查询记忆库（语义搜索 / 标签）")
+    print("  /memory …              记忆操作（与外层 LA memory 相同）")
     print("  /deepsearch <主题>     多步联网深度研究")
     print("  /q, /quit, /exit       退出对话")
     print()
@@ -196,7 +206,7 @@ def dispatch_cli_argv(argv: list[str], *, allow_chat: bool = True) -> int:
     When ``allow_chat`` is False (session use), ``chat`` is rejected to avoid
     nested REPLs.
     """
-    from localagent.cli import _normalize_config_argv, build_parser
+    from localagent.cli import _DEPRECATED_MEMORY_COMMANDS, _normalize_config_argv, _print_deprecated, build_parser
 
     if not argv:
         if allow_chat:
@@ -206,6 +216,9 @@ def dispatch_cli_argv(argv: list[str], *, allow_chat: bool = True) -> int:
             return 1
 
     argv = _normalize_config_argv(argv)
+
+    if argv and argv[0] in _DEPRECATED_MEMORY_COMMANDS:
+        return _print_deprecated(argv[0])
 
     if not allow_chat and argv[0] == "chat":
         print("[LA] 已在对话中，无需 /chat。输入问题开始聊天，或 /help 查看命令。")
@@ -402,8 +415,8 @@ def dispatch_session_line(line: str, ctx: SessionCommandContext) -> DispatchResu
 
     if cmd == "m":
         print(
-            "[LA] /m 已弃用（易与 model / memories 混淆）。"
-            "切换模型用 /model，查询记忆用 /memories 或 /mem。"
+            "[LA] /m 已弃用（易与 model / memory 混淆）。"
+            "切换模型用 /model，查询记忆用 /memory query。"
         )
         return DispatchResult(exit_code=1)
 

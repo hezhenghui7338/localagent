@@ -4,9 +4,9 @@
 
 | 能力 | 命令 | 说明 |
 |------|------|------|
-| **Retain** | `LA add` | 写入事实；默认 `infer=False`，由 LA enrich 做标题/标签 |
-| **Semantic Recall** | `LA search` | Mem0 向量检索 + 本地时间重排 |
-| **Reflect** | `LA reflect` | search top-k + LA LLM 归纳（模拟跨记忆推理） |
+| **Retain** | `LA memory add` | 写入事实；默认 `infer=False`，由 LA enrich 做标题/标签 |
+| **Semantic Recall** | `LA memory search` | Mem0 向量检索 + 本地时间重排 |
+| **Reflect** | `LA memory reflect` | search top-k + LA LLM 归纳（模拟跨记忆推理） |
 
 ## 准备
 
@@ -15,7 +15,7 @@
 pip install -e ".[dev]"
 
 # 确认 Mem0 就绪（需可用的嵌入模型，如 Ollama 的 bge-m3）
-LA memory-status
+LA memory status
 ```
 
 当前后端:     mem0 (Mem0Backend)
@@ -34,13 +34,13 @@ bash examples/mem0-demo.sh
 
 ```bash
 export LA_DATA_DIR=/tmp/la-mem0-demo
-LA reset-memory --keep-knowledge
+LA memory reset --keep-knowledge
 
-LA add "2026年5月，架构评审后放弃 SQLite，改用 Mem0 作为 Warm 层记忆引擎"
-LA add "2026年7月，最终决定采用 Mem0：更轻、更快，reflect 由 search + 本地 LLM 模拟"
+LA memory add "2026年5月，架构评审后放弃 SQLite，改用 Mem0 作为 Warm 层记忆引擎"
+LA memory add "2026年7月，最终决定采用 Mem0：更轻、更快，reflect 由 search + 本地 LLM 模拟"
 
-LA search "记忆引擎选型"
-LA reflect "记忆引擎选型经历了怎样的变化？"
+LA memory search "记忆引擎选型"
+LA memory reflect "记忆引擎选型经历了怎样的变化？"
 ```
 
 ## Mem0 vs JSON 后端对比
@@ -57,5 +57,5 @@ LA reflect "记忆引擎选型经历了怎样的变化？"
 从旧 JSON / Hindsight 注册表迁到 Mem0 索引：
 
 ```bash
-LA reindex-memory
+LA memory reindex
 ```

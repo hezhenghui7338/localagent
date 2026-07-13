@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from localagent import __version__
-from localagent.ui.banner import WelcomeInfo, render_welcome
+from localagent.ui.banner import WelcomeInfo, collect_welcome_info, format_web_search_hint, render_welcome
 from localagent.ui.console import ActivityIndicator, emit, spinner
 
 
@@ -56,6 +56,7 @@ def test_render_welcome_shows_project_basics():
     info = WelcomeInfo(
         version=__version__,
         provider_line="qwen3.5:4b · auto(ollama→openrouter)",
+        web_search_line="联网 · ddgs（免费）",
         cwd_display="~/code/LocalAgent",
         session_id="s-test123",
         memory_count=12,
@@ -67,6 +68,7 @@ def test_render_welcome_shows_project_basics():
     assert "LOCAL" in out and "AGENT" in out
     assert "Your AI. Your Data. Your Mac." in out
     assert "qwen3.5:4b" in out
+    assert "联网 · ddgs（免费）" in out
     assert "~/code/LocalAgent" in out
     assert "入门提示" in out
     assert "项目状态" in out
@@ -79,6 +81,35 @@ def test_render_welcome_shows_project_basics():
     assert "Tab" in out
     assert "╮" in out
     assert "│" in out
+
+
+def test_format_web_search_hint_tavily_when_key_set(monkeypatch):
+    monkeypatch.setattr("localagent.config.WEB_SEARCH_PROVIDER", "auto")
+    monkeypatch.setattr("localagent.config.TAVILY_API_KEY", "tvly-x")
+    monkeypatch.setattr("localagent.config.SEARXNG_URL", "")
+    assert format_web_search_hint() == "联网 · Tavily"
+
+
+def test_format_web_search_hint_ddgs_without_key(monkeypatch):
+    monkeypatch.setattr("localagent.config.WEB_SEARCH_PROVIDER", "auto")
+    monkeypatch.setattr("localagent.config.TAVILY_API_KEY", "")
+    monkeypatch.setattr("localagent.config.SEARXNG_URL", "")
+    assert format_web_search_hint() == "联网 · ddgs（免费）"
+
+
+def test_collect_welcome_info_includes_web_search(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr("localagent.config.WEB_SEARCH_PROVIDER", "auto")
+    monkeypatch.setattr("localagent.config.TAVILY_API_KEY", "tvly-x")
+    monkeypatch.setattr("localagent.config.SEARXNG_URL", "")
+    router = MagicMock()
+    router.format_provider_hint.return_value = "auto(ollama)"
+    router.format_model_hint.return_value = "qwen3.5:4b"
+    with patch("localagent.models.router.get_model_router", return_value=router):
+        with patch("localagent.ui.banner._memory_count", return_value=0):
+            with patch("localagent.ui.banner._kb_file_count", return_value=0):
+                with patch("localagent.ui.banner._git_line", return_value="非 Git 仓库"):
+                    info = collect_welcome_info(provider="auto", session_id="s1", cwd=tmp_path)
+    assert info.web_search_line == "联网 · Tavily"
 
 
 def test_cli_bare_la_defaults_to_chat():

@@ -30,18 +30,18 @@ def _zsh_interactive(script: str, *, timeout: int = 15) -> subprocess.CompletedP
     )
 
 
-def test_e2e_complete_add_prefix():
-    result = run_la(["complete", "--", "LA", "add"])
+def test_e2e_complete_memory_prefix():
+    result = run_la(["complete", "--", "LA", "mem"])
     assert result.returncode == 0
     lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    assert lines == ["add", "add-file"]
+    assert lines == ["memory"]
 
 
 def test_e2e_complete_all_commands():
     result = run_la(["complete", "--", "LA"])
     assert result.returncode == 0
     lines = set(result.stdout.splitlines())
-    assert {"chat", "add-file", "sync-file", "tasks"}.issubset(lines)
+    assert {"chat", "memory", "tasks"}.issubset(lines)
 
 
 def test_e2e_complete_chat_provider_flag():
@@ -62,17 +62,17 @@ def test_e2e_zsh_compdef_registers_la():
 
 @pytest.mark.skipif(not ZSH_SCRIPT.is_file(), reason="zsh completion script missing")
 @pytest.mark.skipif(not (VENV_BIN / "LA").exists(), reason="LA not installed in .venv")
-def test_e2e_zsh_la_add_tab_candidates():
-    """Simulate LA add<Tab>: _la should offer add and add-file."""
+def test_e2e_zsh_la_memory_tab_candidates():
+    """Simulate LA mem<Tab>: _la should offer memory."""
     result = _zsh_interactive(
         f"source '{ZSH_SCRIPT}'; "
-        "words=(LA add); CURRENT=2; "
+        "words=(LA mem); CURRENT=2; "
         'suggestions=("${(@f)$(LA complete -- "${words[@]}")}"); '
         'print -rl -- "${suggestions[@]}"'
     )
     assert result.returncode == 0, result.stderr
     lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    assert lines == ["add", "add-file"], lines
+    assert lines == ["memory"], lines
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="complete-init e2e writes ~/.zshrc on dev machine")
