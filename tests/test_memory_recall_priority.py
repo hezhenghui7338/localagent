@@ -102,6 +102,30 @@ def test_explicit_remember_writes_memory_and_pins_profile(isolated_data):
     assert profile.preferences.get("居住地") == "深圳"
 
 
+def test_scoped_recall_bm25_finds_english_entity_fact(isolated_data):
+    store = get_memory_store()
+    store.retain_from_section(
+        filename="locomo",
+        heading="session_2",
+        text='[session=2] Caroline said, "I spent the week researching adoption agencies."',
+        chunk_id="D2:8",
+        extra_metadata={"dia_id": "D2:8", "speaker": "Caroline", "source": "locomo"},
+    )
+    store.retain_from_section(
+        filename="locomo",
+        heading="session_14",
+        text='[session=14] Melanie said, "I painted flowers yesterday."',
+        chunk_id="D14:1",
+        extra_metadata={"dia_id": "D14:1", "speaker": "Melanie", "source": "locomo"},
+    )
+    store.save()
+
+    hits = scoped_recall("What did Caroline research?", max_results=3)
+    assert hits
+    assert any("adoption agencies" in h["text"] for h in hits)
+    assert any((h.get("metadata") or {}).get("dia_id") == "D2:8" for h in hits)
+
+
 def test_retain_memory_tool(isolated_data):
     msg = retain_memory("我喜欢喝美式咖啡")
     assert "已记住" in msg

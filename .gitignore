@@ -23,6 +23,10 @@ data/*
 !data/.gitkeep
 !data/core_profile.example.json
 
+# LoCoMo benchmark downloads / run artifacts
+benchmarks/data/locomo10.json
+benchmarks/data/runs/
+
 # Editor / OS
 .DS_Store
 .idea/

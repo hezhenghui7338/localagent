@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from localagent import config
 from localagent.memory.core_profile import load_core_profile
-from localagent.memory.hindsight_client import get_memory_backend
+from localagent.memory.backend import get_memory_backend
 from localagent.memory.scoped_recall import _semantic_score, _temporal_score
 from localagent.memory.store import MemoryFact, get_memory_store
 from localagent.memory.temporal import memory_effective_time

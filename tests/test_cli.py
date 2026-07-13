@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from localagent import config
-from localagent.cli import main
+from localagent import __version__, config
+from localagent.cli import build_parser, main
 from localagent.ingest.sync_index import get_sync_index
 from localagent.memory.scoped_recall import scoped_recall
 from localagent.memory.store import get_memory_store
@@ -15,6 +15,22 @@ from localagent.persist.conversations import load_conversation
 from localagent.tools import search_knowledge, search_memory
 
 from conftest import write_doc
+
+
+def test_cli_version_flag(capsys):
+    assert main(["--version"]) == 0
+    assert f"la-localagent {__version__}" in capsys.readouterr().out
+
+
+def test_cli_version_short_flag(capsys):
+    assert main(["-V"]) == 0
+    assert f"la-localagent {__version__}" in capsys.readouterr().out
+
+
+def test_build_parser_exposes_version():
+    help_text = build_parser().format_help()
+    assert "--version" in help_text
+    assert "-V" in help_text
 
 
 def test_cli_add_writes_memory_directly():

@@ -26,7 +26,7 @@ def test_e2e_help():
 
 
 def test_e2e_add(la_env):
-    result = run_la(["add", "2026年7月决定使用 Hindsight 作为记忆引擎"], env=la_env)
+    result = run_la(["add", "2026年7月决定使用 Mem0 作为记忆引擎"], env=la_env)
     assert result.returncode == 0
     assert "已写入记忆" in result.stdout
 
@@ -40,7 +40,7 @@ def test_e2e_add_rejects_short_text(la_env):
 def test_e2e_add_file_and_sync(la_env, tmp_path: Path):
     doc = tmp_path / "diary.md"
     doc.write_text(
-        "# 日记\n\n2026年7月决定使用 Hindsight 作为记忆引擎。\n\n## 计划\n\n先实现 add-file。",
+        "# 日记\n\n2026年7月决定使用 Mem0 作为记忆引擎。\n\n## 计划\n\n先实现 add-file。",
         encoding="utf-8",
     )
 
@@ -68,29 +68,29 @@ def test_e2e_sync_file_force(la_env, tmp_path: Path):
 
 
 def test_e2e_search_memory(la_env):
-    run_la(["add", "2026年7月决定使用 Hindsight 作为记忆引擎"], env=la_env)
-    result = run_la(["search", "Hindsight"], env=la_env)
+    run_la(["add", "2026年7月决定使用 Mem0 作为记忆引擎"], env=la_env)
+    result = run_la(["search", "Mem0"], env=la_env)
     assert result.returncode == 0
-    assert "Hindsight" in result.stdout
+    assert "Mem0" in result.stdout
     assert "forget" in result.stdout
 
 
 def test_e2e_search_knowledge(la_env, tmp_path: Path):
     doc = tmp_path / "spec.md"
-    doc.write_text("# 技术方案\n\nLocalAgent 使用 Hindsight 管理长期记忆。", encoding="utf-8")
+    doc.write_text("# 技术方案\n\nLocalAgent 使用 Mem0 管理长期记忆。", encoding="utf-8")
     run_la(["add-file", str(doc)], env=la_env)
 
-    result = run_la(["search", "Hindsight", "--knowledge"], env=la_env)
+    result = run_la(["search", "Mem0", "--knowledge"], env=la_env)
     assert result.returncode == 0
-    assert "Hindsight" in result.stdout
+    assert "Mem0" in result.stdout
 
 
 def test_e2e_forget_memory(la_env, la_data_dir: Path):
-    run_la(["add", "2026年7月决定使用 Hindsight 作为记忆引擎"], env=la_env)
+    run_la(["add", "2026年7月决定使用 Mem0 作为记忆引擎"], env=la_env)
     store_path = la_data_dir / "memory_store.json"
     fact_id = json.loads(store_path.read_text(encoding="utf-8"))["facts"][0]["id"]
 
-    search = run_la(["search", "Hindsight"], env=la_env)
+    search = run_la(["search", "Mem0"], env=la_env)
     assert search.returncode == 0
     assert fact_id[:8] in search.stdout
 
@@ -187,8 +187,8 @@ def test_e2e_tasks_list(la_env, tmp_path: Path):
     assert "t-" in result.stdout
 
 
-def test_hindsight_extra_marked_py311_only():
-    """README 中 hindsight 安装说明：Python 3.10 应能装包，但跳过 3.11-only 依赖."""
+def test_mem0_is_core_dependency():
+    """mem0ai is a required dependency for the Warm memory engine."""
     text = (PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert "hindsight-all" in text
-    assert "python_version >= '3.11'" in text
+    assert "mem0ai" in text
+    assert "hindsight-all" not in text

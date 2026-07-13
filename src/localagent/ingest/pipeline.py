@@ -12,7 +12,7 @@ from localagent.ingest.loader import LoadedDoc, load_file
 from localagent.ingest.progress import ProgressEvent, ProgressReporter
 from localagent.ingest.sync_index import content_hash, get_sync_index
 from localagent.knowledge.indexer import get_knowledge_indexer
-from localagent.memory.hindsight_client import get_memory_backend
+from localagent.memory.backend import get_memory_backend
 from localagent.memory.value_filter import should_retain_as_memory
 
 

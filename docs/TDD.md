@@ -10,7 +10,7 @@ LA CLI → chat REPL / ingest / pending
     ModelRouter (Ollama → OpenRouter → Cursor)
          ↓
     Hot: core_profile.json
-    Warm: Hindsight (fallback: JSON memory_store)
+    Warm: Mem0 (fallback: JSON memory_store)
     Cold: Chroma + BM25 + RRF
 ```
 
@@ -27,7 +27,10 @@ src/localagent/
 ├── models/router.py       # 三级模型回退
 ├── memory/
 │   ├── core_profile.py    # Hot 层
-│   ├── hindsight_client.py
+│   ├── backend.py         # MemoryBackend 工厂
+│   ├── backends/
+│   │   ├── json_backend.py
+│   │   └── mem0_backend.py
 │   ├── temporal_intent.py
 │   ├── scoped_recall.py
 │   └── value_filter.py
@@ -55,6 +58,7 @@ data/
 ├── conversations/*.jsonl
 ├── sessions.db
 ├── chroma/
+├── mem0/                # Mem0 qdrant + history.db
 ├── bm25.pkl
 └── audit/usage.jsonl
 ```
@@ -63,7 +67,7 @@ data/
 
 | 决策 | 选型 |
 |------|------|
-| 记忆引擎 | Hindsight（可选）+ JSON fallback |
+| 记忆引擎 | Mem0（主依赖）+ JSON fallback / 注册表 |
 | 知识检索 | Chroma + BM25 + RRF |
 | 编排 | LangGraph + SQLite Checkpointer |
 | 联网 | Tavily（Agent 自动触发） |
@@ -72,17 +76,10 @@ data/
 ## 5. 时间召回
 
 - `TemporalIntentParser` 从问题解析时间锚点
-- `scoped_recall`：语义 75% + 距锚点 25% 混合排序
+- `scoped_recall` / Mem0 recall 后：语义 75% + 距锚点 25% 混合排序
 
 ## 6. 主动意图澄清
 
 ```
 用户输入 → assess_intent()（轻量 LLM 预检）
-              ├─ 明确 → run_agent_turn() 正常流程
-              └─ 模糊 → 返回追问，REPL 进入 pending_clarification
-                         用户补充 → merge_clarified_intent() → run_agent_turn()
 ```
-
-- 预检在 `run_agent_turn` 之前，避免模糊指令触发 `run_shell` 等副作用工具
-- `should_skip_intent_assessment()` 对寒暄、`:命令`、含明确路径的请求跳过 LLM 预检
-- 由 `LA_INTENT_CLARIFY` 控制开关（默认开启）

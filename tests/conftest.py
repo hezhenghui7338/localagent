@@ -11,7 +11,8 @@ from localagent.ingest.sync_index import reset_sync_index_singleton
 from localagent.knowledge.hybrid import reset_hybrid_retriever
 from localagent.knowledge.indexer import reset_knowledge_indexer
 from localagent.knowledge.store import reset_knowledge_store_singleton
-from localagent.memory.hindsight_client import JsonMemoryBackend, reset_memory_backend
+from localagent.memory.backends.json_backend import JsonMemoryBackend
+from localagent.memory.backend import reset_memory_backend
 from localagent.memory.chatgpt_import import reset_chatgpt_import_index
 from localagent.memory.store import reset_memory_store_singleton
 from localagent.ingest.tasks import reset_task_store
@@ -49,6 +50,7 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
     for key, val in paths.items():
         monkeypatch.setattr(f"localagent.config.{key}", val)
 
+    monkeypatch.setattr("localagent.config.MEMORY_BACKEND", "json")
     monkeypatch.setattr("localagent.ingest.sync_index.SYNC_INDEX_FILE", paths["SYNC_INDEX_FILE"])
     monkeypatch.setattr("localagent.memory.store.MEMORY_STORE_FILE", paths["MEMORY_STORE_FILE"])
     monkeypatch.setattr("localagent.knowledge.store.KNOWLEDGE_STORE_FILE", paths["KNOWLEDGE_STORE_FILE"])
@@ -56,6 +58,7 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
     (data_dir / "conversations").mkdir(parents=True, exist_ok=True)
     (data_dir / "chatGPTdata").mkdir(parents=True, exist_ok=True)
     (data_dir / "chroma").mkdir(parents=True, exist_ok=True)
+    (data_dir / "mem0").mkdir(parents=True, exist_ok=True)
     (data_dir / "audit").mkdir(parents=True, exist_ok=True)
 
     reset_sync_index_singleton()
@@ -82,7 +85,7 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
     for target in router_targets:
         monkeypatch.setattr(target, lambda: mock_router)
     monkeypatch.setattr(
-        "localagent.memory.hindsight_client.get_memory_backend",
+        "localagent.memory.backend.get_memory_backend",
         lambda: JsonMemoryBackend(),
     )
 

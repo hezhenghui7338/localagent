@@ -20,4 +20,5 @@ def la_env(la_data_dir: Path) -> dict[str, str]:
     return {
         "LA_DATA_DIR": str(la_data_dir),
         "LA_INGEST_USE_LLM": "0",
+        "LA_MEMORY_BACKEND": "json",
     }

@@ -1,4 +1,4 @@
-"""Lightweight JSON memory store (Hindsight-compatible interface placeholder)."""
+"""Lightweight JSON memory store (enrichment registry for Warm backends)."""
 
 from __future__ import annotations
 
@@ -156,17 +156,28 @@ class MemoryStore:
                 return fact
         return None
 
-    def find_by_hindsight_id(self, hindsight_id: str) -> MemoryFact | None:
-        if not hindsight_id:
+    def find_by_external_id(self, external_id: str) -> MemoryFact | None:
+        """Match a Warm-engine memory id (mem0 / legacy hindsight) in the registry."""
+        if not external_id:
             return None
         for fact in self._facts:
             meta = fact.metadata or {}
-            if str(meta.get("hindsight_id") or "") == hindsight_id:
+            candidates = {
+                str(meta.get("external_id") or ""),
+                str(meta.get("mem0_id") or ""),
+                str(meta.get("hindsight_id") or ""),
+            }
+            if external_id in candidates:
                 return fact
-            extra_ids = meta.get("hindsight_ids") or []
-            if hindsight_id in {str(item) for item in extra_ids}:
-                return fact
+            for key in ("mem0_ids", "hindsight_ids"):
+                extra_ids = meta.get(key) or []
+                if external_id in {str(item) for item in extra_ids}:
+                    return fact
         return None
+
+    def find_by_hindsight_id(self, hindsight_id: str) -> MemoryFact | None:
+        """Deprecated alias for find_by_external_id."""
+        return self.find_by_external_id(hindsight_id)
 
     def find_by_text(self, text: str) -> MemoryFact | None:
         normalized = text.strip()

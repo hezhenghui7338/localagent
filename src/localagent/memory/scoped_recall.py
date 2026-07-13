@@ -8,11 +8,11 @@ from datetime import datetime
 from typing import Any
 
 from localagent import config
+from localagent.knowledge.bm25_store import tokenize as bm25_tokenize
 from localagent.memory.core_profile import load_core_profile
-from localagent.memory.temporal import memory_effective_time
 from localagent.memory.store import get_memory_store
+from localagent.memory.temporal import memory_effective_time
 from localagent.memory.temporal_intent import parse_temporal_intent
-
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]+")
 _TOKEN_RE = re.compile(r"[\u4e00-\u9fff]+|[A-Za-z0-9]+")
@@ -40,6 +40,21 @@ _QUERY_STOP_PHRASES = (
 )
 _QUERY_STOP_CHARS = frozenset(
     "的吗呢啊吧呀么了哦哈嗯你我他她它谁何在是有被把和与及对到得地"
+)
+_EN_QUERY_STOPWORDS = frozenset(
+    {
+        "a", "an", "the", "and", "or", "but", "if", "then", "else", "when", "where",
+        "what", "who", "whom", "which", "why", "how", "is", "are", "was", "were",
+        "be", "been", "being", "have", "has", "had", "do", "does", "did", "will",
+        "would", "could", "should", "may", "might", "must", "shall", "can", "to",
+        "of", "in", "on", "at", "by", "for", "with", "about", "as", "into", "like",
+        "through", "after", "before", "between", "from", "up", "down", "out", "off",
+        "over", "under", "again", "further", "once", "here", "there", "all", "each",
+        "few", "more", "most", "other", "some", "such", "no", "nor", "not", "only",
+        "own", "same", "so", "than", "too", "very", "just", "also", "now", "i", "me",
+        "my", "we", "our", "you", "your", "he", "she", "it", "they", "them", "their",
+        "this", "that", "these", "those", "am",
+    }
 )
 _QUERY_SYNONYMS: dict[str, frozenset[str]] = {
     "住": frozenset({"住", "居住", "住在", "住址", "住所", "位于"}),
@@ -93,6 +108,7 @@ def _tokenize(text: str, *, for_query: bool = False) -> set[str]:
     if for_query:
         terms = _expand_query_terms(terms)
         terms.difference_update(_QUERY_STOP_CHARS)
+        terms.difference_update(_EN_QUERY_STOPWORDS)
         for phrase in _QUERY_STOP_PHRASES:
             terms.discard(phrase)
     return terms
@@ -105,6 +121,82 @@ def _semantic_score(query: str, text: str) -> float:
         return 0.0
     overlap = len(q_terms & t_terms)
     return overlap / len(q_terms)
+
+
+def _fact_searchable_text(fact: Any) -> str:
+    meta = getattr(fact, "metadata", None) or {}
+    return " ".join(
+        part
+        for part in (
+            getattr(fact, "text", "") or "",
+            str(meta.get("title") or ""),
+            str(meta.get("summary") or ""),
+            " ".join(meta.get("tags") or []),
+            getattr(fact, "section_heading", "") or "",
+            str(meta.get("speaker") or ""),
+            str(meta.get("dia_id") or ""),
+            str(meta.get("date_time") or ""),
+        )
+        if part
+    )
+
+
+_PORTER = None
+
+
+def _stem_token(token: str) -> str:
+    if len(token) < 4 or _CJK_RE.search(token):
+        return token
+    global _PORTER
+    try:
+        if _PORTER is None:
+            from nltk.stem import PorterStemmer
+
+            _PORTER = PorterStemmer()
+        return _PORTER.stem(token)
+    except Exception:
+        for suffix in ("ing", "ers", "ies", "ied", "ed", "es", "s"):
+            if token.endswith(suffix) and len(token) - len(suffix) >= 3:
+                return token[: -len(suffix)]
+        return token
+
+
+def _memory_bm25_tokenize(text: str) -> list[str]:
+    """BM25 tokens for memory recall; English terms are stemmed for better matching."""
+    return [_stem_token(token) for token in bm25_tokenize(text)]
+
+
+def _bm25_scores(query: str, corpus_texts: list[str]) -> list[float]:
+    """Return raw BM25 scores aligned with corpus_texts."""
+    if not corpus_texts:
+        return []
+    try:
+        from rank_bm25 import BM25Okapi
+    except Exception:
+        return [0.0] * len(corpus_texts)
+
+    tokenized = [_memory_bm25_tokenize(text) for text in corpus_texts]
+    if not any(tokenized):
+        return [0.0] * len(corpus_texts)
+    bm25 = BM25Okapi(tokenized)
+    scores = bm25.get_scores(_memory_bm25_tokenize(query))
+    return [float(score) for score in scores]
+
+
+def _normalize_scores(scores: list[float]) -> list[float]:
+    if not scores:
+        return []
+    peak = max(scores)
+    if peak <= 0:
+        return [0.0] * len(scores)
+    return [max(0.0, score / peak) for score in scores]
+
+
+def _combine_lexical_scores(jaccard: float, bm25_norm: float) -> float:
+    """Prefer strong BM25 matches while keeping Jaccard signal for short Chinese facts."""
+    if bm25_norm <= 0 and jaccard <= 0:
+        return 0.0
+    return max(jaccard, bm25_norm) * 0.65 + min(jaccard, bm25_norm) * 0.35
 
 
 def _recency_score(effective_at: str) -> float:
@@ -159,7 +251,7 @@ def rerank_hits_temporally(
     *,
     max_results: int = 10,
 ) -> list[dict[str, Any]]:
-    """Re-rank recall hits with temporal intent (for Hindsight recall results)."""
+    """Re-rank recall hits with temporal intent (for Mem0 / engine recall results)."""
     profile = load_core_profile()
     intent = parse_temporal_intent(query, profile)
 
@@ -174,6 +266,9 @@ def rerank_hits_temporally(
                 str(meta.get("summary") or ""),
                 " ".join(meta.get("tags") or []),
                 str(hit.get("section_heading") or ""),
+                str(meta.get("speaker") or ""),
+                str(meta.get("dia_id") or ""),
+                str(meta.get("date_time") or ""),
             )
             if part
         )
@@ -205,38 +300,36 @@ def scoped_recall(
     max_results: int = 10,
     facts: list[Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Recall memories with semantic + temporal scoring."""
+    """Recall memories with BM25 + Jaccard lexical signal and temporal scoring."""
     profile = load_core_profile()
     intent = parse_temporal_intent(query, profile)
     store = get_memory_store()
     candidate_facts = facts if facts is not None else store.all_facts()
+    if not candidate_facts:
+        return []
+
+    corpus = [_fact_searchable_text(fact) for fact in candidate_facts]
+    bm25_norm = _normalize_scores(_bm25_scores(query, corpus))
 
     scored: list[tuple[float, dict[str, Any]]] = []
-    for fact in candidate_facts:
-        meta = fact.metadata or {}
-        searchable = " ".join(
-            part for part in (
-                fact.text,
-                str(meta.get("title") or ""),
-                str(meta.get("summary") or ""),
-                " ".join(meta.get("tags") or []),
-                fact.section_heading,
-            )
-            if part
-        )
-        sem = _semantic_score(query, searchable)
-        if sem <= 0:
+    for index, fact in enumerate(candidate_facts):
+        searchable = corpus[index]
+        jaccard = _semantic_score(query, searchable)
+        lexical = _combine_lexical_scores(jaccard, bm25_norm[index] if index < len(bm25_norm) else 0.0)
+        if lexical <= 0:
             continue
         effective_at = memory_effective_time(metadata=fact.metadata, created_at=fact.created_at)
         temp = _temporal_score(effective_at, intent.anchor_date)
-        blended = _blend_score(sem, temp, fact.text)
+        blended = _blend_score(lexical, temp, fact.text)
         scored.append((
             blended,
             {
                 "id": fact.id,
                 "text": fact.text,
                 "score": blended,
-                "semantic_score": sem,
+                "semantic_score": lexical,
+                "jaccard_score": jaccard,
+                "bm25_score": bm25_norm[index] if index < len(bm25_norm) else 0.0,
                 "temporal_score": temp,
                 "source_file": fact.source_file,
                 "section_heading": fact.section_heading,

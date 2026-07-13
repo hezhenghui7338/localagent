@@ -14,10 +14,10 @@ from localagent.ingest.sync_file import sync_files
 from localagent.ingest.progress import ConsoleProgressReporter
 from localagent.ingest.tasks import TaskStatus, format_task_line, get_task_store
 from localagent.memory.chatgpt_import import import_chatgpt_dir, import_chatgpt_file, import_chatgpt_files
-from localagent.memory.hindsight_client import describe_memory_backend, get_memory_backend
+from localagent.memory.backend import describe_memory_backend, get_memory_backend
 from localagent.memory.query import list_memory_tags, query_memories
 from localagent.memory.rememorize import rememorize_chat
-from localagent.memory.reset import rebuild_memory, reset_memory
+from localagent.memory.reset import rebuild_memory, reindex_memory_engine, reset_memory
 from localagent.memory.store import get_memory_store
 from localagent.tools import query_memories_tool, reflect_memory, search_knowledge, search_memory
 from localagent.ui.console import emit
@@ -332,6 +332,17 @@ def cmd_rebuild_memory(args: argparse.Namespace) -> int:
     return 1 if summary.failed_count else 0
 
 
+def cmd_reindex_memory(_args: argparse.Namespace) -> int:
+    reporter = ConsoleProgressReporter(prefix="reindex-memory")
+    stats = reindex_memory_engine(reporter=reporter)
+    print("[reindex-memory] Warm 引擎重建:")
+    print(f"  backend:    {stats['backend']}")
+    print(f"  reindexed:  {stats['reindexed']}")
+    if stats.get("skipped"):
+        print("  skipped:    yes (非 mem0 后端)")
+    return 0
+
+
 def cmd_rememorize_chat(args: argparse.Namespace) -> int:
     reporter = ConsoleProgressReporter(prefix="rememorize-chat")
     interactive = True if args.interactive else None
@@ -455,30 +466,28 @@ def cmd_memory_status(_args: argparse.Namespace) -> int:
     print(f"  当前后端:     {info['active_backend']} ({info.get('backend_class', '?')})")
     print(f"  配置偏好:     {info['preference']} (LA_MEMORY_BACKEND)")
     print(f"  Python:       {info['python_version']}")
-    print(f"  Hindsight:    {'已安装' if info['hindsight_installed'] else '未安装'}")
-    if info["hindsight_installed"]:
-        llm_ok = info.get("hindsight_llm_available", False)
-        mode = info.get("hindsight_extraction_mode", "?")
-        print(f"  Retain 模式:  {mode} (LA_HINDSIGHT_EXTRACTION_MODE)")
-        if mode == "chunks":
-            print(f"  Retain LLM:   不需要（chunks 模式直接分块入库）")
-        else:
-            print(f"  Retain LLM:   {'可用' if llm_ok else '不可用'} ({info.get('hindsight_llm_provider', '?')}/{info.get('hindsight_llm_model', '?')})")
-        configured = info.get("ollama_model_configured")
-        resolved = info.get("hindsight_llm_model")
-        if configured and resolved and configured != resolved:
-            print(f"  ⚠ Ollama 模型: 配置 {configured} → 实际使用 {resolved}")
-        print(f"  Retain 降级:  {'开启' if info.get('retain_json_fallback') else '关闭'} (LA_HINDSIGHT_RETAIN_JSON_FALLBACK)")
-    if not info["python_ok_for_hindsight"]:
-        print("  ⚠ Python 3.11+ 才能安装 hindsight-all")
+    print(f"  Mem0:         {'已安装' if info.get('mem0_installed') else '未安装'}")
+    if info.get("mem0_installed"):
+        print(f"  Infer:        {'开启' if info.get('mem0_infer') else '关闭'} (LA_MEM0_INFER)")
+        print(
+            f"  LLM:          {info.get('mem0_llm_provider', '?')}/{info.get('mem0_llm_model', '?')}"
+        )
+        print(
+            f"  Embedder:     {info.get('mem0_embedder_provider', '?')}/"
+            f"{info.get('mem0_embedder_model', '?')} (dims={info.get('mem0_embedder_dims', '?')})"
+        )
+        print(
+            f"  Retain 降级:  {'开启' if info.get('retain_json_fallback') else '关闭'} "
+            "(LA_MEM0_RETAIN_JSON_FALLBACK)"
+        )
+        print(f"  Mem0 数据:    {info.get('mem0_dir', '?')}")
     print(f"  记忆条数:     {info['memory_count']}")
     print(f"  Bank ID:      {info['bank_id']}")
     print(f"  本地索引:     {info['store_file']}")
     if info.get("error"):
         print(f"  错误:         {info['error']}")
-    if info["active_backend"] == "json" and info["preference"] == "auto":
-        print("\n提示: 安装 Hindsight 后可获得 4 路并行 recall + reflect + consolidation")
-        print("  pip install 'la-localagent[hindsight]'  # 需要 Python 3.11+")
+    if info["active_backend"] == "json" and info["preference"] != "json":
+        print("\n提示: Mem0 初始化失败时会回退到 JSON。检查 Ollama 嵌入模型或 LA_MEM0_EMBEDDER_*。")
     return 0
 
 
@@ -859,6 +868,8 @@ def cmd_config(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    from localagent import __version__
+
     parser = argparse.ArgumentParser(
         prog="LA",
         description="LocalAgent — 本地 AI 个人助手",
@@ -868,6 +879,13 @@ def build_parser() -> argparse.ArgumentParser:
             "进入对话后可用 /<command> 执行相同命令（输入 /help；: 为兼容别名）。\n"
             "使用 LA <command> -h 查看某个命令的完整说明。"
         ),
+    )
+    parser.add_argument(
+        "-V",
+        "--version",
+        action="version",
+        version=f"la-localagent {__version__}",
+        help="显示版本号并退出",
     )
     sub = parser.add_subparsers(
         dest="cmd",
@@ -950,8 +968,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_mem_status = sub.add_parser(
         "memory-status",
-        help="诊断 Warm 层记忆后端（Hindsight / JSON）",
-        description="显示当前记忆引擎、Python 版本、Hindsight 安装状态与记忆条数",
+        help="诊断 Warm 层记忆后端（Mem0 / JSON）",
+        description="显示当前记忆引擎、Mem0 配置与记忆条数",
     )
     p_mem_status.set_defaults(func=cmd_memory_status)
 
@@ -960,6 +978,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="清空记忆后强制重建 kb/ 索引",
         description="清空记忆后执行 sync-file --force",
     ).set_defaults(func=cmd_rebuild_memory)
+
+    sub.add_parser(
+        "reindex-memory",
+        help="从 memory_store.json 重建 Mem0 向量索引（不删事实）",
+        description="保留 JSON 注册表，清空并重建 Mem0 Warm 引擎索引",
+    ).set_defaults(func=cmd_reindex_memory)
 
     p_forget = sub.add_parser(
         "forget",
@@ -1031,7 +1055,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_reflect = sub.add_parser(
         "reflect",
-        help="<query>  跨记忆推理（Hindsight reflect）",
+        help="<query>  跨记忆推理（Mem0 search + LLM）",
         description="对多条记忆进行推理综合，处理矛盾、歧义或需要归纳的问题",
     )
     p_reflect.add_argument("query", help="需要推理的问题")
@@ -1197,7 +1221,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_config_set_key.add_argument(
         "provider",
-        help="LA_MODEL_SERVERS 中的 provider，或 tavily / hindsight",
+        help="LA_MODEL_SERVERS 中的 provider，或 tavily / mem0",
     )
     p_config_set_key.add_argument(
         "value",
@@ -1281,6 +1305,13 @@ def main(argv: list[str] | None = None) -> int:
     if complete_rc is not None:
         return complete_rc
 
+    # 查版本不写配置/数据目录
+    if argv and argv[0] in ("-V", "--version"):
+        from localagent import __version__
+
+        print(f"la-localagent {__version__}")
+        return 0
+
     # LA ≡ LA chat：无子命令时进入对话模式
     if not argv:
         argv = ["chat"]
@@ -1296,11 +1327,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return dispatch_cli_argv(argv, allow_chat=True)
     except KeyboardInterrupt:
-        from localagent.models.router import shutdown_cursor_sdk
-
-        shutdown_cursor_sdk()
         print("\n[LA] 已中断")
         return 130
+    finally:
+        from localagent.memory.backend import shutdown_memory_backend
+        from localagent.models.router import shutdown_cursor_sdk
+
+        shutdown_memory_backend()
+        shutdown_cursor_sdk()
 
 
 if __name__ == "__main__":
