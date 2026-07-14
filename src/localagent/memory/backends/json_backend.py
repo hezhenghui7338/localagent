@@ -39,6 +39,10 @@ class JsonMemoryBackend:
             extra_metadata={**meta, "backend": "json"},
         )
         store.save()
+        if fact is not None:
+            from localagent.memory.graph import sync_fact_to_graph
+
+            sync_fact_to_graph(fact)
         return fact.id if fact else ""
 
     def retain_batch(self, items: list[str], *, metadata: dict[str, Any] | None = None) -> list[str]:
@@ -97,8 +101,20 @@ class JsonMemoryBackend:
             return lexical_hits[:max_results]
 
         merged = rrf_fuse_hits(ranked_lists)
-        polished = finalize_hybrid_rank(query, merged, max_results=candidate_n)
-        return rerank_memory_hits(query, polished, max_results=max_results)
+        seed_hits = list(merged)
+        seed_polished = finalize_hybrid_rank(query, seed_hits, max_results=candidate_n)
+        seed_ranked = rerank_memory_hits(query, seed_polished, max_results=max_results)
+        if not config.MEMORY_GRAPH:
+            return seed_ranked
+
+        from localagent.memory.graph import expand_hits_by_graph, protect_seed_prefix
+
+        expanded = expand_hits_by_graph(query, seed_hits)
+        polished = finalize_hybrid_rank(query, expanded, max_results=candidate_n)
+        ranked = rerank_memory_hits(query, polished, max_results=candidate_n)
+        if config.MEMORY_GRAPH_PROTECT_TOP > 0 or config.MEMORY_GRAPH_FORCE_IN_TOP > 0:
+            return protect_seed_prefix(seed_ranked, ranked, max_results=max_results)
+        return ranked[:max_results]
 
     def _embedding_recall(self, query: str, *, max_results: int) -> list[dict[str, Any]]:
         try:
@@ -161,13 +177,21 @@ class JsonMemoryBackend:
         if removed is None:
             return False
         store.save()
+        from localagent.memory.graph import unsync_fact_from_graph
+
+        unsync_fact_from_graph(fact_id)
         return True
 
     def remove_by_source_file(self, filename: str) -> int:
         store = get_memory_store()
+        targets = [fact for fact in store.all_facts() if fact.source_file == filename]
         removed = store.remove_by_source_file(filename)
         if removed:
             store.save()
+            from localagent.memory.graph import unsync_fact_from_graph
+
+            for fact in targets:
+                unsync_fact_from_graph(fact.id)
         return removed
 
     def clear(self) -> int:
@@ -175,6 +199,13 @@ class JsonMemoryBackend:
         count = store.count()
         store.clear()
         store.save()
+        if config.MEMORY_GRAPH or config.MEMORY_GRAPH_FILE.exists():
+            from localagent.memory.graph import get_memory_graph
+
+            try:
+                get_memory_graph().clear()
+            except Exception as exc:
+                logger.debug("memory graph clear failed: %s", exc)
         return count
 
     def count(self) -> int:

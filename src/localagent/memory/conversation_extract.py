@@ -19,11 +19,14 @@ class ExtractedMemory:
     tags: list[str] = field(default_factory=list)
 
     def to_metadata_extra(self) -> dict[str, Any]:
+        from localagent.memory.memory_class import infer_memory_class
+
         extra: dict[str, Any] = {}
         if self.slots:
             extra["slots"] = {k: v for k, v in self.slots.items() if v}
         if self.memory_type:
             extra["type"] = self.memory_type
+            extra["memory_class"] = infer_memory_class(memory_type=self.memory_type)
         if self.tags:
             extra["tags"] = self.tags[:2]
         return extra

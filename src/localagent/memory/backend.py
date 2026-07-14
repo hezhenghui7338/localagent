@@ -22,6 +22,7 @@ __all__ = [
     "shutdown_memory_backend",
     "describe_memory_backend",
     "ensure_mem0_telemetry_disabled",
+    "ensure_mem0_qdrant_local_patch",
 ]
 
 
@@ -78,12 +79,45 @@ def ensure_mem0_telemetry_disabled() -> None:
             pass
 
 
+def ensure_mem0_qdrant_local_patch() -> None:
+    """Avoid noisy payload-index warnings when Mem0 reuses an embedded Qdrant client.
+
+    Mem0's entity store shares the main ``QdrantClient`` and marks ``is_local=False``
+    whenever a client is injected. That makes ``_create_filter_indexes`` call
+    ``create_payload_index`` on local storage, which emits a harmless UserWarning.
+    Detect ``QdrantLocal`` before creating indexes so the local skip path runs.
+    """
+    qdrant_mod = sys.modules.get("mem0.vector_stores.qdrant")
+    if qdrant_mod is None:
+        try:
+            from mem0.vector_stores import qdrant as qdrant_mod
+        except Exception:
+            return
+
+    qdrant_cls = getattr(qdrant_mod, "Qdrant", None)
+    if qdrant_cls is None or getattr(qdrant_cls, "_la_local_index_patch", False):
+        return
+
+    original = qdrant_cls._create_filter_indexes
+
+    def _create_filter_indexes(self: Any) -> None:
+        client = getattr(self, "client", None)
+        inner = getattr(client, "_client", None) if client is not None else None
+        if inner is not None and type(inner).__name__ == "QdrantLocal":
+            self.is_local = True
+        return original(self)
+
+    qdrant_cls._create_filter_indexes = _create_filter_indexes  # type: ignore[method-assign]
+    qdrant_cls._la_local_index_patch = True
+
+
 def _mem0_importable() -> bool:
     try:
         ensure_mem0_telemetry_disabled()
         import mem0  # noqa: F401
 
         ensure_mem0_telemetry_disabled()
+        ensure_mem0_qdrant_local_patch()
         return True
     except Exception:
         return False

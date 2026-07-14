@@ -419,6 +419,10 @@ def _save_registry_fact(
         fact_id=fact_id,
     )
     store.save()
+    if fact is not None:
+        from localagent.memory.graph import sync_fact_to_graph
+
+        sync_fact_to_graph(fact)
     return fact
 
 
@@ -448,12 +452,16 @@ class Mem0Backend:
         if memory is not None:
             self._memory = memory
         else:
-            from localagent.memory.backend import ensure_mem0_telemetry_disabled
+            from localagent.memory.backend import (
+                ensure_mem0_qdrant_local_patch,
+                ensure_mem0_telemetry_disabled,
+            )
 
             ensure_mem0_telemetry_disabled()
             from mem0 import Memory
 
             ensure_mem0_telemetry_disabled()
+            ensure_mem0_qdrant_local_patch()
             self._memory = Memory.from_config(build_mem0_config())
         logger.info(
             "Mem0 backend ready (user_id=%s, embedder=%s/%s, infer=%s)",
@@ -518,6 +526,13 @@ class Mem0Backend:
         )
         retain_meta = dict(meta)
         retain_meta.update(enriched.to_metadata())
+        from localagent.memory.memory_class import stamp_memory_class
+
+        retain_meta = stamp_memory_class(
+            retain_meta,
+            text=content,
+            memory_type=str(retain_meta.get("type") or enriched.memory_type),
+        )
         # Mem0 metadata should be JSON-serializable scalars.
         string_meta = {
             k: (v if isinstance(v, (str, int, float, bool)) else str(v))
@@ -681,9 +696,22 @@ class Mem0Backend:
         if not merged:
             return JsonMemoryBackend().recall(query, max_results=max_results)
 
-        # Light temporal/lexical/entity polish over a wide pool, then optional rerank.
-        polished = finalize_hybrid_rank(query, merged, max_results=candidate_n)
-        return rerank_memory_hits(query, polished, max_results=max_results)
+        seed_hits = list(merged)
+        # Rank the seed pool alone first (matches no-graph baseline top-1).
+        seed_polished = finalize_hybrid_rank(query, seed_hits, max_results=candidate_n)
+        seed_ranked = rerank_memory_hits(query, seed_polished, max_results=max_results)
+        if not config.MEMORY_GRAPH:
+            return seed_ranked
+
+        from localagent.memory.graph import expand_hits_by_graph, protect_seed_prefix
+
+        expanded = expand_hits_by_graph(query, seed_hits, facts=all_facts)
+        polished = finalize_hybrid_rank(query, expanded, max_results=candidate_n)
+        # Keep a wide reranked pool so graph extras survive for force-inject.
+        ranked = rerank_memory_hits(query, polished, max_results=candidate_n)
+        if config.MEMORY_GRAPH_PROTECT_TOP > 0 or config.MEMORY_GRAPH_FORCE_IN_TOP > 0:
+            return protect_seed_prefix(seed_ranked, ranked, max_results=max_results)
+        return ranked[:max_results]
 
     def reflect(self, query: str) -> str | None:
         """Multi-hop recall + LLM synthesis (shared reflect_loop)."""
@@ -708,6 +736,9 @@ class Mem0Backend:
 
         store.delete(fact_id)
         store.save()
+        from localagent.memory.graph import unsync_fact_from_graph
+
+        unsync_fact_from_graph(fact_id)
         return True
 
     def remove_by_source_file(self, filename: str) -> int:
@@ -733,6 +764,13 @@ class Mem0Backend:
         store = get_memory_store()
         store.clear()
         store.save()
+        if config.MEMORY_GRAPH or config.MEMORY_GRAPH_FILE.exists():
+            from localagent.memory.graph import get_memory_graph
+
+            try:
+                get_memory_graph().clear()
+            except Exception as exc:
+                logger.debug("memory graph clear failed: %s", exc)
         return count
 
     def count(self) -> int:

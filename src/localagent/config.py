@@ -90,6 +90,7 @@ DATA_DIR = Path(_DATA_OVERRIDE) if _DATA_OVERRIDE else PROJECT_ROOT / "data"
 KB_DIR = DATA_DIR / "kb"
 SYNC_INDEX_FILE = DATA_DIR / "sync_index.json"
 MEMORY_STORE_FILE = DATA_DIR / "memory_store.json"
+MEMORY_GRAPH_FILE = DATA_DIR / "memory_graph.db"
 KNOWLEDGE_STORE_FILE = DATA_DIR / "knowledge_store.json"
 CORE_PROFILE_FILE = DATA_DIR / "core_profile.json"
 CONVERSATIONS_DIR = DATA_DIR / "conversations"
@@ -104,6 +105,8 @@ TASK_LOGS_DIR = DATA_DIR / "task_logs"
 AUDIT_DIR = DATA_DIR / "audit"
 USAGE_LOG_FILE = AUDIT_DIR / "usage.jsonl"
 EVENTS_LOG_FILE = AUDIT_DIR / "events.jsonl"
+LOGS_DIR = DATA_DIR / "logs"
+APP_LOG_FILE = LOGS_DIR / "localagent.log"
 
 SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt", ".xlsx"}
 DEFAULT_USER_ID = "default_user"
@@ -298,6 +301,19 @@ MEMORY_RECALL_DECOMPOSE_MAX = _env_int("LA_MEMORY_RECALL_DECOMPOSE_MAX", "3")
 MEMORY_RECALL_VECTOR_VARIANTS = _env_int("LA_MEMORY_RECALL_VECTOR_VARIANTS", "2")
 # Soft-boost hits whose entities overlap the query.
 MEMORY_RECALL_ENTITY_BOOST = _env_bool("LA_MEMORY_RECALL_ENTITY_BOOST", "1")
+# Soft-boost by cognitive class (semantic / episodic / procedural) vs query intent.
+MEMORY_RECALL_CLASS_BOOST = _env_bool("LA_MEMORY_RECALL_CLASS_BOOST", "1")
+MEMORY_CLASS_WEIGHT = _env_float("LA_MEMORY_CLASS_WEIGHT", "0.10")
+# Local SQLite relation graph overlay (entity/slot edges + hop expansion).
+MEMORY_GRAPH = _env_bool("LA_MEMORY_GRAPH", "0")
+MEMORY_GRAPH_HOPS = _env_int("LA_MEMORY_GRAPH_HOPS", "2")
+# Graph hits expand the candidate pool; default 0 so they do not steal hybrid rank.
+MEMORY_GRAPH_BOOST = _env_float("LA_MEMORY_GRAPH_BOOST", "0")
+MEMORY_GRAPH_MAX_EXTRAS = _env_int("LA_MEMORY_GRAPH_MAX_EXTRAS", "8")
+# After expand+rerank, pin the top-N seed-only winners at the front (Hit@1 stable).
+MEMORY_GRAPH_PROTECT_TOP = _env_int("LA_MEMORY_GRAPH_PROTECT_TOP", "1")
+# Force-insert up to N graph extras into slots after the protected prefix (Hit@5/8).
+MEMORY_GRAPH_FORCE_IN_TOP = _env_int("LA_MEMORY_GRAPH_FORCE_IN_TOP", "3")
 # Post-hybrid rerank over a larger candidate pool (cross-encoder / embed / llm).
 MEMORY_RERANK = _env_bool("LA_MEMORY_RERANK", "1")
 MEMORY_RERANK_BACKEND = _env("LA_MEMORY_RERANK_BACKEND", "auto").lower() or "auto"
@@ -369,5 +385,6 @@ def ensure_data_dirs() -> None:
         mem0_qdrant_path(),
         TASK_LOGS_DIR,
         AUDIT_DIR,
+        LOGS_DIR,
     ):
         path.mkdir(parents=True, exist_ok=True)

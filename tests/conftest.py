@@ -14,6 +14,7 @@ from localagent.knowledge.store import reset_knowledge_store_singleton
 from localagent.memory.backends.json_backend import JsonMemoryBackend
 from localagent.memory.backend import reset_memory_backend
 from localagent.memory.chatgpt_import import reset_chatgpt_import_index
+from localagent.memory.graph import reset_memory_graph_singleton
 from localagent.memory.store import reset_memory_store_singleton
 from localagent.ingest.tasks import reset_task_store
 
@@ -34,6 +35,7 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
         "KB_DIR": kb_dir,
         "SYNC_INDEX_FILE": data_dir / "sync_index.json",
         "MEMORY_STORE_FILE": data_dir / "memory_store.json",
+        "MEMORY_GRAPH_FILE": data_dir / "memory_graph.db",
         "KNOWLEDGE_STORE_FILE": data_dir / "knowledge_store.json",
         "CORE_PROFILE_FILE": data_dir / "core_profile.json",
         "CONVERSATIONS_DIR": data_dir / "conversations",
@@ -47,6 +49,8 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
         "AUDIT_DIR": data_dir / "audit",
         "USAGE_LOG_FILE": data_dir / "audit" / "usage.jsonl",
         "EVENTS_LOG_FILE": data_dir / "audit" / "events.jsonl",
+        "LOGS_DIR": data_dir / "logs",
+        "APP_LOG_FILE": data_dir / "logs" / "localagent.log",
     }
     for key, val in paths.items():
         monkeypatch.setattr(f"localagent.config.{key}", val)
@@ -71,6 +75,7 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
 
     reset_sync_index_singleton()
     reset_memory_store_singleton()
+    reset_memory_graph_singleton()
     reset_knowledge_store_singleton()
     reset_knowledge_indexer()
     reset_hybrid_retriever()

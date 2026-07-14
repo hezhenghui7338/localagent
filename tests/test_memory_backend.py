@@ -6,6 +6,7 @@ import os
 from unittest.mock import MagicMock, patch
 
 from localagent.memory.backend import (
+    ensure_mem0_qdrant_local_patch,
     ensure_mem0_telemetry_disabled,
     get_memory_backend,
     reset_memory_backend,
@@ -286,6 +287,28 @@ def test_mem0_telemetry_disabled_by_default(monkeypatch):
     monkeypatch.setenv("MEM0_TELEMETRY", "True")
     ensure_mem0_telemetry_disabled()
     assert os.environ.get("MEM0_TELEMETRY") == "True"
+
+
+def test_mem0_qdrant_local_patch_marks_shared_client_local():
+    ensure_mem0_qdrant_local_patch()
+    from mem0.vector_stores.qdrant import Qdrant
+
+    assert getattr(Qdrant, "_la_local_index_patch", False) is True
+
+    store = Qdrant.__new__(Qdrant)
+    store.is_local = False
+    store.client = MagicMock()
+    store.client._client = type("QdrantLocal", (), {})()
+    store.collection_name = "test"
+    calls: list[str] = []
+
+    def fake_create_payload_index(**_kwargs):
+        calls.append("index")
+
+    store.client.create_payload_index = fake_create_payload_index
+    Qdrant._create_filter_indexes(store)
+    assert store.is_local is True
+    assert calls == []
 
 
 def test_mem0_backend_close_releases_qdrant_client():

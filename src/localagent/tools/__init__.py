@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any
 
@@ -19,6 +20,8 @@ from localagent.tools.web_search import (
     resolve_web_search_provider,
     web_search,
 )
+
+logger = logging.getLogger(__name__)
 
 _MEMORY_MISS = "未找到相关记忆。"
 _KNOWLEDGE_MISS = "未找到相关知识片段。"
@@ -176,7 +179,17 @@ def search_memory(
     show_ids: bool = False,
     verbose: bool = False,
 ) -> str:
-    hits = get_memory_backend().recall(query, max_results=top_k)
+    from localagent.logging_setup import truncate_for_log
+
+    backend = get_memory_backend()
+    hits = backend.recall(query, max_results=top_k)
+    logger.info(
+        "search_memory backend=%s hits=%s fallback=%s",
+        backend.backend_name(),
+        len(hits),
+        fallback,
+    )
+    logger.debug("search_memory query=%s", truncate_for_log(query))
     if hits:
         return _format_memory_hits(
             hits,
@@ -190,6 +203,7 @@ def search_memory(
 
     knowledge = search_knowledge(query, top_k=top_k, fallback=False)
     if knowledge != _KNOWLEDGE_MISS:
+        logger.info("search_memory miss→knowledge")
         return f"（记忆未命中，以下为知识库检索结果）\n{knowledge}"
 
     from localagent import config as la_config
@@ -197,8 +211,10 @@ def search_memory(
     if la_config.DOC_KEYWORD_FALLBACK:
         documents = search_documents(query, top_k=top_k)
         if documents:
+            logger.info("search_memory miss→documents")
             return f"（记忆和 RAG 均未命中，以下为文档原文关键词补充检索）\n{documents}"
 
+    logger.info("search_memory miss (all)")
     return _ALL_MISS
 
 

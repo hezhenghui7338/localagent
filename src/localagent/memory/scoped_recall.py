@@ -340,15 +340,21 @@ def _blend_score(
     return min(1.0, blended + _compactness_bonus(text))
 
 
-def _hybrid_weights(intent: TemporalIntent) -> tuple[float, float, float, float, float]:
-    """RRF / base / jaccard / temporal / entity weights for Mem0 finalize_hybrid_rank."""
+def _hybrid_weights(
+    intent: TemporalIntent,
+    *,
+    class_boost: bool = False,
+) -> tuple[float, float, float, float, float, float, float]:
+    """RRF / base / jaccard / temporal / entity / graph / class weights for finalize_hybrid_rank."""
     entity_w = 0.15 if config.MEMORY_RECALL_ENTITY_BOOST else 0.0
+    graph_w = float(config.MEMORY_GRAPH_BOOST) if config.MEMORY_GRAPH else 0.0
+    class_w = float(config.MEMORY_CLASS_WEIGHT) if class_boost else 0.0
     if intent.raises_temporal_weight:
-        return (0.48, 0.12, 0.08, 0.17, entity_w)
+        return (0.48, 0.12, 0.08, 0.17, entity_w, graph_w, class_w)
     if intent.prefers_event_neighbors:
         # WHEN/duration: keep RRF dominant; time barely helps without an anchor.
-        return (0.60, 0.12, 0.10, 0.03, entity_w)
-    return (0.60, 0.12, 0.08, 0.05, entity_w)
+        return (0.60, 0.12, 0.10, 0.03, entity_w, graph_w, class_w)
+    return (0.60, 0.12, 0.08, 0.05, entity_w, graph_w, class_w)
 
 _EN_RECALL_STOPWORDS = _EN_QUERY_STOPWORDS | frozenset(
     {
@@ -510,16 +516,28 @@ def finalize_hybrid_rank(
     if not hits:
         return []
     from localagent.memory.entities import entity_overlap_score, extract_entities
+    from localagent.memory.memory_class import (
+        memory_class_alignment,
+        parse_memory_class_intent,
+        resolve_memory_class_for_recall,
+    )
 
     profile = load_core_profile()
     intent = parse_temporal_intent(query, profile)
-    w_rrf, w_base, w_jac, w_temp, w_ent = _hybrid_weights(intent)
+    preferred_class = parse_memory_class_intent(query, intent)
+    class_boost = bool(config.MEMORY_RECALL_CLASS_BOOST and preferred_class)
+    w_rrf, w_base, w_jac, w_temp, w_ent, w_graph, w_class = _hybrid_weights(
+        intent,
+        class_boost=class_boost,
+    )
     query_entities = extract_entities(query) if config.MEMORY_RECALL_ENTITY_BOOST else []
 
     rrf_values = [float(hit.get("rrf_score") or 0.0) for hit in hits]
     rrf_norm = _normalize_scores(rrf_values)
     base_values = [float(hit.get("score") or 0.0) for hit in hits]
     base_norm = _normalize_scores(base_values)
+    graph_values = [float(hit.get("graph_score") or 0.0) for hit in hits]
+    graph_norm = _normalize_scores(graph_values)
 
     scored: list[tuple[float, dict[str, Any]]] = []
     for index, hit in enumerate(hits):
@@ -547,21 +565,37 @@ def finalize_hybrid_rank(
             if query_entities
             else 0.0
         )
+        graph_s = graph_norm[index] if index < len(graph_norm) else 0.0
+        if not graph_s and float(hit.get("graph_score") or 0.0) > 0:
+            graph_s = min(1.0, float(hit.get("graph_score") or 0.0))
+        hit_class = resolve_memory_class_for_recall(
+            meta if isinstance(meta, dict) else {},
+            text=searchable,
+        )
+        class_s = memory_class_alignment(hit_class, preferred_class) if class_boost else 0.5
         blended = (
             w_rrf * (rrf_norm[index] if index < len(rrf_norm) else 0.0)
             + w_base * (base_norm[index] if index < len(base_norm) else 0.0)
             + w_jac * jaccard
             + w_temp * temp
             + w_ent * ent
+            + w_graph * graph_s
+            + w_class * class_s
         )
         if str(hit.get("source") or "") == "neighbor":
             blended *= 0.92
+        if str(hit.get("source") or "") == "graph":
+            # Graph extras are pool fillers; keep them below seed RRF winners.
+            blended *= 0.75
         enriched = dict(hit)
         enriched["score"] = blended
         enriched["semantic_score"] = jaccard if query.strip() else None
         enriched["lexical_score"] = jaccard if query.strip() else None
         enriched["temporal_score"] = temp
         enriched["entity_score"] = ent
+        enriched["graph_score"] = graph_s
+        enriched["class_score"] = class_s
+        enriched["memory_class"] = hit_class
         enriched["anchor"] = intent.to_dict()
         scored.append((blended, enriched))
 

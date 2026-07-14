@@ -11,6 +11,7 @@ import json
 import re
 import sys
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -68,9 +69,28 @@ def measure_sample(
             "memory_count": backend.count(),
         }
 
+    from localagent import config
     from localagent.memory.backend import get_memory_backend
 
     backend = get_memory_backend()
+    if config.MEMORY_GRAPH:
+        from localagent.memory.graph import get_memory_graph, rebuild_memory_graph
+
+        stats = get_memory_graph().stats()
+        if stats.get("facts", 0) == 0:
+            rebuilt = rebuild_memory_graph()
+            print(
+                f"[locomo-recall] memory graph rebuilt: "
+                f"entities={rebuilt['entities']} relations={rebuilt['relations']} "
+                f"facts={rebuilt['facts']}"
+            )
+        else:
+            print(
+                f"[locomo-recall] memory graph ready: "
+                f"entities={stats['entities']} relations={stats['relations']} "
+                f"facts={stats['facts']}"
+            )
+
     by_cat: dict[int, dict[str, float]] = defaultdict(
         lambda: {"n": 0, "hit1": 0, "hit5": 0, "hit8": 0}
     )
@@ -146,7 +166,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-questions", type=int, default=None)
     parser.add_argument("--top-k", type=int, default=8)
     parser.add_argument("--skip-ingest", action="store_true")
-    parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="结果 JSON 路径；默认写带时间戳的新文件，避免覆盖历史产物",
+    )
+    parser.add_argument(
+        "--label",
+        default="",
+        help="写入默认文件名：recall_hitk_YYYYMMDD_HHMMSS[_label].json",
+    )
     args = parser.parse_args(argv)
 
     samples = filter_samples(load_samples(args.data_file), sample_ids=args.sample_ids)
@@ -185,10 +215,22 @@ def main(argv: list[str] | None = None) -> int:
                 f"hit@1={info['hit@1']} hit@5={info['hit@5']} hit@8={info['hit@8']}"
             )
 
-    out = args.out or (args.work_dir / "recall_hitk.json")
+    if args.out is not None:
+        out = args.out
+    else:
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        label = re.sub(r"[^\w\-]+", "_", (args.label or "").strip()).strip("_")
+        name = f"recall_hitk_{stamp}_{label}.json" if label else f"recall_hitk_{stamp}.json"
+        out = args.work_dir / name
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"results": results}, ensure_ascii=False, indent=2), encoding="utf-8")
+    payload = {
+        "recorded_at": datetime.now().isoformat(timespec="seconds"),
+        "label": (args.label or "").strip() or None,
+        "results": results,
+    }
+    out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"results → {out}")
+    print("提示: 请将本次分表追加到 benchmarks/locomo/HISTORY.md（勿覆盖旧节）")
     return 0
 
 

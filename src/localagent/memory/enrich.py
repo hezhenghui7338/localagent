@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from localagent import config
+from localagent.memory.memory_class import infer_memory_class
 
 _TAG_KEYWORDS: dict[str, tuple[str, ...]] = {
     "偏好": ("喜欢", "偏好", "习惯", "不喜欢", "讨厌", "倾向"),
@@ -33,6 +34,7 @@ class MemoryEnrichment:
     summary: str
     tags: list[str] = field(default_factory=list)
     memory_type: str = "fact"
+    memory_class: str = "semantic"
     searchable_text: str = ""
     entities: list[str] = field(default_factory=list)
 
@@ -42,6 +44,8 @@ class MemoryEnrichment:
             "summary": self.summary,
             "tags": self.tags,
             "type": self.memory_type,
+            "memory_class": self.memory_class
+            or infer_memory_class(memory_type=self.memory_type),
         }
         if self.entities:
             meta["entities"] = self.entities
@@ -138,6 +142,7 @@ def enrich_heuristic(
 
     tags = _infer_tags(text, heading=clean_heading)[:2]
     memory_type = _infer_type(text, tags)
+    memory_class = infer_memory_class(memory_type=memory_type)
     # Prefer keeping short narrative text intact; avoid semicolon-soup summaries
     from localagent.memory.value_filter import is_narrative_memory
 
@@ -154,6 +159,7 @@ def enrich_heuristic(
         summary=summary,
         tags=tags,
         memory_type=memory_type,
+        memory_class=memory_class,
         searchable_text=summary or text.strip(),
         entities=entities,
     )
@@ -178,6 +184,10 @@ def _parse_llm_enrichment(reply: str, *, fallback_text: str) -> MemoryEnrichment
     memory_type = str(data.get("type") or "fact").strip().lower()
     if memory_type not in _MEMORY_TYPES:
         memory_type = "fact"
+    memory_class = infer_memory_class(
+        memory_type=memory_type,
+        metadata={"memory_class": data.get("memory_class"), "type": memory_type},
+    )
 
     if not title:
         title = _first_sentence(summary or fallback_text)
@@ -191,6 +201,7 @@ def _parse_llm_enrichment(reply: str, *, fallback_text: str) -> MemoryEnrichment
         summary=summary,
         tags=tags or _infer_tags(fallback_text),
         memory_type=memory_type,
+        memory_class=memory_class,
         searchable_text=summary,
         entities=extract_entities(f"{title} {summary} {fallback_text}"),
     )
