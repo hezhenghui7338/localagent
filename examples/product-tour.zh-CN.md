@@ -39,14 +39,14 @@ export LA_DATA_DIR=/tmp/la-product-tour
 **输入：**
 
 ```bash
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.2.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
 la --version
 ```
 
 **预期输出：**
 
 ```text
-la-localagent 0.2.0
+la-localagent 0.3.0
 ```
 
 > 源码开发可改为：`pip install -e ".[dev]"`，效果相同。
@@ -117,7 +117,7 @@ la chat --provider ollama
 **预期输出（示意）：**
 
 ```text
-LocalAgent v0.2.0 …
+LocalAgent v0.3.0 …
 │ qwen3.5:4b · ollama …
 > 用一句话介绍你自己，并说明你的数据存在哪里。
 [chat] 思考中…

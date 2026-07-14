@@ -39,14 +39,14 @@ Anywhere below that says `data/` means `$LA_DATA_DIR/` when isolation is on.
 **Input:**
 
 ```bash
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.2.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
 la --version
 ```
 
 **Expected output:**
 
 ```text
-la-localagent 0.2.0
+la-localagent 0.3.0
 ```
 
 > For source development: `pip install -e ".[dev]"` — same outcome.
@@ -117,7 +117,7 @@ you> In one sentence, introduce yourself and say where your data lives.
 **Expected output (illustrative):**
 
 ```text
-LocalAgent v0.2.0 …
+LocalAgent v0.3.0 …
 │ qwen3.5:4b · ollama …
 > In one sentence, introduce yourself and say where your data lives.
 [chat] thinking…
