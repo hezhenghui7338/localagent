@@ -23,7 +23,12 @@ LocalAgent（`LA`）不是又一个 Chat 客户端，而是跑在你本机上的
 5. **可靠执行** — 写文件幻觉检测；`run_shell` / `write_file` 执行前确认
 
 ```bash
+# 首次安装
 pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
+# 已装旧版：优先用卸载再装（最稳）；若 pipx 走 uv 且报 venv 已存在，加 UV_VENV_CLEAR=1
+pipx uninstall la-localagent
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
+# 或：UV_VENV_CLEAR=1 pipx install --force "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
 la --version                    # 确认版本：la-localagent 0.3.0
 la                              # 首次若无 Ollama 会询问是否安装（可跳过）
 ```
@@ -80,8 +85,11 @@ pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
 ```bash
 la --version                  # 或 la -V → la-localagent 0.3.0
 
-# 升到某个新 tag（改掉 @vX.Y.Z 后 --force 重装）
-pipx install --force "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
+# 升到某个新 tag（改掉 @vX.Y.Z）
+pipx uninstall la-localagent
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
+# 若坚持 --force 且报 “virtual environment already exists”，加：
+# UV_VENV_CLEAR=1 pipx install --force "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
 
 # 跟踪默认分支时，拉最新 tip
 pipx upgrade la-localagent

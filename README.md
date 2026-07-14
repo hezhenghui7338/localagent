@@ -23,7 +23,12 @@ LocalAgent (`LA`) is not another chat client. It is a **personal AI that runs on
 5. **Reliable execution** — write-file hallucination detection; approve before `run_shell` / `write_file`
 
 ```bash
+# First-time install
 pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
+# Already installed: uninstall + reinstall is most reliable. If uv says the venv exists, set UV_VENV_CLEAR=1.
+pipx uninstall la-localagent
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
+# Or: UV_VENV_CLEAR=1 pipx install --force "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
 la --version                    # expect: la-localagent 0.3.0
 la                              # asks before installing Ollama (you can skip)
 ```
@@ -80,8 +85,11 @@ Check version and upgrade:
 ```bash
 la --version                  # or la -V → la-localagent 0.3.0
 
-# Move to a new tag (change @vX.Y.Z, then --force reinstall)
-pipx install --force "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
+# Move to a new tag (change @vX.Y.Z)
+pipx uninstall la-localagent
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
+# If --force fails with “virtual environment already exists”:
+# UV_VENV_CLEAR=1 pipx install --force "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
 
 # When tracking the default branch, pull the latest tip
 pipx upgrade la-localagent
