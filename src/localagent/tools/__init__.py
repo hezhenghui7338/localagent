@@ -192,9 +192,12 @@ def search_memory(
     if knowledge != _KNOWLEDGE_MISS:
         return f"（记忆未命中，以下为知识库检索结果）\n{knowledge}"
 
-    documents = search_documents(query, top_k=top_k)
-    if documents:
-        return f"（记忆和 RAG 均未命中，以下为文档原文检索）\n{documents}"
+    from localagent import config as la_config
+
+    if la_config.DOC_KEYWORD_FALLBACK:
+        documents = search_documents(query, top_k=top_k)
+        if documents:
+            return f"（记忆和 RAG 均未命中，以下为文档原文关键词补充检索）\n{documents}"
 
     return _ALL_MISS
 
@@ -213,9 +216,12 @@ def search_knowledge(query: str, *, top_k: int = 5, fallback: bool = True) -> st
     if not fallback:
         return _KNOWLEDGE_MISS
 
-    documents = search_documents(query, top_k=top_k)
-    if documents:
-        return f"（知识库索引未命中，以下为文档原文检索）\n{documents}"
+    from localagent import config as la_config
+
+    if la_config.DOC_KEYWORD_FALLBACK:
+        documents = search_documents(query, top_k=top_k)
+        if documents:
+            return f"（知识库索引未命中，以下为文档原文关键词补充检索）\n{documents}"
 
     return _KNOWLEDGE_MISS
 
@@ -250,25 +256,11 @@ def deep_search(
 
 
 def reflect_memory(query: str) -> str:
-    """Reason over memories (Mem0 search + LLM); falls back to recall on JSON backend."""
+    """Reason over memories with optional multi-hop follow-up recall."""
     backend = get_memory_backend()
     answer = backend.reflect(query)
     if answer:
         return answer
-
-    if backend.backend_name() == "json":
-        hits = backend.recall(query, max_results=5)
-        if hits:
-            body = _format_memory_hits(hits, query=query)
-            return (
-                "（当前为 JSON 记忆后端，无跨记忆推理；以下为 recall 结果）\n"
-                + body
-            )
-        return (
-            "推理召回需要 Mem0 记忆引擎。"
-            "请确认已安装 mem0ai，并将 LA_MEMORY_BACKEND 设为 mem0。"
-        )
-
     return "未能从记忆中推理出答案。"
 
 
@@ -322,16 +314,16 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "name": "web_search",
         "description": (
             "联网搜索最新信息，用于时效性、新闻、天气、外部资料类问题（默认免费可用）。"
-            "查询应包含地点与完整日期（如「深圳 2026年7月14日 天气」）；"
-            "返回结果会标注时效核对，过期条目不可当作当前事实"
+            "天气查询用「城市 + 今天/明天」（如「深圳 今天天气」），不要写完整年份日期；"
+            "其他时效问题可含地点与日期；返回结果会标注时效核对，过期条目不可当作当前事实"
         ),
         "parameters": {"query": "搜索关键词（含地点与日期更佳）"},
     },
     {
         "name": "reflect_memory",
         "description": (
-            "对记忆进行推理综合，处理矛盾、歧义或需要跨多条记忆归纳的问题；"
-            "需要 Mem0 引擎（search + LLM）；JSON 后端会降级为 recall"
+            "对记忆进行多跳推理综合：缺证据时自动补充检索（最多 2 轮），"
+            "再归纳回答跨多条记忆的问题"
         ),
         "parameters": {"query": "需要推理的问题"},
     },

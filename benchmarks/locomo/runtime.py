@@ -43,6 +43,7 @@ def configure_data_dir(data_dir: Path | str) -> Path:
         "TASK_LOGS_DIR": path / "task_logs",
         "AUDIT_DIR": path / "audit",
         "USAGE_LOG_FILE": path / "audit" / "usage.jsonl",
+        "EVENTS_LOG_FILE": path / "audit" / "events.jsonl",
     }
     for key, value in paths.items():
         setattr(config, key, value)

@@ -61,8 +61,21 @@ def _session_ids(limit: int = 30) -> list[str]:
         conv_dir = config.CONVERSATIONS_DIR
         if not conv_dir.is_dir():
             return []
-        paths = sorted(conv_dir.glob("s-*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
-        return [p.stem for p in paths[:limit]]
+        paths = sorted(
+            list(conv_dir.glob("s-*.json")) + list(conv_dir.glob("s-*.jsonl")),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        seen: set[str] = set()
+        ids: list[str] = []
+        for path in paths:
+            if path.stem in seen:
+                continue
+            seen.add(path.stem)
+            ids.append(path.stem)
+            if len(ids) >= limit:
+                break
+        return ids
     except OSError:
         return []
 
@@ -205,12 +218,10 @@ def suggest_completions(words: list[str], parser: argparse.ArgumentParser | None
         mem_parser = mem_subs[mem_cmd]
         if current.startswith("-") or (mem_tail and mem_tail[-1].startswith("-")):
             return _completing_option(mem_tail, current, mem_parser)
-        if mem_cmd == "add-file":
-            return _expand_path(current)
         if mem_cmd == "forget" and not mem_tail:
             return _prefix_match(_memory_ids(), current)
         if mem_cmd == "ingest":
-            sources = ["chat", "file", "chatgpt", "all"]
+            sources = ["chat", "chatgpt", "all"]
             if not mem_tail:
                 return _prefix_match(sources, current)
             if mem_tail[-1] in ("--file", "--dir"):
@@ -219,10 +230,26 @@ def suggest_completions(words: list[str], parser: argparse.ArgumentParser | None
                 return _expand_path(current)
             return _completing_option(mem_tail, current, mem_parser)
         if mem_cmd == "reset" and not mem_tail:
-            return _prefix_match(["chat", "file", "chatgpt", "all"], current)
+            return _prefix_match(["chat", "chatgpt", "all"], current)
         if mem_cmd in ("search", "query", "reflect") and not mem_tail:
             return _completing_option([], current, mem_parser)
         return _completing_option(mem_tail, current, mem_parser)
+
+    if cmd == "rag":
+        rag_subs = _get_subparsers(sub)
+        rag_names = sorted(rag_subs)
+        if not tail:
+            return _prefix_match(rag_names, current)
+        rag_cmd = tail[0]
+        rag_tail = tail[1:]
+        if rag_cmd not in rag_subs:
+            return _prefix_match(rag_names, current)
+        rag_parser = rag_subs[rag_cmd]
+        if current.startswith("-") or (rag_tail and rag_tail[-1].startswith("-")):
+            return _completing_option(rag_tail, current, rag_parser)
+        if rag_cmd == "add":
+            return _expand_path(current)
+        return _completing_option(rag_tail, current, rag_parser)
 
     if current.startswith("-") or (tail and tail[-1].startswith("-")):
         return _completing_option(tail, current, sub)
@@ -340,8 +367,10 @@ def suggest_session_slash_completions(line: str, text: str = "") -> list[str]:
             cmd = "provider"
         elif cmd == "model":
             cmd = "model"
-        elif cmd in ("add", "add-file", "search", "forget", "reflect"):
+        elif cmd in ("add", "search", "forget", "reflect"):
             return _session_arg_completions("memory", [cmd, *parts[1:]], text)
+        elif cmd == "add-file":
+            return _session_arg_completions("rag", ["add", *parts[1:]], text)
         return _session_arg_completions(cmd, parts[1:], text)
 
     needle = rest.lower()
@@ -455,6 +484,24 @@ fi
 """
 
 
+_ACTIVATE_START = "# >>> LA CLI completion >>>"
+_ACTIVATE_END = "# <<< LA CLI completion <<<"
+_ACTIVATE_SOURCE_SNIPPET = f"""{_ACTIVATE_START}
+if [ -n "${{ZSH_VERSION:-}}" ]; then
+  if [ -f "$VIRTUAL_ENV/activate.d/la-completion.zsh" ]; then
+    # shellcheck disable=SC1091
+    . "$VIRTUAL_ENV/activate.d/la-completion.zsh"
+  fi
+elif [ -n "${{BASH_VERSION:-}}" ]; then
+  if [ -f "$VIRTUAL_ENV/activate.d/la-completion.bash" ]; then
+    # shellcheck disable=SC1091
+    . "$VIRTUAL_ENV/activate.d/la-completion.bash"
+  fi
+fi
+{_ACTIVATE_END}
+"""
+
+
 def _find_venv_dirs() -> list[Path]:
     candidates: list[Path] = []
     if venv := os.environ.get("VIRTUAL_ENV"):
@@ -472,20 +519,65 @@ def _find_venv_dirs() -> list[Path]:
     return unique
 
 
+def _write_if_changed(path: Path, content: str) -> bool:
+    """Write ``content`` when missing or different. Returns True if written."""
+    existing = path.read_text(encoding="utf-8") if path.exists() else None
+    if existing == content:
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return True
+
+
+def _upsert_marked_block(existing: str, *, start: str, end: str, block: str) -> str:
+    if start in existing and end in existing:
+        before, rest = existing.split(start, 1)
+        _, after = rest.split(end, 1)
+        return before + block + after.lstrip("\n")
+    suffix = "" if existing.endswith("\n") or not existing else "\n"
+    return existing + suffix + block
+
+
+def _patch_venv_activate(venv_dir: Path) -> Path | None:
+    """Ensure ``bin/activate`` sources activate.d completion scripts on ``source activate``."""
+    activate = venv_dir / "bin" / "activate"
+    if not activate.is_file():
+        return None
+    existing = activate.read_text(encoding="utf-8")
+    updated = _upsert_marked_block(
+        existing,
+        start=_ACTIVATE_START,
+        end=_ACTIVATE_END,
+        block=_ACTIVATE_SOURCE_SNIPPET,
+    )
+    if updated != existing:
+        activate.write_text(updated, encoding="utf-8")
+    return activate
+
+
 def _install_venv_activate_hook() -> list[Path]:
+    """Install completion scripts + activate sourcing so ``source .venv/bin/activate`` loads them."""
     installed: list[Path] = []
-    script = zsh_completion_script()
+    zsh_script = zsh_completion_script()
+    bash_script = bash_completion_script()
     for venv_dir in _find_venv_dirs():
         activate_d = venv_dir / "activate.d"
         activate_d.mkdir(parents=True, exist_ok=True)
-        target = activate_d / "la-completion.zsh"
-        target.write_text(script, encoding="utf-8")
-        installed.append(target)
+        for name, script in (
+            ("la-completion.zsh", zsh_script),
+            ("la-completion.bash", bash_script),
+        ):
+            target = activate_d / name
+            _write_if_changed(target, script)
+            installed.append(target)
+        patched = _patch_venv_activate(venv_dir)
+        if patched is not None:
+            installed.append(patched)
     return installed
 
 
 def install_shell_completion(*, shell: str | None = None) -> tuple[list[Path], Path | None]:
-    """Install zsh/bash completion into ~/.zshrc|~/.bashrc and venv activate.d hooks."""
+    """Install zsh/bash completion into ~/.zshrc|~/.bashrc and venv activate hooks."""
     shell_name = (shell or Path(os.environ.get("SHELL", "zsh")).name).lower()
     if shell_name not in ("zsh", "bash"):
         shell_name = "zsh"
@@ -496,17 +588,24 @@ def install_shell_completion(*, shell: str | None = None) -> tuple[list[Path], P
     block = f"{_ZSHRC_START}\n{block_body}\n{_ZSHRC_END}\n"
 
     existing = rc_path.read_text(encoding="utf-8") if rc_path.exists() else ""
-    if _ZSHRC_START in existing and _ZSHRC_END in existing:
-        before, rest = existing.split(_ZSHRC_START, 1)
-        _, after = rest.split(_ZSHRC_END, 1)
-        updated = before + block + after.lstrip("\n")
-    else:
-        suffix = "" if existing.endswith("\n") or not existing else "\n"
-        updated = existing + suffix + block
-
-    rc_path.write_text(updated, encoding="utf-8")
+    updated = _upsert_marked_block(
+        existing,
+        start=_ZSHRC_START,
+        end=_ZSHRC_END,
+        block=block,
+    )
+    _write_if_changed(rc_path, updated)
     venv_hooks = _install_venv_activate_hook()
     return venv_hooks, rc_path
+
+
+def ensure_shell_completion(*, shell: str | None = None) -> None:
+    """Idempotently install shell completion (quiet). Safe to call on every LA startup."""
+    try:
+        install_shell_completion(shell=shell)
+    except OSError:
+        # Home / venv may be read-only (CI, sandboxed shells); never block the CLI.
+        return
 
 
 def run_complete_init(argv: list[str]) -> int:
@@ -522,6 +621,6 @@ def run_complete_init(argv: list[str]) -> int:
         print("[complete-init] 已安装 venv 激活钩子:")
         for hook in venv_hooks:
             print(f"  {hook}")
-    print("[complete-init] 请执行: source", rc_path, "  或重新打开终端")
+    print("[complete-init] 重新 source 虚拟环境或执行: source", rc_path)
     print("[complete-init] 然后试: LA memory<Tab>  应出现 memory 子命令")
     return 0

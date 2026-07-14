@@ -88,8 +88,68 @@ def load_core_profile() -> CoreProfile:
         return CoreProfile()
 
 
+def home_location() -> str:
+    """Return pinned 居住地 from the core profile, if any."""
+    place = (load_core_profile().preferences.get("居住地") or "").strip()
+    return place
+
+
+def resolve_home_location(*, pin_from_memory: bool = True) -> str:
+    """Resolve 居住地: profile first, then scan memory and pin if found."""
+    place = home_location()
+    if place:
+        return place
+    if not pin_from_memory:
+        return ""
+    try:
+        from localagent.memory.profile_pin import _LOCATION_FACT, pin_fact_with_regex
+        from localagent.memory.store import get_memory_store
+
+        texts = [
+            (fact.text or "").strip()
+            for fact in get_memory_store().all_facts()
+            if (fact.text or "").strip()
+        ]
+        # Prefer newer facts (typically appended later).
+        for text in reversed(texts):
+            if not _LOCATION_FACT.search(text):
+                continue
+            if pin_fact_with_regex(text):
+                place = home_location()
+                if place:
+                    return place
+            place = home_location()
+            if place:
+                return place
+    except Exception:
+        return home_location()
+    return home_location()
+
+
 def save_core_profile(profile: CoreProfile) -> None:
+    """Persist profile without accidentally wiping existing preferences."""
     config.ensure_data_dirs()
+    if config.CORE_PROFILE_FILE.exists():
+        try:
+            existing = load_core_profile()
+        except Exception:
+            existing = None
+        if existing and existing.preferences:
+            # Merge: never drop existing keys when incoming preferences is empty
+            # or missing keys (guards against blank starter overwrites).
+            merged = dict(existing.preferences)
+            merged.update({k: v for k, v in profile.preferences.items() if str(v).strip()})
+            profile.preferences = merged
+            if not profile.name and existing.name:
+                profile.name = existing.name
+            if (
+                (not profile.current_status or profile.current_status == "LocalAgent 用户")
+                and existing.current_status
+                and existing.current_status != "LocalAgent 用户"
+            ):
+                profile.current_status = existing.current_status
+            if not profile.life_anchors and existing.life_anchors:
+                profile.life_anchors = list(existing.life_anchors)
     profile.updated_at = datetime.now().isoformat(timespec="seconds")
     config.CORE_PROFILE_FILE.write_text(
         json.dumps(profile.to_dict(), indent=2, ensure_ascii=False),
@@ -98,14 +158,34 @@ def save_core_profile(profile: CoreProfile) -> None:
 
 
 def default_core_profile() -> CoreProfile:
-    """Create a starter profile if none exists."""
+    """Ensure a starter profile exists without wiping pinned preferences."""
     profile = load_core_profile()
-    if profile.name or profile.life_anchors:
+    if profile.name or profile.life_anchors or profile.preferences:
+        if not profile.current_status:
+            profile.current_status = "LocalAgent 用户"
+            # Direct write to avoid merge recursion edge cases on status-only fill.
+            profile.updated_at = datetime.now().isoformat(timespec="seconds")
+            config.ensure_data_dirs()
+            config.CORE_PROFILE_FILE.write_text(
+                json.dumps(profile.to_dict(), indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
         return profile
-    profile = CoreProfile(
-        name="",
-        current_status="LocalAgent 用户",
-        life_anchors=[],
-    )
-    save_core_profile(profile)
+    if not config.CORE_PROFILE_FILE.exists():
+        profile = CoreProfile(current_status="LocalAgent 用户")
+        profile.updated_at = datetime.now().isoformat(timespec="seconds")
+        config.ensure_data_dirs()
+        config.CORE_PROFILE_FILE.write_text(
+            json.dumps(profile.to_dict(), indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return profile
+    if not profile.current_status:
+        profile.current_status = "LocalAgent 用户"
+        profile.updated_at = datetime.now().isoformat(timespec="seconds")
+        config.ensure_data_dirs()
+        config.CORE_PROFILE_FILE.write_text(
+            json.dumps(profile.to_dict(), indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
     return profile

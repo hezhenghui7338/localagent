@@ -560,6 +560,8 @@ class Mem0Backend:
 
     def recall(self, query: str, *, max_results: int = 10) -> list[dict[str, Any]]:
         from localagent.memory.backends.json_backend import JsonMemoryBackend
+        from localagent.memory.decompose import decompose_recall_query
+        from localagent.memory.rerank import rerank_memory_hits
         from localagent.memory.scoped_recall import (
             expand_dialog_neighbors,
             expand_recall_queries,
@@ -569,46 +571,79 @@ class Mem0Backend:
             scoped_recall_multi,
         )
 
-        prefetch = max(max_results * 4, 24)
+        candidate_n = max(max_results * 4, config.MEMORY_RERANK_CANDIDATES, 24)
+        prefetch = max(candidate_n, 24)
         store = get_memory_store()
         all_facts = list(store.all_facts())
         local_only = [fact for fact in all_facts if not _is_engine_indexed(fact)]
 
-        queries = (
-            expand_recall_queries(query)
-            if config.MEMORY_RECALL_QUERY_EXPAND
-            else [" ".join((query or "").split())]
-        )
-        queries = [q for q in queries if q] or [query]
+        subqueries = decompose_recall_query(query)
+        if not subqueries:
+            subqueries = [" ".join((query or "").split()) or query]
+
+        # Lexical variants across all subqueries; vector path uses a capped subset.
+        lexical_queries: list[str] = []
+        vector_queries: list[str] = []
+        seen_lex: set[str] = set()
+        seen_vec: set[str] = set()
+        per_sub_vector = max(1, config.MEMORY_RECALL_VECTOR_VARIANTS)
+        max_vector_total = max(per_sub_vector, min(6, per_sub_vector * max(1, len(subqueries))))
+        for sub in subqueries:
+            variants = (
+                expand_recall_queries(sub)
+                if config.MEMORY_RECALL_QUERY_EXPAND
+                else [" ".join((sub or "").split())]
+            )
+            variants = [q for q in variants if q] or [sub]
+            for item in variants:
+                key = item.lower()
+                if key not in seen_lex:
+                    seen_lex.add(key)
+                    lexical_queries.append(item)
+            added_for_sub = 0
+            for item in variants:
+                if len(vector_queries) >= max_vector_total or added_for_sub >= per_sub_vector:
+                    break
+                key = item.lower()
+                if key in seen_vec:
+                    continue
+                seen_vec.add(key)
+                vector_queries.append(item)
+                added_for_sub += 1
+
+        if not vector_queries:
+            vector_queries = [subqueries[0]]
+        if not lexical_queries:
+            lexical_queries = list(vector_queries)
 
         ranked_lists: list[list[dict[str, Any]]] = []
 
-        # One vector query keeps embedding cost down; lexical variants recover keywords.
         try:
-            results = self._memory.search(
-                queries[0],
-                filters={"user_id": self._user_id},
-                top_k=prefetch,
-                threshold=0.0,
-            )
-            engine_hits: list[dict[str, Any]] = []
-            for index, item in enumerate(_iter_search_results(results)):
-                if isinstance(item, dict):
-                    memory_id = str(item.get("id") or "")
-                    text = str(item.get("memory") or item.get("text") or "")
-                else:
-                    memory_id = str(getattr(item, "id", "") or "")
-                    text = str(getattr(item, "memory", None) or getattr(item, "text", "") or "")
-                store_fact = _resolve_store_fact(store, memory_id=memory_id, text=text)
-                engine_hits.append(_merge_recall_hit(item, index=index, store_fact=store_fact))
-            if engine_hits:
-                ranked_lists.append(engine_hits)
+            for vq in vector_queries:
+                results = self._memory.search(
+                    vq,
+                    filters={"user_id": self._user_id},
+                    top_k=prefetch,
+                    threshold=0.0,
+                )
+                engine_hits: list[dict[str, Any]] = []
+                for index, item in enumerate(_iter_search_results(results)):
+                    if isinstance(item, dict):
+                        memory_id = str(item.get("id") or "")
+                        text = str(item.get("memory") or item.get("text") or "")
+                    else:
+                        memory_id = str(getattr(item, "id", "") or "")
+                        text = str(getattr(item, "memory", None) or getattr(item, "text", "") or "")
+                    store_fact = _resolve_store_fact(store, memory_id=memory_id, text=text)
+                    engine_hits.append(_merge_recall_hit(item, index=index, store_fact=store_fact))
+                if engine_hits:
+                    ranked_lists.append(engine_hits)
         except Exception as exc:
             logger.warning("Mem0 recall failed (%s), falling back to local registry", exc)
             return JsonMemoryBackend().recall(query, max_results=max_results)
 
         if config.MEMORY_RECALL_HYBRID and all_facts:
-            lexical_hits = scoped_recall_multi(queries, max_results=prefetch, facts=all_facts)
+            lexical_hits = scoped_recall_multi(lexical_queries, max_results=prefetch, facts=all_facts)
             if lexical_hits:
                 ranked_lists.append(lexical_hits)
         elif local_only:
@@ -622,7 +657,7 @@ class Mem0Backend:
         merged = rrf_fuse_hits(ranked_lists)
         merged = _dedupe_recall_hits(merged)
         # Keep RRF order for the core top pool; neighbors are optional fill-ins only.
-        core = merged[: max(max_results * 2, 16)]
+        core = merged[: max(candidate_n, max_results * 2, 16)]
         neighbor_window = config.MEMORY_RECALL_NEIGHBOR_WINDOW
         if neighbor_window <= 0 and config.MEMORY_RECALL_HYBRID:
             from localagent.memory.temporal_intent import parse_temporal_intent
@@ -646,38 +681,15 @@ class Mem0Backend:
         if not merged:
             return JsonMemoryBackend().recall(query, max_results=max_results)
 
-        # Preserve RRF ranking; only apply a light temporal/lexical polish.
-        return finalize_hybrid_rank(query, merged, max_results=max_results)
+        # Light temporal/lexical/entity polish over a wide pool, then optional rerank.
+        polished = finalize_hybrid_rank(query, merged, max_results=candidate_n)
+        return rerank_memory_hits(query, polished, max_results=max_results)
 
     def reflect(self, query: str) -> str | None:
-        """Simulate Hindsight reflect: search + LA LLM synthesis."""
-        hits = self.recall(query, max_results=8)
-        if not hits:
-            return None
-        evidence = "\n".join(
-            f"- {hit.get('text', '').strip()}" for hit in hits if hit.get("text")
-        )
-        if not evidence.strip():
-            return None
-        prompt = (
-            "你是 LocalAgent 的记忆推理模块。根据下列已召回的长期记忆，"
-            f"回答用户问题。只依据记忆内容归纳，不要编造。\n\n"
-            f"问题：{query}\n\n记忆：\n{evidence}\n\n请用简洁中文回答："
-        )
-        try:
-            from localagent.models.router import ChatMessage, get_model_router
+        """Multi-hop recall + LLM synthesis (shared reflect_loop)."""
+        from localagent.memory.reflect_loop import reflect_with_hops
 
-            router = get_model_router()
-            answer = router.chat(
-                [ChatMessage(role="user", content=prompt)],
-                temperature=0.2,
-                usage_command="reflect",
-            )
-            text = (answer or "").strip()
-            return text or None
-        except Exception as exc:
-            logger.warning("Mem0 reflect LLM failed: %s", exc)
-            return None
+        return reflect_with_hops(self, query)
 
     def delete(self, fact_id: str) -> bool:
         store = get_memory_store()

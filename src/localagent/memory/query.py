@@ -10,7 +10,7 @@ from localagent.memory.core_profile import load_core_profile
 from localagent.memory.backend import get_memory_backend
 from localagent.memory.scoped_recall import (
     _intent_temporal_score,
-    _semantic_score,
+    _lexical_overlap_score,
     _storage_time,
 )
 from localagent.memory.store import MemoryFact, get_memory_store
@@ -157,9 +157,7 @@ def query_memories(
 
         if query and sort != "relevance":
             searchable = _searchable_text(fact_like)
-            sem = _semantic_score(query, searchable)
-            if sem <= 0:
-                continue
+            lexical = _lexical_overlap_score(query, searchable)
             effective_at = memory_effective_time(
                 metadata=fact_like.metadata,
                 created_at=fact_like.created_at,
@@ -177,15 +175,17 @@ def query_memories(
                 if intent
                 else 0.5
             )
-            sem_weight = (
+            # Soft lexical boost only — never drop on zero overlap.
+            lex_weight = (
                 min(float(config.SEMANTIC_WEIGHT), 0.60)
                 if intent and intent.raises_temporal_weight
                 else float(config.SEMANTIC_WEIGHT)
             )
-            blended = sem_weight * sem + (1 - sem_weight) * temp
+            blended = lex_weight * lexical + (1 - lex_weight) * temp
             hit = dict(hit)
             hit["score"] = blended
-            hit["semantic_score"] = sem
+            hit["semantic_score"] = lexical
+            hit["lexical_score"] = lexical
             hit["temporal_score"] = temp
             if intent:
                 hit["anchor"] = intent.to_dict()

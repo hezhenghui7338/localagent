@@ -7,7 +7,6 @@ from typing import Any
 
 from localagent import config
 from localagent.ingest.sync_index import get_sync_index
-from localagent.ingest.tasks import TaskStatus, get_task_store
 from localagent.memory.store import get_memory_store
 
 
@@ -67,11 +66,14 @@ def collect_memory_health() -> MemoryHealth:
     health.missing_kb_files = sorted(kb_names - indexed)
 
     try:
+        # Lazy import: avoid tasks ↔ pipeline ↔ audit circular import at module load.
+        from localagent.ingest.tasks import TaskStatus, get_task_store
+
         tasks = get_task_store().list_tasks(limit=50, reconcile=False)
         health.failed_tasks = sum(1 for t in tasks if t.status == TaskStatus.FAILED)
     except Exception:
         pass
 
     if health.missing_kb_files:
-        health.notes.append("存在 kb/ 文件未索引，运行 LA memory ingest file")
+        health.notes.append("存在 kb/ 文件未索引，运行 LA rag ingest")
     return health

@@ -106,10 +106,13 @@ def reset_memory(
         memory_store.clear()
         memory_store.save()
 
-        sync_files_tracked, knowledge_removed = _clear_file_indexes(
-            clear_knowledge=clear_knowledge,
-            reporter=reporter,
-        )
+        sync_files_tracked = 0
+        knowledge_removed = 0
+        if clear_knowledge:
+            sync_files_tracked, knowledge_removed = _clear_file_indexes(
+                clear_knowledge=True,
+                reporter=reporter,
+            )
         reset_chat_ingest_index()
         reset_chatgpt_import_index()
         reset_memory_store_singleton()
@@ -176,11 +179,52 @@ def reindex_memory_engine(
     return {"reindexed": count, "backend": "mem0", "skipped": 0}
 
 
+def rebuild_knowledge(
+    *,
+    reporter: ProgressReporter | None = None,
+) -> tuple[dict[str, int | bool | str], SyncSummary]:
+    """Clear Cold knowledge indexes then force re-index all kb/ documents."""
+    reset_stats = reset_knowledge(clear_knowledge=True, reporter=reporter)
+    if reporter is not None:
+        reporter.update(ProgressEvent(phase="rebuild", message="重新索引 kb/ 文档…"))
+    summary = sync_files(force=True, reporter=reporter)
+    return reset_stats, summary
+
+
+def reset_knowledge(
+    *,
+    clear_knowledge: bool = True,
+    reporter: ProgressReporter | None = None,
+) -> dict[str, int | bool | str]:
+    """Clear Cold RAG indexes (sync_index + knowledge). Does not touch Warm memory."""
+    config.ensure_data_dirs()
+
+    def _report(message: str) -> None:
+        if reporter is not None:
+            reporter.update(ProgressEvent(phase="reset", message=message))
+
+    _report("清空知识库索引…")
+    sync_files_tracked, knowledge_removed = _clear_file_indexes(
+        clear_knowledge=clear_knowledge,
+        reporter=reporter,
+    )
+    # Also drop legacy document-sourced Warm facts if any remain
+    ingest_removed = _delete_facts_by_sources(SOURCE_GROUPS["file"], reporter=reporter)
+    _report("知识库重置完成")
+    return {
+        "source": "rag",
+        "memory_facts_removed": ingest_removed,
+        "sync_index_entries_removed": sync_files_tracked,
+        "knowledge_chunks_removed": knowledge_removed,
+        "clear_knowledge": clear_knowledge,
+    }
+
+
 def rebuild_memory(
     *,
     reporter: ProgressReporter | None = None,
 ) -> tuple[dict[str, int | bool | str], SyncSummary]:
-    """Reset all memory then force re-index all kb/ documents."""
+    """Deprecated alias: reset Warm all then rebuild knowledge (prefer rag rebuild)."""
     store = get_memory_store()
     snapshot = [fact.to_dict() for fact in store.all_facts()]
 
@@ -197,11 +241,12 @@ def rebuild_memory(
         for item in snapshot:
             text = str(item.get("text") or "").strip()
             source_file = str(item.get("source_file") or "")
+            meta = dict(item.get("metadata") or {})
+            source = str(meta.get("source") or "")
             if not text or text in existing_texts:
                 continue
-            if source_file and (config.KB_DIR / source_file).exists():
+            if source == "ingest" or (source_file and (config.KB_DIR / source_file).exists()):
                 continue
-            meta = dict(item.get("metadata") or {})
             meta["source_file"] = source_file
             meta["section_heading"] = (
                 item.get("section_heading") or meta.get("section_heading") or "rebuild"

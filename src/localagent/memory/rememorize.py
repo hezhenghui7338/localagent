@@ -8,10 +8,14 @@ from datetime import datetime
 
 from localagent import config
 from localagent.ingest.progress import ProgressEvent, ProgressReporter
-from localagent.memory.save import confirm_save_facts
-from localagent.memory.value_filter import filter_facts
+from localagent.memory.save import confirm_save_extracted
 from localagent.models.router import get_model_router
-from localagent.persist.conversations import format_conversation_text, list_sessions, load_conversation
+from localagent.persist.conversations import (
+    conversation_file_for_fingerprint,
+    format_conversation_text,
+    list_sessions,
+    load_conversation_object,
+)
 
 
 def _load_index() -> dict[str, dict]:
@@ -36,8 +40,8 @@ def _save_index(processed: dict[str, dict]) -> None:
 
 def conversation_fingerprint(session_id: str) -> str:
     """Stable fingerprint of a conversation archive (mtime + size + content hash)."""
-    path = config.CONVERSATIONS_DIR / f"{session_id}.jsonl"
-    if not path.is_file():
+    path = conversation_file_for_fingerprint(session_id)
+    if path is None or not path.is_file():
         return ""
     try:
         stat = path.stat()
@@ -140,22 +144,21 @@ def ingest_chat(
                 )
             continue
 
-        messages = load_conversation(sid)
-        if not messages:
+        conversation = load_conversation_object(sid)
+        if conversation is None or not conversation.messages:
             mark_chat_ingested(sid, saved_count=0, processed=processed)
             continue
 
-        text = format_conversation_text(messages)
-        facts = router.extract_facts(text, context=f"ingest chat session={sid}")
-        facts = filter_facts(facts)
-        if not facts:
+        text = format_conversation_text(conversation)
+        memories = router.extract_memories(text, context=f"ingest chat session={sid}")
+        if not memories:
             mark_chat_ingested(sid, saved_count=0, processed=processed)
             continue
 
-        ids = confirm_save_facts(
-            facts,
+        ids = confirm_save_extracted(
+            memories,
             metadata={"source": "chat", "session_id": sid},
-            title=f"从对话 {sid} 提取到 {len(facts)} 条记忆",
+            title=f"从对话 {sid} 提取到 {len(memories)} 条记忆",
             interactive=interactive if session_id else False,
         )
         mark_chat_ingested(sid, saved_count=len(ids), processed=processed)

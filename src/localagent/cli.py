@@ -17,7 +17,13 @@ from localagent.memory.chatgpt_import import import_chatgpt_dir, import_chatgpt_
 from localagent.memory.backend import describe_memory_backend, get_memory_backend
 from localagent.memory.query import list_memory_tags, query_memories
 from localagent.memory.rememorize import ingest_chat
-from localagent.memory.reset import rebuild_memory, reindex_memory_engine, reset_memory
+from localagent.memory.reset import (
+    rebuild_knowledge,
+    rebuild_memory,
+    reindex_memory_engine,
+    reset_knowledge,
+    reset_memory,
+)
 from localagent.memory.store import get_memory_store
 from localagent.tools import query_memories_tool, reflect_memory, search_knowledge, search_memory
 from localagent.ui.console import emit
@@ -25,18 +31,19 @@ from localagent.ui.console import emit
 # Old flat memory commands → replacement shown to users (no longer executed).
 _DEPRECATED_MEMORY_COMMANDS: dict[str, str] = {
     "add": "memory add <text>",
-    "add-file": "memory add-file <path>",
-    "sync-file": "memory ingest file [--force]",
-    "reset-memory": "memory reset [chat|file|chatgpt|all]",
-    "rebuild-memory": "memory rebuild",
+    "add-file": "rag add <path>",
+    "sync-file": "rag ingest [--force]",
+    "reset-memory": "memory reset [chat|chatgpt|all]",
+    "rebuild-memory": "rag rebuild",
     "reindex-memory": "memory reindex",
     "memory-status": "memory status",
     "rememorize-chat": "memory ingest chat [--force]",
     "import-chatgpt": "memory ingest chatgpt …",
     "forget": "memory forget <id>",
-    "search": "memory search <query>",
+    "search": "memory search <query>（知识库请用 rag search）",
     "memories": "memory query …",
     "reflect": "memory reflect <query>",
+    "consolidate": "memory consolidate [--limit N] [-f]",
 }
 
 
@@ -52,7 +59,7 @@ def _print_ingest_result(result) -> None:
         return
     print(
         f"  {result.tag} {result.filename}: "
-        f"facts={result.memory_fact_count}, chunks={result.knowledge_chunk_count}"
+        f"chunks={result.knowledge_chunk_count}"
     )
 
 
@@ -100,15 +107,21 @@ def cmd_chat(args: argparse.Namespace) -> int:
 
 
 def cmd_add(args: argparse.Namespace) -> int:
-    backend = get_memory_backend()
+    from localagent.memory.save import save_facts
+
     emit("memory add", "写入记忆…")
-    fact_id = backend.retain(
-        args.text,
-        metadata={"source": "manual_add", "source_file": "LA memory add", "section_heading": ""},
+    ids = save_facts(
+        [args.text],
+        metadata={
+            "source": "manual_add",
+            "source_file": "LA memory add",
+            "section_heading": "",
+        },
     )
-    if not fact_id:
+    if not ids:
         print("[memory add] 内容太短或无价值，未写入")
         return 1
+    fact_id = ids[0]
     print(f"[memory add] 已写入记忆 (id={fact_id[:8]}...)")
     fact = get_memory_store().get(fact_id)
     if fact:
@@ -133,35 +146,41 @@ def _format_file_size(path: str | Path) -> str:
 
 def cmd_add_file(args: argparse.Namespace) -> int:
     source = Path(args.path).expanduser().resolve()
+    prefix = "rag add"
     try:
         if args.background:
-            print(f"[memory add-file] 源文件: {source} ({_format_file_size(source)})")
+            print(f"[{prefix}] 源文件: {source} ({_format_file_size(source)})")
             target, task, pid = add_file_background(args.path)
-            print(f"[memory add-file] 软链: {target}")
-            print(f"[memory add-file] 后台任务 {task.id} (pid={pid})")
+            print(f"[{prefix}] 软链: {target}")
+            print(f"[{prefix}] 后台任务 {task.id} (pid={pid})")
             if task.log_path:
-                print(f"[memory add-file] 日志: {task.log_path}")
+                print(f"[{prefix}] 日志: {task.log_path}")
             print(f"→ LA tasks {task.id}       查看进度")
             print(f"→ LA tasks logs {task.id}  查看输出")
             return 0
 
-        print(f"[memory add-file] 源文件: {source} ({_format_file_size(source)})")
-        reporter = ConsoleProgressReporter(prefix="memory add-file")
+        print(f"[{prefix}] 源文件: {source} ({_format_file_size(source)})")
+        reporter = ConsoleProgressReporter(prefix=prefix)
         target, result = add_file(args.path, reporter=reporter)
     except KeyboardInterrupt:
-        print("\n[memory add-file] 已中断")
+        print(f"\n[{prefix}] 已中断")
         return 130
     except (FileNotFoundError, ValueError, FileExistsError) as exc:
-        print(f"[memory add-file] error: {exc}")
+        print(f"[{prefix}] error: {exc}")
         return 1
 
-    print(f"[memory add-file] 软链: {target}")
+    print(f"[{prefix}] 软链: {target}")
     _print_ingest_result(result)
     if result.status.value == "failed":
         return 1
-    print("[memory add-file] done")
+    print(f"[{prefix}] done（仅知识库，不提取记忆）")
     return 0
 
+
+def cmd_memory_add_file_moved(args: argparse.Namespace) -> int:
+    print("[memory add-file] 已迁移 → LA rag add <path>")
+    print("  文档只写入 Cold 知识库，不再提取 Warm 记忆。")
+    return 2
 
 def _print_task_detail(task) -> None:
     print(f"[tasks] {task.id}")
@@ -182,7 +201,7 @@ def _print_task_detail(task) -> None:
     if task.status in (TaskStatus.COMPLETED, TaskStatus.SKIPPED):
         print(
             f"  result: {task.result_status} "
-            f"facts={task.memory_fact_count} chunks={task.knowledge_chunk_count}"
+            f"chunks={task.knowledge_chunk_count}"
         )
     if task.status == TaskStatus.FAILED and task.error:
         print(f"  error: {task.error}")
@@ -314,26 +333,141 @@ def cmd_tasks(args: argparse.Namespace) -> int:
 
 
 def cmd_ingest_file(args: argparse.Namespace) -> int:
-    emit("memory ingest file", f"扫描 {config.KB_DIR}/ …")
-    reporter = ConsoleProgressReporter(prefix="memory ingest file")
+    emit("rag ingest", f"扫描 {config.KB_DIR}/ …")
+    reporter = ConsoleProgressReporter(prefix="rag ingest")
     summary = sync_files(force=args.force, reporter=reporter)
     if not summary.results:
-        print(f"[memory ingest file] no supported files in {config.KB_DIR}/")
+        print(f"[rag ingest] no supported files in {config.KB_DIR}/")
         return 0
 
     for result in summary.results:
         _print_ingest_result(result)
 
-    print(f"[memory ingest file] {summary.format_summary()}")
+    print(f"[rag ingest] {summary.format_summary()}")
+    return 1 if summary.failed_count else 0
+
+
+def cmd_memory_ingest_file_moved(_args: argparse.Namespace) -> int:
+    print("[memory ingest file] 已迁移 → LA rag ingest [--force]")
+    print("  文档只写入 Cold 知识库，不再提取 Warm 记忆。")
+    return 2
+
+
+def cmd_rag_search(args: argparse.Namespace) -> int:
+    emit("rag search", f"检索知识库: {args.query}")
+    print(search_knowledge(args.query, top_k=args.top_k))
+    return 0
+
+
+def cmd_rag_status(_args: argparse.Namespace) -> int:
+    from localagent.audit.health import collect_memory_health
+    from localagent.ingest.sync_index import get_sync_index
+    from localagent.knowledge.indexer import get_knowledge_indexer
+
+    sync = get_sync_index()
+    indexer = get_knowledge_indexer()
+    files = sync.all_filenames()
+    print("[rag status] Cold 知识库")
+    print(f"  kb 目录:     {config.KB_DIR}")
+    print(f"  已索引文件:  {len(files)}")
+    print(f"  知识块数:    {indexer.count()}")
+    print(f"  sync_index:  {config.SYNC_INDEX_FILE}")
+
+    health = collect_memory_health()
+    if health.missing_kb_files:
+        print(f"  未索引文件:  {len(health.missing_kb_files)}（可 LA rag ingest）")
+    if health.orphan_kb_entries:
+        print(f"  孤儿索引:    {len(health.orphan_kb_entries)}（sync_index 有记录但 kb/ 无文件）")
+    if health.failed_tasks:
+        print(f"  失败任务:    {health.failed_tasks}（可 LA tasks 查看）")
+
+    print("\n下一步:")
+    print("  LA rag add <path>     软链到 kb/ 并索引")
+    print("  LA rag search <q>     检索知识库")
+    print("  LA rag ingest         增量扫描 data/kb/")
+    return 0
+
+
+def _ingest_index_count(path: Path) -> int:
+    """Count processed entries in a chat/chatgpt ingest progress index."""
+    if not path.exists():
+        return 0
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        processed = raw.get("processed", {})
+        return len(processed) if isinstance(processed, dict) else 0
+    except Exception:
+        return 0
+
+
+def _memory_source_counts() -> dict[str, int]:
+    """Count Warm facts by SOURCE_GROUPS origin (chat / chatgpt / file / other)."""
+    from localagent.memory.reset import SOURCE_GROUPS
+
+    counts = {"chat": 0, "chatgpt": 0, "file": 0, "other": 0}
+    source_to_group: dict[str, str] = {}
+    for group, sources in SOURCE_GROUPS.items():
+        for src in sources:
+            source_to_group[src] = group
+
+    for fact in get_memory_store().all_facts():
+        meta = fact.metadata or {}
+        src = str(meta.get("source") or "")
+        group = source_to_group.get(src, "other")
+        counts[group] = counts.get(group, 0) + 1
+    return counts
+
+
+def _core_profile_configured() -> bool:
+    from localagent.memory.core_profile import load_core_profile
+
+    profile = load_core_profile()
+    return bool(
+        profile.name.strip()
+        or profile.current_status.strip()
+        or profile.preferences
+        or profile.life_anchors
+    )
+
+
+def cmd_rag_reset(args: argparse.Namespace) -> int:
+    reporter = ConsoleProgressReporter(prefix="rag reset")
+    stats = reset_knowledge(
+        clear_knowledge=not getattr(args, "keep_index", False),
+        reporter=reporter,
+    )
+    print("[rag reset] cleared:")
+    print(f"  sync_index entries removed: {stats['sync_index_entries_removed']}")
+    if stats["clear_knowledge"]:
+        print(f"  knowledge chunks removed: {stats['knowledge_chunks_removed']}")
+    print(f"  legacy ingest memories removed: {stats['memory_facts_removed']}")
+    print("[rag reset] done (kb/ symlinks preserved)")
+    return 0
+
+
+def cmd_rag_rebuild(_args: argparse.Namespace) -> int:
+    reporter = ConsoleProgressReporter(prefix="rag rebuild")
+    reset_stats, summary = rebuild_knowledge(reporter=reporter)
+    print("[rag rebuild] reset:")
+    print(f"  sync_index entries removed: {reset_stats['sync_index_entries_removed']}")
+    print(f"  knowledge chunks removed: {reset_stats['knowledge_chunks_removed']}")
+    print(f"  legacy ingest memories removed: {reset_stats['memory_facts_removed']}")
+    for result in summary.results:
+        _print_ingest_result(result)
+    print(f"[rag rebuild] {summary.format_summary()}")
     return 1 if summary.failed_count else 0
 
 
 def cmd_reset_memory(args: argparse.Namespace) -> int:
     source = getattr(args, "source", "all") or "all"
+    if source == "file":
+        print("[memory reset file] 已迁移 → LA rag reset")
+        print("  若只需删除旧文档记忆碎片，rag reset 会一并清理 source=ingest。")
+        return 2
     reporter = ConsoleProgressReporter(prefix="memory reset")
     try:
         stats = reset_memory(
-            clear_knowledge=not args.keep_knowledge,
+            clear_knowledge=False,
             source=source,
             reporter=reporter,
         )
@@ -342,26 +476,17 @@ def cmd_reset_memory(args: argparse.Namespace) -> int:
         return 1
     print(f"[memory reset] cleared ({stats['source']}):")
     print(f"  memory facts removed: {stats['memory_facts_removed']}")
-    print(f"  sync_index entries removed: {stats['sync_index_entries_removed']}")
-    if stats["clear_knowledge"]:
-        print(f"  knowledge chunks removed: {stats['knowledge_chunks_removed']}")
-    elif source in ("all", "file"):
-        print("  knowledge index kept (--keep-knowledge)")
-    print("[memory reset] done (kb/ symlinks and conversations preserved)")
+    if stats.get("sync_index_entries_removed"):
+        print(f"  sync_index entries removed: {stats['sync_index_entries_removed']}")
+    print("[memory reset] done（知识库请用 LA rag reset；对话档案保留）")
     return 0
 
 
 def cmd_rebuild_memory(_args: argparse.Namespace) -> int:
-    reporter = ConsoleProgressReporter(prefix="memory rebuild")
-    reset_stats, summary = rebuild_memory(reporter=reporter)
-    print("[memory rebuild] reset:")
-    print(f"  memory facts removed: {reset_stats['memory_facts_removed']}")
-    print(f"  sync_index entries removed: {reset_stats['sync_index_entries_removed']}")
-    print(f"  knowledge chunks removed: {reset_stats['knowledge_chunks_removed']}")
-    for result in summary.results:
-        _print_ingest_result(result)
-    print(f"[memory rebuild] {summary.format_summary()}")
-    return 1 if summary.failed_count else 0
+    print("[memory rebuild] 已拆分：")
+    print("  Warm 重建向量 → LA memory reindex")
+    print("  Cold 知识库重建 → LA rag rebuild")
+    return 2
 
 
 def cmd_reindex_memory(_args: argparse.Namespace) -> int:
@@ -373,7 +498,6 @@ def cmd_reindex_memory(_args: argparse.Namespace) -> int:
     if stats.get("skipped"):
         print("  skipped:    yes (非 mem0 后端)")
     return 0
-
 
 def cmd_ingest_chat(args: argparse.Namespace) -> int:
     reporter = ConsoleProgressReporter(prefix="memory ingest chat")
@@ -451,15 +575,14 @@ def cmd_ingest_chatgpt(args: argparse.Namespace) -> int:
 
 def cmd_memory_ingest(args: argparse.Namespace) -> int:
     source = (args.source or "").strip().lower()
+    if source == "file":
+        return cmd_memory_ingest_file_moved(args)
     if source == "chat":
         return cmd_ingest_chat(args)
-    if source == "file":
-        return cmd_ingest_file(args)
     if source == "chatgpt":
         return cmd_ingest_chatgpt(args)
     if source == "all":
         rc = cmd_ingest_chat(args)
-        file_rc = cmd_ingest_file(args)
         chatgpt_args = argparse.Namespace(
             path=None,
             files=None,
@@ -468,7 +591,6 @@ def cmd_memory_ingest(args: argparse.Namespace) -> int:
             include_disabled=getattr(args, "include_disabled", False),
             interactive=getattr(args, "interactive", False),
         )
-        # Skip chatgpt loudly failing when no export data is present.
         default_dir = config.CHATGPT_DATA_DIR
         has_chatgpt = (
             getattr(args, "path", None)
@@ -479,8 +601,9 @@ def cmd_memory_ingest(args: argparse.Namespace) -> int:
         chatgpt_rc = 0
         if has_chatgpt:
             chatgpt_rc = cmd_ingest_chatgpt(chatgpt_args)
-        return 1 if any(code != 0 for code in (rc, file_rc, chatgpt_rc)) else 0
-    print(f"[memory ingest] 未知来源: {args.source}（可用: chat, file, chatgpt, all）")
+        print("[memory ingest all] 文档知识库请单独运行: LA rag ingest")
+        return 1 if any(code != 0 for code in (rc, chatgpt_rc)) else 0
+    print(f"[memory ingest] 未知来源: {args.source}（可用: chat, chatgpt, all）")
     return 1
 
 
@@ -508,27 +631,28 @@ def cmd_forget(args: argparse.Namespace) -> int:
 
 
 def cmd_search(args: argparse.Namespace) -> int:
-    if args.knowledge:
-        emit("memory search", f"检索知识库: {args.query}")
-        print(search_knowledge(args.query, top_k=args.top_k))
-    else:
-        emit("memory search", f"检索记忆: {args.query}")
-        backend = get_memory_backend()
-        hits = backend.recall(args.query, max_results=args.top_k)
-        result = search_memory(
-            args.query,
-            top_k=args.top_k,
-            show_ids=bool(hits),
-            fallback=True,
-            verbose=args.verbose,
-        )
-        print(result)
-        if hits:
-            print("→ LA memory forget <id>  删除某条记忆")
+    if getattr(args, "knowledge", False):
+        print("[memory search --knowledge] 已迁移 → LA rag search <query>")
+        return 2
+    emit("memory search", f"检索记忆: {args.query}")
+    backend = get_memory_backend()
+    hits = backend.recall(args.query, max_results=args.top_k)
+    result = search_memory(
+        args.query,
+        top_k=args.top_k,
+        show_ids=bool(hits),
+        fallback=True,
+        verbose=args.verbose,
+    )
+    print(result)
+    if hits:
+        print("→ LA memory forget <id>  删除某条记忆")
     return 0
 
 
 def cmd_memory_status(_args: argparse.Namespace) -> int:
+    from localagent.persist.conversations import list_sessions
+
     info = describe_memory_backend()
     print("[memory status] Warm 层记忆引擎诊断")
     print(f"  当前后端:     {info['active_backend']} ({info.get('backend_class', '?')})")
@@ -550,18 +674,74 @@ def cmd_memory_status(_args: argparse.Namespace) -> int:
         )
         print(f"  Mem0 数据:    {info.get('mem0_dir', '?')}")
     print(f"  记忆条数:     {info['memory_count']}")
+    if info.get("unindexed_count"):
+        print(
+            f"  未入向量:     {info['unindexed_count']} "
+            "（JSON 有记录但未进 Mem0/Qdrant，可 LA memory reindex）"
+        )
+
+    sources = _memory_source_counts()
+    print(
+        f"  来源分布:     chat={sources['chat']}  chatgpt={sources['chatgpt']}  "
+        f"file={sources['file']}  other={sources['other']}"
+    )
+    chat_sessions = len(list_sessions())
+    chat_ingested = _ingest_index_count(config.CHAT_INGEST_INDEX_FILE)
+    chatgpt_imported = _ingest_index_count(config.CHATGPT_IMPORT_INDEX_FILE)
+    print(f"  LA 对话档案:  {chat_sessions} 个会话（已记忆化索引 {chat_ingested}）")
+    print(f"  ChatGPT 导入: 已处理 {chatgpt_imported} 条")
+    print(f"  Hot 画像:     {'已配置' if _core_profile_configured() else '未配置'} ({config.CORE_PROFILE_FILE})")
+
+    print(f"  Profile pin:  {'LLM' if info.get('profile_pin_llm') else '正则'} (LA_PROFILE_PIN_LLM)")
     print(f"  Bank ID:      {info['bank_id']}")
     print(f"  本地索引:     {info['store_file']}")
     if info.get("error"):
         print(f"  错误:         {info['error']}")
     if info["active_backend"] == "json" and info["preference"] != "json":
         print("\n提示: Mem0 初始化失败时会回退到 JSON。检查 Ollama 嵌入模型或 LA_MEM0_EMBEDDER_*。")
+    if info.get("unindexed_count"):
+        print("提示: 存在未入向量索引的记忆，语义召回可能不完整。")
+
+    print("\n下一步:")
+    print("  LA memory query              浏览最近记忆")
+    print("  LA memory search <q>         语义搜索")
+    print("  LA memory ingest chat|chatgpt  从对话提取记忆")
     return 0
 
 
 def cmd_reflect(args: argparse.Namespace) -> int:
     emit("memory reflect", f"推理记忆: {args.query}")
     print(reflect_memory(args.query))
+    return 0
+
+
+def cmd_consolidate(args: argparse.Namespace) -> int:
+    """Run ADD/UPDATE/DELETE consolidation over recent memories (background by default)."""
+    limit = max(1, int(getattr(args, "limit", 40) or 40))
+    if getattr(args, "foreground", False):
+        emit("memory consolidate", f"巩固近期记忆 (limit={limit})…")
+        from localagent.memory.consolidate import consolidate_recent
+
+        report = consolidate_recent(limit=limit)
+        print(
+            f"[memory consolidate] changed={report.changed} "
+            f"+{len(report.retained_ids)} ~{len(report.updated_ids)} "
+            f"-{len(report.deleted_ids)} noop={report.noop_count}"
+        )
+        if report.errors:
+            print(f"[memory consolidate] errors: {'; '.join(report.errors[:5])}")
+        return 0
+
+    from localagent.ingest.add_file import spawn_background_task
+    from localagent.ingest.tasks import get_task_store
+
+    task = get_task_store().create_consolidate(limit=limit)
+    pid = spawn_background_task(task)
+    print(f"[memory consolidate] 后台任务 {task.id} (pid={pid})")
+    if task.log_path:
+        print(f"[memory consolidate] 日志: {task.log_path}")
+    print(f"→ LA tasks {task.id}       查看进度")
+    print(f"→ LA tasks logs {task.id}  查看输出")
     return 0
 
 
@@ -1002,22 +1182,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_memory = sub.add_parser(
         "memory",
-        help="add|add-file|ingest|query|search|…  记忆写入 / 消费 / 查询 / 运维",
+        help="[status]|add|ingest|query|search|…  无参显示概览；对话记忆写入/查询/运维",
         description=(
-            "记忆相关操作统一入口。\n"
+            "Warm 记忆（仅对话来源）。无子命令时显示 status 概览。\n"
+            "  LA memory\n"
             "  LA memory add \"…\"\n"
-            "  LA memory add-file <path>\n"
-            "  LA memory ingest chat|file|chatgpt|all [--force]\n"
-            "  LA memory query / search / reflect / forget / status / reset / reindex / rebuild"
+            "  LA memory ingest chat|chatgpt|all [--force]\n"
+            "  LA memory query / search / reflect / consolidate / forget / status / reset / reindex\n"
+            "文档知识库请用: LA rag …"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     mem_sub = p_memory.add_subparsers(
         dest="memory_cmd",
-        required=True,
+        required=False,
         metavar="<action>",
         title="操作",
     )
+    p_memory.set_defaults(func=cmd_memory_status)
 
     p_mem_add = mem_sub.add_parser("add", help="<text>  直接写入一条记忆")
     p_mem_add.add_argument("text", help="记忆文本")
@@ -1025,17 +1207,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_mem_add_file = mem_sub.add_parser(
         "add-file",
-        help="[-b] <path>  软链到 kb/ 并索引",
-        description="将文件软链到 kb/ 并建立索引",
+        help="(已迁移) 请改用 LA rag add",
+        description="已迁移到 LA rag add — 文档只进知识库，不提取记忆",
     )
-    p_mem_add_file.add_argument("path", help="源文件路径")
-    p_mem_add_file.add_argument(
-        "--background",
-        "-b",
-        action="store_true",
-        help="创建软链后在后台索引",
-    )
-    p_mem_add_file.set_defaults(func=cmd_add_file)
+    p_mem_add_file.add_argument("path", nargs="?", default="")
+    p_mem_add_file.add_argument("--background", "-b", action="store_true")
+    p_mem_add_file.set_defaults(func=cmd_memory_add_file_moved)
 
     p_mem_forget = mem_sub.add_parser(
         "forget",
@@ -1048,16 +1225,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_mem_ingest = mem_sub.add_parser(
         "ingest",
-        help="<chat|file|chatgpt|all> [--force]  记忆化未处理材料",
+        help="<chat|chatgpt|all> [--force]  从对话提取记忆",
         description=(
-            "按来源增量消费材料并写入记忆。"
-            "默认跳过已处理项；加 --force 强制重新消费。"
+            "从 LA 对话档案或 ChatGPT 导出提取 Warm 记忆。"
+            "文档请用 LA rag ingest。"
         ),
     )
     p_mem_ingest.add_argument(
         "source",
-        choices=("chat", "file", "chatgpt", "all"),
-        help="材料来源：chat=对话档案，file=kb/ 文档，chatgpt=ChatGPT 导出，all=全部",
+        choices=("chat", "chatgpt", "all", "file"),
+        help="材料来源：chat / chatgpt / all（file 已迁移到 rag ingest）",
     )
     p_mem_ingest.add_argument("--force", action="store_true", help="强制重新消费已处理内容")
     p_mem_ingest.add_argument("--session", help="仅处理指定对话 session id（source=chat）")
@@ -1092,17 +1269,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_mem_reset = mem_sub.add_parser(
         "reset",
-        help="[chat|file|chatgpt|all] [--keep-knowledge]  按来源清空记忆",
-        description="按来源清空记忆；默认 all",
+        help="[chat|chatgpt|all]  按来源清空 Warm 记忆",
+        description="按来源清空记忆；默认 all。知识库请用 LA rag reset。",
     )
     p_mem_reset.add_argument(
         "source",
         nargs="?",
         default="all",
-        choices=("chat", "file", "chatgpt", "all"),
-        help="清空范围（默认 all）",
+        choices=("chat", "chatgpt", "all", "file"),
+        help="清空范围（默认 all；file 已迁移到 rag reset）",
     )
-    p_mem_reset.add_argument("--keep-knowledge", action="store_true", help="保留知识库索引（all/file）")
+    p_mem_reset.add_argument(
+        "--keep-knowledge",
+        action="store_true",
+        help="(兼容保留，已忽略；知识库与 memory 解耦)",
+    )
     p_mem_reset.set_defaults(func=cmd_reset_memory)
 
     p_mem_status = mem_sub.add_parser(
@@ -1113,8 +1294,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     mem_sub.add_parser(
         "rebuild",
-        help="清空全部记忆后强制重建 kb/ 索引",
-        description="等价于 memory reset all + memory ingest file --force，并恢复非文档来源记忆",
+        help="(已拆分) 见 LA memory reindex / LA rag rebuild",
     ).set_defaults(func=cmd_rebuild_memory)
 
     mem_sub.add_parser(
@@ -1125,21 +1305,44 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_mem_search = mem_sub.add_parser(
         "search",
-        help="<query> [--knowledge] [--top-k N] [--verbose]  语义搜索记忆或知识库",
+        help="<query> [--top-k N] [--verbose]  语义搜索 Warm 记忆",
     )
     p_mem_search.add_argument("query", help="搜索关键词")
-    p_mem_search.add_argument("--knowledge", action="store_true", help="搜索知识库原文")
+    p_mem_search.add_argument(
+        "--knowledge",
+        action="store_true",
+        help="(已迁移) 请改用 LA rag search",
+    )
     p_mem_search.add_argument("--top-k", type=int, default=5, help="返回条数（默认 5）")
     p_mem_search.add_argument("--verbose", action="store_true", help="显示记忆锚点等详情")
     p_mem_search.set_defaults(func=cmd_search)
 
     p_mem_reflect = mem_sub.add_parser(
         "reflect",
-        help="<query>  跨记忆推理（Mem0 search + LLM）",
-        description="对多条记忆进行推理综合，处理矛盾、歧义或需要归纳的问题",
+        help="<query>  跨记忆多跳推理",
+        description="对多条记忆进行推理综合；缺证据时最多自动补充检索 2 轮",
     )
     p_mem_reflect.add_argument("query", help="需要推理的问题")
     p_mem_reflect.set_defaults(func=cmd_reflect)
+
+    p_mem_consolidate = mem_sub.add_parser(
+        "consolidate",
+        help="巩固近期记忆（ADD/UPDATE/DELETE，默认后台）",
+        description="扫描近期记忆，合并冲突/重复；默认后台任务，可用 la tasks 查看进度",
+    )
+    p_mem_consolidate.add_argument(
+        "--limit",
+        type=int,
+        default=40,
+        help="扫描最近 N 条记忆（默认 40）",
+    )
+    p_mem_consolidate.add_argument(
+        "--foreground",
+        "-f",
+        action="store_true",
+        help="前台同步执行（默认后台）",
+    )
+    p_mem_consolidate.set_defaults(func=cmd_consolidate)
 
     p_mem_query = mem_sub.add_parser(
         "query",
@@ -1171,6 +1374,66 @@ def build_parser() -> argparse.ArgumentParser:
         help="列出所有记忆标签及数量",
     )
     p_mem_query.set_defaults(func=cmd_memories)
+
+    p_rag = sub.add_parser(
+        "rag",
+        help="[status]|add|ingest|search|reset|rebuild  无参显示概览；文档知识库（Cold）",
+        description=(
+            "Cold 知识库：个人文档仅用于 RAG 检索，不写入 Warm 记忆。"
+            "无子命令时显示 status 概览。\n"
+            "  LA rag\n"
+            "  LA rag add [-b] <path>\n"
+            "  LA rag ingest [--force]\n"
+            "  LA rag search <query>\n"
+            "  LA rag status | reset | rebuild"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    rag_sub = p_rag.add_subparsers(
+        dest="rag_cmd",
+        required=False,
+        metavar="<action>",
+        title="操作",
+    )
+    p_rag.set_defaults(func=cmd_rag_status)
+
+    p_rag_add = rag_sub.add_parser(
+        "add",
+        help="[-b] <path>  软链到 kb/ 并索引（仅知识库）",
+    )
+    p_rag_add.add_argument("path", help="源文件路径")
+    p_rag_add.add_argument(
+        "--background",
+        "-b",
+        action="store_true",
+        help="创建软链后在后台索引",
+    )
+    p_rag_add.set_defaults(func=cmd_add_file)
+
+    p_rag_ingest = rag_sub.add_parser(
+        "ingest",
+        help="[--force]  增量扫描 data/kb/ 并建索引",
+    )
+    p_rag_ingest.add_argument("--force", action="store_true", help="强制全量重索引")
+    p_rag_ingest.set_defaults(func=cmd_ingest_file)
+
+    p_rag_search = rag_sub.add_parser(
+        "search",
+        help="<query> [--top-k N]  检索知识库原文",
+    )
+    p_rag_search.add_argument("query", help="搜索关键词")
+    p_rag_search.add_argument("--top-k", type=int, default=5, help="返回条数（默认 5）")
+    p_rag_search.set_defaults(func=cmd_rag_search)
+
+    rag_sub.add_parser("status", help="诊断知识库索引状态").set_defaults(func=cmd_rag_status)
+    rag_sub.add_parser(
+        "reset",
+        help="清空知识库索引（保留 kb/ 软链；并清理旧 ingest 记忆）",
+    ).set_defaults(func=cmd_rag_reset)
+    rag_sub.add_parser(
+        "rebuild",
+        help="清空后强制重扫 kb/",
+    ).set_defaults(func=cmd_rag_rebuild)
 
     p_workspace = sub.add_parser(
         "workspace",
@@ -1399,9 +1662,11 @@ def main(argv: list[str] | None = None) -> int:
     argv = _normalize_config_argv(argv)
 
     from localagent import env_config
+    from localagent.completion import ensure_shell_completion
     from localagent.session_commands import dispatch_cli_argv
 
     env_config.ensure_config()
+    ensure_shell_completion()
     config.ensure_data_dirs()
     get_task_store().reconcile_stale()
     try:

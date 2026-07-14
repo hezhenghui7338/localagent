@@ -9,12 +9,35 @@ from unittest.mock import MagicMock, patch
 from localagent import __version__, config
 from localagent.cli import build_parser, main
 from localagent.ingest.sync_index import get_sync_index
+from localagent.knowledge.indexer import get_knowledge_indexer
+from localagent.memory.conversation_extract import ExtractedMemory
 from localagent.memory.scoped_recall import scoped_recall
 from localagent.memory.store import get_memory_store
-from localagent.persist.conversations import load_conversation
 from localagent.tools import search_knowledge, search_memory
 
 from conftest import write_doc
+
+
+def test_cli_bare_memory_shows_status(capsys):
+    """Bare `LA memory` defaults to status overview (no argparse error)."""
+    rc = main(["memory"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "[memory status]" in out
+    assert "来源分布" in out
+    assert "下一步" in out
+    assert "memory query" in out
+
+
+def test_cli_bare_rag_shows_status(capsys):
+    """Bare `LA rag` defaults to status overview (no argparse error)."""
+    rc = main(["rag"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "[rag status]" in out
+    assert "kb 目录" in out
+    assert "下一步" in out
+    assert "rag search" in out
 
 
 def test_cli_version_flag(capsys):
@@ -31,10 +54,11 @@ def test_build_parser_exposes_version():
     help_text = build_parser().format_help()
     assert "--version" in help_text
     assert "-V" in help_text
+    assert "rag" in help_text
 
 
 def test_cli_add_writes_memory_directly():
-    """PRD §3: LA add 直接加记忆，即时生效."""
+    """PRD §3: LA memory add 直接加记忆，即时生效."""
     before = get_memory_store().count()
     rc = main(["memory", "add", "2026年7月决定使用 Hindsight 作为记忆引擎"])
     assert rc == 0
@@ -47,21 +71,29 @@ def test_cli_add_rejects_low_value_text(capsys):
     assert "未写入" in capsys.readouterr().out
 
 
-def test_cli_add_file_and_sync_file(tmp_path: Path, capsys):
+def test_cli_rag_add_and_ingest(tmp_path: Path, capsys):
     source = write_doc(
         tmp_path / "journal.md",
         "# 日记\n\n2026年7月决定使用 Hindsight 作为记忆引擎。",
     )
-    rc = main(["memory", "add-file", str(source)])
+    before = get_memory_store().count()
+    rc = main(["rag", "add", str(source)])
     assert rc == 0
     out = capsys.readouterr().out
     assert "软链:" in out
     assert (config.KB_DIR / "journal.md").is_symlink()
+    assert get_memory_store().count() == before
 
     capsys.readouterr()
-    rc = main(["memory", "ingest", "file"])
+    rc = main(["rag", "ingest"])
     assert rc == 0
     assert "skipped" in capsys.readouterr().out
+
+
+def test_cli_memory_add_file_moved(capsys):
+    rc = main(["memory", "add-file", "/tmp/x.md"])
+    assert rc == 2
+    assert "rag add" in capsys.readouterr().out
 
 
 def test_cli_search_memory_after_add():
@@ -71,12 +103,12 @@ def test_cli_search_memory_after_add():
     assert "Hindsight" in hits
 
 
-def test_cli_search_knowledge_after_ingest(tmp_path: Path):
+def test_cli_search_knowledge_after_rag_add(tmp_path: Path):
     source = write_doc(
         tmp_path / "spec.md",
         "# 技术方案\n\nLocalAgent 使用 Hindsight 管理长期记忆。",
     )
-    main(["memory", "add-file", str(source)])
+    main(["rag", "add", str(source)])
 
     hits = search_knowledge("Hindsight")
     assert hits
@@ -104,7 +136,7 @@ def test_cli_search_shows_memory_ids():
 
 
 def test_cli_rememorize_chat(isolated_data):
-    """PRD: rememorize-chat 从对话 jsonl 再提取记忆并保存."""
+    """From conversation archive (jsonl migrates) extract memories."""
     session_id = "s-remem"
     conv_path = config.CONVERSATIONS_DIR / f"{session_id}.jsonl"
     records = [
@@ -116,8 +148,8 @@ def test_cli_rememorize_chat(isolated_data):
         encoding="utf-8",
     )
 
-    isolated_data["router"].extract_facts.return_value = [
-        "用户计划下周开始 Phase 0 实现",
+    isolated_data["router"].extract_memories.return_value = [
+        ExtractedMemory(text="用户计划下周开始 Phase 0 实现"),
     ]
 
     before = get_memory_store().count()
@@ -126,31 +158,33 @@ def test_cli_rememorize_chat(isolated_data):
     assert get_memory_store().count() == before + 1
 
 
-def test_cli_reset_memory(tmp_path: Path, capsys):
-    source = write_doc(tmp_path / "doc.md", "# Doc\n\ncontent to remember for reset test")
-    main(["memory", "add-file", str(source)])
+def test_cli_reset_memory_preserves_rag(tmp_path: Path, capsys):
+    source = write_doc(tmp_path / "doc.md", "# Doc\n\ncontent for knowledge reset test")
+    main(["rag", "add", str(source)])
+    main(["memory", "add", "用户喜欢喝葡萄酒。"])
     assert get_memory_store().count() > 0
     assert get_sync_index().get("doc.md") is not None
+    chunks = get_knowledge_indexer().count()
 
     rc = main(["memory", "reset"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "memory reset" in out
     assert get_memory_store().count() == 0
-    assert get_sync_index().get("doc.md") is None
+    assert get_sync_index().get("doc.md") is not None
+    assert get_knowledge_indexer().count() == chunks
     assert (config.KB_DIR / "doc.md").exists()
 
 
-def test_cli_rebuild_memory(tmp_path: Path, capsys):
-    source = write_doc(tmp_path / "rebuild.md", "# Rebuild\n\nrebuild memory test content")
-    main(["memory", "add-file", str(source)])
-    main(["memory", "reset"])
+def test_cli_rag_rebuild(tmp_path: Path, capsys):
+    source = write_doc(tmp_path / "rebuild.md", "# Rebuild\n\nrebuild knowledge test content")
+    main(["rag", "add", str(source)])
+    main(["rag", "reset"])
 
-    rc = main(["memory", "rebuild"])
+    rc = main(["rag", "rebuild"])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "memory rebuild" in out
-    assert get_memory_store().count() > 0
+    assert "rag rebuild" in out
     assert get_sync_index().get("rebuild.md") is not None
 
 
@@ -164,7 +198,7 @@ def test_cli_deprecated_flat_commands(capsys):
     rc = main(["sync-file"])
     assert rc == 2
     out = capsys.readouterr().out
-    assert "memory ingest file" in out
+    assert "rag ingest" in out
 
 
 def test_cli_ingest_chat_skips_when_unchanged(isolated_data, capsys):
@@ -178,7 +212,9 @@ def test_cli_ingest_chat_skips_when_unchanged(isolated_data, capsys):
         "\n".join(json.dumps(r, ensure_ascii=False) for r in records) + "\n",
         encoding="utf-8",
     )
-    isolated_data["router"].extract_facts.return_value = ["用户计划下周开始 Phase 0 实现"]
+    isolated_data["router"].extract_memories.return_value = [
+        ExtractedMemory(text="用户计划下周开始 Phase 0 实现"),
+    ]
 
     assert main(["memory", "ingest", "chat", "--session", session_id]) == 0
     count = get_memory_store().count()
@@ -189,8 +225,8 @@ def test_cli_ingest_chat_skips_when_unchanged(isolated_data, capsys):
     assert "跳过" in out or "未提取到新记忆" in out
 
 
-def test_cli_add_file_missing_path(capsys):
-    rc = main(["memory", "add-file", "/nonexistent/path/file.md"])
+def test_cli_rag_add_missing_path(capsys):
+    rc = main(["rag", "add", "/nonexistent/path/file.md"])
     assert rc == 1
     assert "error" in capsys.readouterr().out.lower()
 
@@ -200,7 +236,7 @@ def test_search_documents_reads_kb_files(tmp_path: Path):
         tmp_path / "notes.md",
         "# 笔记\n\n我决定在 2026 年使用 Hindsight 管理长期记忆。",
     )
-    main(["memory", "add-file", str(tmp_path / "notes.md")])
+    main(["rag", "add", str(tmp_path / "notes.md")])
 
     with patch("localagent.tools.get_memory_backend") as backend_getter, patch(
         "localagent.tools.get_hybrid_retriever"

@@ -10,15 +10,28 @@ from typing import Any
 
 from localagent import config
 
-_SENSITIVE_NAME = re.compile(
+SENSITIVE_NAME_RE = re.compile(
     r"(^|/)(\.env(\.|$)|id_rsa|credentials\.json|secrets?\.(json|ya?ml)|.*\.pem$|.*\.key$)",
     re.IGNORECASE,
 )
+# Back-compat alias
+_SENSITIVE_NAME = SENSITIVE_NAME_RE
 _SECRET_PATTERNS = [
     (re.compile(r"AKIA[0-9A-Z]{16}"), "可能的 AWS Access Key"),
     (re.compile(r"sk-[a-zA-Z0-9]{20,}"), "可能的 OpenAI/API sk- 密钥"),
     (re.compile(r"-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----"), "私钥内容"),
 ]
+
+
+def is_sensitive_path(path: str | Path) -> bool:
+    """True if basename/path looks like secrets (.env, keys, credentials)."""
+    text = str(path)
+    name = Path(text).name
+    return bool(SENSITIVE_NAME_RE.search(name) or SENSITIVE_NAME_RE.search(text))
+
+
+def sensitive_path_reason(path: str | Path) -> str:
+    return f"敏感路径禁止索引/读取: {Path(path).name}"
 
 
 @dataclass

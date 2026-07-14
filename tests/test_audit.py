@@ -48,7 +48,32 @@ def test_generate_report(isolated_data):
     md = generate_report(since=None, include_workspace=False)
     assert "# LocalAgent 审计报告" in md
     assert "Token 与服务花费" in md
+    assert "Agent 行为与护栏" in md
     assert "文件安全" in md
+
+
+def test_log_event_and_behavior_in_cli(isolated_data, capsys):
+    from localagent.audit.events import log_event
+
+    log_event(
+        "tool.decision",
+        tool="run_shell",
+        outcome="executed",
+        risk_level="safe",
+        session_id="s-1",
+    )
+    log_event(
+        "tool.decision",
+        tool="web_search",
+        outcome="executed",
+        risk_level="safe",
+        session_id="s-1",
+    )
+    rc = main(["audit"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "shell=1" in out
+    assert "web=1" in out
 
 
 def test_cli_audit_summary(isolated_data, capsys):

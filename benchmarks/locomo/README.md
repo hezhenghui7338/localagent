@@ -11,35 +11,35 @@
 |------|-----|
 | 日期 | 2026-07-14 |
 | 样本 | LoCoMo `conv-26`（19 sessions / 419 turns / 199 QA） |
-| 记忆后端 | Mem0 hybrid（向量 + 词法 RRF + `finalize_hybrid_rank`） |
+| 记忆后端 | Mem0 hybrid（向量 + 词法 RRF + `finalize_hybrid_rank`）+ cross-encoder rerank |
 | 入库条数 | 420（含 conversation meta） |
 | 评测题量 | **150**（排除 adversarial cat5；仅统计有 `evidence` 的题） |
-| 产物 | [`benchmarks/data/runs/locomo-mem0/recall_hitk_hybrid.json`](../data/runs/locomo-mem0/recall_hitk_hybrid.json) |
+| 产物 | [`benchmarks/data/runs/locomo-mem0/recall_hitk_rerank.json`](../data/runs/locomo-mem0/recall_hitk_rerank.json) |
 
 ### 证据召回 hit@k
 
 | Category | 名称 | n | Hit@1 | Hit@5 | Hit@8 |
 |----------|------|--:|------:|------:|------:|
-| overall | — | 150 | **0.360** | **0.573** | **0.660** |
-| 4 | single-hop | 70 | 0.343 | 0.543 | 0.629 |
-| 2 | temporal | 37 | 0.649 | 0.730 | 0.811 |
-| 1 | multi-hop | 32 | 0.125 | 0.500 | 0.625 |
-| 3 | open-domain | 11 | 0.182 | 0.455 | 0.455 |
+| overall | — | 150 | **0.433** | **0.627** | **0.673** |
+| 4 | single-hop | 70 | 0.371 | 0.571 | 0.614 |
+| 2 | temporal | 37 | 0.676 | 0.784 | 0.784 |
+| 1 | multi-hop | 32 | 0.344 | 0.563 | 0.688 |
+| 3 | open-domain | 11 | 0.273 | 0.636 | 0.636 |
 
 **读数要点**
 
-- **Temporal** 最好（Hit@5 ≈ 0.73）：时间意图 + session 时间戳，时间类问题更容易命中。
-- **Single-hop** 中等偏上（Hit@5 ≈ 0.54）：混合检索对字面重叠题更稳。
-- **Multi-hop** Hit@5 已到 0.50，但 Hit@1 仍弱（0.125）：证据常在池内却未排到第一。
-- **Open-domain** 仍弱：需要跨轮综合或语义改写，是下一步记忆改进重点。
+- **Temporal** 最好（Hit@5 ≈ 0.78）：时间意图 + session 时间戳，时间类问题更容易命中。
+- **Multi-hop** Hit@1 提升明显（0.125 → 0.344）：cross-encoder 把池内证据更稳地排到第一。
+- **Single-hop** 中等偏上（Hit@5 ≈ 0.57）：混合检索 + rerank 对字面重叠题更稳。
+- **Open-domain** Hit@5 已到 0.64，但题量少、仍偏弱：跨轮综合与语义改写仍是改进重点。
 
-复现本表（需已入库的 `locomo-mem0` work-dir；默认 `MEMORY_RECALL_HYBRID=true`）：
+复现本表（需已入库的 `locomo-mem0` work-dir；默认 hybrid + `LA_MEMORY_RERANK_BACKEND=cross_encoder`）：
 
 ```bash
 python -m benchmarks.locomo.measure_recall \
   --skip-ingest --sample-ids conv-26 \
   --work-dir benchmarks/data/runs/locomo-mem0 \
-  --out benchmarks/data/runs/locomo-mem0/recall_hitk_hybrid.json
+  --out benchmarks/data/runs/locomo-mem0/recall_hitk_rerank.json
 ```
 
 ### 辅证：端到端 QA F1

@@ -181,6 +181,18 @@ def describe_memory_backend() -> dict[str, Any]:
         error = str(exc)
         backend = None
 
+    store_count = get_memory_store().count()
+    unindexed = 0
+    if active == "mem0":
+        from localagent.memory.backends.mem0_backend import _is_engine_indexed
+
+        unindexed = sum(
+            1 for fact in get_memory_store().all_facts() if not _is_engine_indexed(fact)
+        )
+    elif active == "json":
+        # JSON has no separate vector engine; embedding is computed at recall time.
+        unindexed = 0
+
     return {
         "active_backend": active,
         "preference": config.MEMORY_BACKEND,
@@ -195,6 +207,9 @@ def describe_memory_backend() -> dict[str, Any]:
         "retain_json_fallback": config.MEM0_RETAIN_JSON_FALLBACK,
         "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
         "memory_count": count,
+        "store_count": store_count,
+        "unindexed_count": unindexed,
+        "profile_pin_llm": config.PROFILE_PIN_LLM,
         "bank_id": config.default_bank_id(),
         "store_file": str(config.MEMORY_STORE_FILE),
         "mem0_dir": str(config.mem0_dir()),

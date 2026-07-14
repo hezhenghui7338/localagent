@@ -19,25 +19,14 @@ def prepare_for_input() -> None:
         sys.stdout.flush()
 
 
-def _uses_libedit() -> bool:
-    try:
-        import readline
-    except ImportError:
-        return False
-    doc = getattr(readline, "__doc__", "") or ""
-    return "libedit" in doc
-
-
 def read_repl_line(prompt: str = "> ") -> str:
-    """Read a REPL line; keep prompt out of libedit's redraw buffer on macOS.
+    """Read a REPL line with a protected prompt.
 
-    Passing the prompt into ``input()`` lets libedit re-paint it after Tab
-    completion lists, which can leave undeletable ghost characters (e.g. ``>``).
+    The prompt must be passed to ``input()`` (not written separately). Otherwise
+    readline/libedit redraws from column 0 on backspace and erases a manually
+    printed ``>``. Tab-completion ghost prompts on macOS libedit are mitigated
+    in ``completion.install_repl_readline_completer`` / slash completer instead.
     """
-    if sys.stdin.isatty() and _uses_libedit():
-        sys.stdout.write(prompt)
-        sys.stdout.flush()
-        return input()
     return input(prompt)
 
 

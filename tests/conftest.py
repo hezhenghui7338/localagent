@@ -46,12 +46,19 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
         "TASK_LOGS_DIR": data_dir / "task_logs",
         "AUDIT_DIR": data_dir / "audit",
         "USAGE_LOG_FILE": data_dir / "audit" / "usage.jsonl",
+        "EVENTS_LOG_FILE": data_dir / "audit" / "events.jsonl",
     }
     for key, val in paths.items():
         monkeypatch.setattr(f"localagent.config.{key}", val)
 
     monkeypatch.setattr("localagent.config.MEMORY_BACKEND", "json")
     monkeypatch.setattr("localagent.config.TOOL_APPROVAL", "off")
+    # Unit tests use regex pin by default; LLM pin tests enable + mock explicitly.
+    monkeypatch.setattr("localagent.config.PROFILE_PIN_LLM", False)
+    monkeypatch.setattr("localagent.config.PROFILE_PIN_REGEX_FALLBACK", True)
+    # Keep ingest tests deterministic without requiring live LLM extraction.
+    monkeypatch.setattr("localagent.config.INGEST_USE_LLM", False)
+    monkeypatch.setattr("localagent.config.INGEST_WHOLE_SECTION_WARM", True)
     monkeypatch.setattr("localagent.ingest.sync_index.SYNC_INDEX_FILE", paths["SYNC_INDEX_FILE"])
     monkeypatch.setattr("localagent.memory.store.MEMORY_STORE_FILE", paths["MEMORY_STORE_FILE"])
     monkeypatch.setattr("localagent.knowledge.store.KNOWLEDGE_STORE_FILE", paths["KNOWLEDGE_STORE_FILE"])
@@ -73,6 +80,8 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
 
     mock_router = MagicMock()
     mock_router.extract_facts.return_value = []
+    mock_router.extract_memories.return_value = []
+    mock_router.extract_profile_updates.return_value = []
     mock_router.chat.return_value = "测试回复"
     router_targets = (
         "localagent.models.router.get_model_router",
@@ -81,7 +90,6 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
         "localagent.memory.chatgpt_import.get_model_router",
         "localagent.memory.exit_extract.get_model_router",
         "localagent.agent.runtime.get_model_router",
-        "localagent.agent.intent_clarification.get_model_router",
     )
     for target in router_targets:
         monkeypatch.setattr(target, lambda: mock_router)

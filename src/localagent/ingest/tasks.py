@@ -160,25 +160,61 @@ class TaskStore:
         return None
 
     def create_add_file(self, *, source_path: str, target_path: str, filename: str) -> IngestTask:
+        return self.create_task(
+            type="add_file",
+            source_path=source_path,
+            target_path=target_path,
+            filename=filename,
+            message="等待开始",
+        )
+
+    def create_memorize_session(self, *, session_id: str) -> IngestTask:
+        return self.create_task(
+            type="memorize_session",
+            source_path=session_id,
+            target_path=session_id,
+            filename=f"session:{session_id}",
+            message="等待记忆化",
+        )
+
+    def create_consolidate(self, *, limit: int = 40) -> IngestTask:
+        return self.create_task(
+            type="consolidate",
+            source_path=str(limit),
+            target_path=str(limit),
+            filename=f"consolidate:recent:{limit}",
+            message="等待巩固",
+        )
+
+    def create_task(
+        self,
+        *,
+        type: str,
+        source_path: str,
+        target_path: str,
+        filename: str,
+        message: str = "等待开始",
+    ) -> IngestTask:
         tasks = _load_tasks()
         now = _now()
         task_id = f"t-{uuid.uuid4().hex[:8]}"
         log_path = str(ensure_task_log(task_id))
         task = IngestTask(
             id=task_id,
-            type="add_file",
+            type=type,
             status=TaskStatus.QUEUED,
             source_path=source_path,
             target_path=target_path,
             filename=filename,
             created_at=now,
             updated_at=now,
-            message="等待开始",
+            message=message,
             log_path=log_path,
         )
-        append_task_log(task_id, f"任务已创建: {filename}")
+        append_task_log(task_id, f"任务已创建: type={type} {filename}")
         append_task_log(task_id, f"source: {source_path}")
-        append_task_log(task_id, f"symlink: {target_path}")
+        if target_path and target_path != source_path:
+            append_task_log(task_id, f"target: {target_path}")
         tasks.append(task)
         _save_tasks(tasks)
         return task
@@ -244,7 +280,35 @@ class TaskStore:
         append_task_log(
             task_id,
             f"完成: status={result.status.value} "
-            f"facts={result.memory_fact_count} chunks={result.knowledge_chunk_count}",
+            f"chunks={result.knowledge_chunk_count}",
+        )
+
+    def complete_counts(
+        self,
+        task_id: str,
+        *,
+        memory_fact_count: int = 0,
+        knowledge_chunk_count: int = 0,
+        message: str = "完成",
+        result_status: str = "completed",
+    ) -> None:
+        tasks = _load_tasks()
+        for task in tasks:
+            if task.id != task_id:
+                continue
+            task.status = TaskStatus.COMPLETED
+            task.phase = "done"
+            task.message = message
+            task.memory_fact_count = memory_fact_count
+            task.knowledge_chunk_count = knowledge_chunk_count
+            task.result_status = result_status
+            task.pid = None
+            task.updated_at = _now()
+            break
+        _save_tasks(tasks)
+        append_task_log(
+            task_id,
+            f"完成: {message} facts={memory_fact_count} chunks={knowledge_chunk_count}",
         )
 
     def fail(self, task_id: str, error: str) -> None:
@@ -420,4 +484,8 @@ def format_task_line(task: IngestTask) -> str:
     else:
         detail = ""
 
-    return f"  {task.id} [{task.status.value}] {task.filename}{progress}{detail}  {task.updated_at}"
+    type_tag = f"{task.type}/" if task.type and task.type != "add_file" else ""
+    return (
+        f"  {task.id} [{task.status.value}] {type_tag}{task.filename}"
+        f"{progress}{detail}  {task.updated_at}"
+    )

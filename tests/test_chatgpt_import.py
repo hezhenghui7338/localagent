@@ -16,6 +16,7 @@ from localagent.memory.chatgpt_import import (
     import_chatgpt_memories_file,
     reset_chatgpt_import_index,
 )
+from localagent.memory.conversation_extract import ExtractedMemory
 from localagent.memory.store import get_memory_store
 from localagent.persist.chatgpt import (
     format_conversation_text,
@@ -124,7 +125,7 @@ def test_import_chatgpt_saves_memories(isolated_data, tmp_path: Path):
         json.dumps(_sample_export(_make_conversation()), ensure_ascii=False),
         encoding="utf-8",
     )
-    isolated_data["router"].extract_facts.return_value = ["用户喜欢用 Python 做数据分析"]
+    isolated_data["router"].extract_memories.return_value = [ExtractedMemory(text="用户喜欢用 Python 做数据分析")]
 
     before = get_memory_store().count()
     summary = import_chatgpt_file(export_path)
@@ -157,7 +158,7 @@ def test_import_chatgpt_deduplicates_by_conversation_id(isolated_data, tmp_path:
         json.dumps(_sample_export(_make_conversation()), ensure_ascii=False),
         encoding="utf-8",
     )
-    isolated_data["router"].extract_facts.return_value = ["用户喜欢用 Python 做数据分析"]
+    isolated_data["router"].extract_memories.return_value = [ExtractedMemory(text="用户喜欢用 Python 做数据分析")]
 
     first = import_chatgpt_file(export_path)
     second = import_chatgpt_file(export_path)
@@ -172,7 +173,7 @@ def test_import_chatgpt_force_reimports(isolated_data, tmp_path: Path):
         json.dumps(_sample_export(_make_conversation()), ensure_ascii=False),
         encoding="utf-8",
     )
-    isolated_data["router"].extract_facts.return_value = ["用户喜欢用 Python 做数据分析"]
+    isolated_data["router"].extract_memories.return_value = [ExtractedMemory(text="用户喜欢用 Python 做数据分析")]
 
     before = get_memory_store().count()
     import_chatgpt_file(export_path)
@@ -188,7 +189,7 @@ def test_import_chatgpt_auto_saves_in_tty(isolated_data, tmp_path: Path, monkeyp
         json.dumps(_sample_export(_make_conversation(conversation_id="tty-conv")), ensure_ascii=False),
         encoding="utf-8",
     )
-    isolated_data["router"].extract_facts.return_value = ["TTY 下也应自动保存"]
+    isolated_data["router"].extract_memories.return_value = [ExtractedMemory(text="TTY 下也应自动保存")]
 
     class FakeStdin:
         def isatty(self) -> bool:
@@ -210,7 +211,7 @@ def test_import_chatgpt_reports_extracted_facts(isolated_data, tmp_path: Path, c
         json.dumps(_sample_export(_make_conversation()), ensure_ascii=False),
         encoding="utf-8",
     )
-    isolated_data["router"].extract_facts.return_value = [fact_text]
+    isolated_data["router"].extract_memories.return_value = [ExtractedMemory(text=fact_text)]
 
     reporter = ConsoleProgressReporter(prefix="import-chatgpt")
     import_chatgpt_file(export_path, reporter=reporter)
@@ -226,7 +227,7 @@ def test_cli_import_chatgpt(isolated_data, tmp_path: Path, capsys):
         json.dumps(_sample_export(_make_conversation(conversation_id="cli-conv")), ensure_ascii=False),
         encoding="utf-8",
     )
-    isolated_data["router"].extract_facts.return_value = ["用户计划在2026年系统学习 Rust 语言"]
+    isolated_data["router"].extract_memories.return_value = [ExtractedMemory(text="用户计划在2026年系统学习 Rust 语言")]
 
     reset_chatgpt_import_index()
     before = get_memory_store().count()
@@ -245,7 +246,7 @@ def test_cli_import_chatgpt_real_sample(isolated_data, capsys):
         pytest.skip("sample export not present")
 
     reset_chatgpt_import_index()
-    isolated_data["router"].extract_facts.return_value = ["用户关注 AI 视频工具"]
+    isolated_data["router"].extract_memories.return_value = [ExtractedMemory(text="用户关注 AI 视频工具")]
 
     rc = main(["memory", "ingest", "chatgpt", str(sample)])
     assert rc == 0
@@ -331,7 +332,7 @@ def test_import_chatgpt_memories_include_disabled(isolated_data, tmp_path: Path)
     export_path.write_text(
         json.dumps(
             _sample_memory_export(
-                {"id": "mem_off", "content": "已关闭的记忆", "enabled": False},
+                {"id": "mem_off", "content": "已关闭但仍可导入的偏好记忆条目", "enabled": False},
             ),
             ensure_ascii=False,
         ),
@@ -348,7 +349,7 @@ def test_import_chatgpt_memories_deduplicates(isolated_data, tmp_path: Path):
     export_path.write_text(
         json.dumps(
             _sample_memory_export(
-                {"id": "mem_dup", "content": "重复导入测试", "enabled": True},
+                {"id": "mem_dup", "content": "用于重复导入去重测试的记忆内容", "enabled": True},
             ),
             ensure_ascii=False,
         ),
@@ -401,7 +402,7 @@ def test_import_chatgpt_files_multiple(isolated_data, tmp_path: Path):
         ),
         encoding="utf-8",
     )
-    isolated_data["router"].extract_facts.return_value = ["多文件导入测试"]
+    isolated_data["router"].extract_memories.return_value = [ExtractedMemory(text="多文件导入测试")]
 
     summary = import_chatgpt_files([first_path, second_path])
     assert summary.files_processed == 2
@@ -417,7 +418,7 @@ def test_cli_import_chatgpt_with_file_flag(isolated_data, tmp_path: Path, capsys
         ),
         encoding="utf-8",
     )
-    isolated_data["router"].extract_facts.return_value = ["--file 参数导入测试"]
+    isolated_data["router"].extract_memories.return_value = [ExtractedMemory(text="--file 参数导入测试")]
 
     reset_chatgpt_import_index()
     rc = main(["memory", "ingest", "chatgpt", "--file", str(export_path)])
@@ -435,7 +436,7 @@ def test_cli_import_chatgpt_file_force_reimports(isolated_data, tmp_path: Path, 
         ),
         encoding="utf-8",
     )
-    isolated_data["router"].extract_facts.return_value = ["--file --force 重载测试"]
+    isolated_data["router"].extract_memories.return_value = [ExtractedMemory(text="--file --force 重载测试")]
 
     reset_chatgpt_import_index()
     before = get_memory_store().count()
