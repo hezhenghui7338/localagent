@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from localagent.agent.intent_clarification import IntentAssessment
 from localagent.agent.runtime import AgentResult
 from localagent.chat_repl import ChatREPL
 from localagent.memory.exit_extract import extract_session_memories, schedule_session_memory_extract
@@ -97,7 +96,11 @@ def test_chat_exit_schedules_background_extract(isolated_data, monkeypatch):
         mock_turn.return_value = AgentResult(response="好的，了解了")
         ChatREPL(session_id="s-extract").run()
 
-    assert get_memory_store().count() == before + 1
+    # Warm session summary (if enabled) + extract_facts entry
+    after = get_memory_store().count()
+    assert after >= before + 1
+    texts = [f.text for f in get_memory_store().all_facts()]
+    assert any("Hindsight" in t for t in texts)
 
 
 def test_chat_exit_extract_runs_in_background(monkeypatch):
@@ -221,34 +224,3 @@ def test_chat_ctrl_c_during_inference_keeps_repl(monkeypatch):
 
     messages = load_conversation("s-cancel")
     assert messages == []
-
-
-def test_chat_clarification_flow_before_agent(monkeypatch):
-    """模糊请求先追问，补充后再调用 run_agent_turn。"""
-    inputs = iter(["帮我改一下", "改 runtime.py 里的重复代码", ":q"])
-    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
-    monkeypatch.setattr(
-        "localagent.chat_repl.schedule_session_memory_extract",
-        lambda _session_id: None,
-    )
-
-    assessment = IntentAssessment(
-        mode="clarify",
-        questions=["你想修改哪个文件？", "是要重构还是修 bug？"],
-    )
-    with patch("localagent.chat_repl.assess_intent", return_value=assessment):
-        with patch("localagent.chat_repl.run_agent_turn") as mock_turn:
-            mock_turn.return_value = AgentResult(response="已重构 runtime.py")
-            ChatREPL(session_id="s-clarify").run()
-
-    assert mock_turn.call_count == 1
-    merged_input = mock_turn.call_args.args[0]
-    assert "帮我改一下" in merged_input
-    assert "runtime.py" in merged_input
-
-    messages = load_conversation("s-clarify")
-    assert len(messages) == 4
-    assert messages[0]["content"] == "帮我改一下"
-    assert "确认你的意图" in messages[1]["content"]
-    assert messages[2]["content"] == "改 runtime.py 里的重复代码"
-    assert "runtime.py" in messages[3]["content"]

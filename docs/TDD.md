@@ -19,11 +19,10 @@ LA CLI → chat REPL / ingest / pending
 ```
 src/localagent/
 ├── cli.py                 # 全部 LA 命令
-├── chat_repl.py           # REPL + slash 命令 (/…) + 意图澄清状态机
+├── chat_repl.py           # REPL + slash 命令 (/…)
 ├── session_commands.py    # 会话内 / 命令分发（与外层 CLI 共享）
 ├── agent/
-│   ├── runtime.py         # Agent 工具循环
-│   └── intent_clarification.py  # 意图评估与澄清追问
+│   └── runtime.py         # Agent 工具循环
 ├── models/router.py       # 三级模型回退
 ├── memory/
 │   ├── core_profile.py    # Hot 层
@@ -39,7 +38,7 @@ src/localagent/
 │   ├── bm25_store.py
 │   ├── hybrid.py
 │   └── indexer.py
-├── ingest/                # add-file / sync-file / pipeline
+├── ingest/                # rag add / rag ingest / pipeline (Cold only)
 ├── pending/               # 确认门
 ├── persist/               # conversations jsonl + sessions.db
 ├── workspace/             # git / recent files / todos
@@ -80,13 +79,15 @@ data/
 - `when_event`（When did…）：时间几乎不主导排序；默认自动扩 ±1 邻轮，靠事件关键词召回后由 LLM 读记忆日期作答
 - scope 只做 soft boost（窗内 1.0 / 近窗 0.5 / 窗外 0.15），不硬过滤缺日期记忆
 
-## 6. 主动意图澄清
+## 6. 请求路径
 
 ```
-用户输入 → assess_intent()
-  ├─ act     → 直接执行
-  ├─ assume  → 注入假设后执行（不打断）
-  └─ clarify → 追问 1 题后等待补充
+用户输入 → Agent 循环（直接执行）
+  ├─ JIT 预加载（画像 / 记忆 / 联网 / 工作区）
+  ├─ 工具调用
+  └─ write_file / run_shell 执行前确认
 ```
 
-第一原则：少打扰。个人偏好/记忆回忆、读操作走 act；仅高代价模糊才 clarify。
+天气地点：显式城市 → 档案 `居住地` → 记忆扫描 pin → 仍无则直接搜并软提示可换城市。
+
+联网天气：`web_search` 在核对失败或命中歌词/教案等垃圾结果时自动换查询重试；agent 禁止未重试就交卷。

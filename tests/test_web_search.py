@@ -24,13 +24,61 @@ def test_augment_web_query_adds_current_month():
 
 def test_augment_web_query_today_uses_full_date():
     today = date(2026, 7, 14)
-    out = augment_web_query("深圳今天天气预报", today=today)
+    out = augment_web_query("今天有什么热点新闻", today=today)
     assert "2026年7月14日" in out
+
+
+def test_inject_home_location_for_weather(isolated_data):
+    from localagent.memory.core_profile import CoreProfile, save_core_profile
+    from localagent.tools.web_search import inject_home_location_for_weather, prepare_web_query
+
+    save_core_profile(CoreProfile(preferences={"居住地": "深圳"}))
+    assert inject_home_location_for_weather("今天天气怎么样?") == "深圳 今天天气怎么样?"
+    assert inject_home_location_for_weather("深圳今天天气") == "深圳今天天气"
+    assert inject_home_location_for_weather("最近有什么新闻") == "最近有什么新闻"
+
+    prepared = prepare_web_query("今天天气怎么样?", today=date(2026, 7, 14))
+    assert prepared.startswith("深圳")
+    assert "今天" in prepared
+    assert "2026年" not in prepared
+
+
+def test_weather_query_strips_year_date():
+    """Full calendar dates in weather searches pull archives and fail freshness."""
+    today = date(2026, 7, 14)
+    out = augment_web_query("深圳 2026年7月14日 天气", today=today)
+    assert "2026年" not in out
+    assert "深圳" in out
+    assert "今天" in out
+
+    tomorrow = augment_web_query("明天北京天气怎么样", today=today)
+    assert "2026年" not in tomorrow
+    assert "明天" in tomorrow
+    assert "北京" in tomorrow
+
+    already = augment_web_query("深圳今天天气预报", today=today)
+    assert already == "深圳今天天气预报"
+
+def test_inject_home_skips_without_profile(isolated_data):
+    from localagent.tools.web_search import inject_home_location_for_weather
+
+    assert inject_home_location_for_weather("今天天气怎么样?") == "今天天气怎么样?"
+
+
+def test_extract_searchable_query_unwraps_assume_block():
+    from localagent.tools.web_search import extract_searchable_query
+
+    wrapped = (
+        "[用户问题]\n今天天气怎么样?\n\n"
+        "[执行假设（请按此理解推进，并在回复开头用一句话说明假设）]\n"
+        "- 按你档案中的居住地「深圳」查询天气"
+    )
+    assert extract_searchable_query(wrapped) == "今天天气怎么样?"
 
 
 def test_augment_web_query_tomorrow_uses_next_day():
     today = date(2026, 7, 14)
-    out = augment_web_query("明天北京天气怎么样", today=today)
+    out = augment_web_query("明天有什么重要新闻", today=today)
     assert "2026年7月15日" in out
     assert "2026年7月14日" not in out
 
@@ -362,3 +410,57 @@ def test_web_search_tavily_missing_key(monkeypatch):
     result = web_search("hello")
     assert result.startswith("联网搜索未配置")
     assert "TAVILY_API_KEY" in result
+
+
+def test_weather_search_unusable_detects_junk_and_failure():
+    from localagent.tools.web_search import weather_search_unusable
+
+    assert weather_search_unusable("【核对失败】没有匹配")
+    assert weather_search_unusable(
+        "【时效警告】\n- [日期未知] 歌词_今天天气怎么样.pdf: 儿歌"
+    )
+    assert not weather_search_unusable(
+        "【时效核对】匹配 1 条\n- [匹配·2026-07-14] 深圳今日天气: 多云 28°C"
+    )
+
+
+def test_weather_retry_queries_include_forecast(isolated_data):
+    from localagent.memory.core_profile import CoreProfile, save_core_profile
+    from localagent.tools.web_search import weather_retry_queries
+
+    save_core_profile(CoreProfile(preferences={"居住地": "深圳"}))
+    alts = weather_retry_queries("今天天气怎么样?")
+    assert any("深圳" in q and "天气预报" in q for q in alts)
+
+
+def test_web_search_retries_unusable_weather(monkeypatch, isolated_data):
+    from localagent.memory.core_profile import CoreProfile, save_core_profile
+
+    save_core_profile(CoreProfile(preferences={"居住地": "深圳"}))
+    monkeypatch.setattr("localagent.config.WEB_SEARCH_PROVIDER", "ddgs")
+
+    bad = (
+        "【检索基准日】2026年7月14日\n"
+        "【核对失败】没有与检索基准日相符的结果。\n"
+        "- [过期] 歌词_今天天气怎么样.pdf: 教学资源"
+    )
+    good = (
+        "【检索基准日】2026年7月14日\n"
+        "【时效核对】匹配 1 条 / 过期 0 条 / 日期未知 0 条\n"
+        "- [匹配·2026-07-14] 深圳今天天气预报: 多云 28°C\n"
+        "  链接: https://example.com/sz-weather"
+    )
+    calls: list[str] = []
+
+    def fake_once(query: str, *, max_results: int = 5) -> str:
+        calls.append(query)
+        if len(calls) == 1:
+            return bad
+        return good
+
+    with patch("localagent.tools.web_search._web_search_once", side_effect=fake_once):
+        result = web_search("今天天气怎么样?")
+
+    assert "深圳今天天气预报" in result or "多云" in result
+    assert len(calls) >= 2
+    assert "核对失败" not in result

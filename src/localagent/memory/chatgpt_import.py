@@ -9,8 +9,8 @@ from pathlib import Path
 
 from localagent import config
 from localagent.ingest.progress import ProgressEvent, ProgressReporter
-from localagent.memory.save import confirm_save_facts
-from localagent.memory.value_filter import filter_facts
+from localagent.memory.save import confirm_save_extracted, confirm_save_facts
+from localagent.memory.value_filter import is_narrative_memory
 from localagent.models.router import get_model_router
 from localagent.persist.chatgpt import (
     ChatGPTConversation,
@@ -192,7 +192,7 @@ def import_conversation(
     text = format_conversation_text(conversation)
     router = get_model_router()
     try:
-        facts = router.extract_facts(
+        memories = router.extract_memories(
             text,
             context=(
                 f"chatgpt import title={conversation.title!r} "
@@ -202,12 +202,12 @@ def import_conversation(
     except RuntimeError as exc:
         _report_skip(reporter, skip_reason=f"failed:{exc}", interactive=interactive)
         return 0, f"failed:{exc}"
-    facts = filter_facts(facts)
-    if not facts:
+    if not memories:
         _mark_processed(processed, conversation, source_file=source_file, saved_count=0)
         _report_skip(reporter, skip_reason="no_facts", interactive=interactive)
         return 0, "no_facts"
 
+    facts = [m.text for m in memories]
     title = conversation.title or conversation.conversation_id[:12]
     _report_extracted_facts(reporter, facts, interactive=interactive)
     metadata: dict[str, object] = {
@@ -223,10 +223,10 @@ def import_conversation(
         metadata["recorded_at"] = conv_created
     if conv_updated:
         metadata["chatgpt_updated_at"] = conv_updated
-    ids = confirm_save_facts(
-        facts,
+    ids = confirm_save_extracted(
+        memories,
         metadata=metadata,
-        title=f"《{title}》提取到 {len(facts)} 条记忆",
+        title=f"《{title}》提取到 {len(memories)} 条记忆",
         interactive=interactive,
     )
     _report_saved(reporter, len(ids), interactive=interactive)
@@ -278,6 +278,10 @@ def import_saved_memory(
     if not include_disabled and not memory.enabled:
         _report_skip(reporter, skip_reason="disabled", interactive=interactive)
         return 0, "disabled"
+
+    if not is_narrative_memory(memory.content):
+        _report_skip(reporter, skip_reason="no_facts", interactive=interactive)
+        return 0, "no_facts"
 
     index_key = _memory_index_key(memory.memory_id)
     if not force and index_key in processed:

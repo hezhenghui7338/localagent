@@ -7,12 +7,25 @@ from unittest.mock import MagicMock, patch
 
 from localagent import __version__
 from localagent.ui.banner import WelcomeInfo, collect_welcome_info, format_web_search_hint, render_welcome
-from localagent.ui.console import ActivityIndicator, emit, spinner
+from localagent.ui.console import ActivityIndicator, emit, read_repl_line, spinner
 
 
 def test_emit(capsys):
     emit("test", "hello")
     assert capsys.readouterr().out == "[test] hello\n"
+
+
+def test_read_repl_line_passes_prompt_to_input(monkeypatch):
+    """Prompt must go through input() so backspace cannot erase ``>``."""
+    seen: list[str] = []
+
+    def fake_input(prompt: str = "") -> str:
+        seen.append(prompt)
+        return "hello"
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    assert read_repl_line("> ") == "hello"
+    assert seen == ["> "]
 
 
 def test_spinner_non_tty(capsys):

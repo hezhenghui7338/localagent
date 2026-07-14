@@ -16,8 +16,8 @@
 | 3 | Web search: even a small model can use the network appropriately | [§3](#3-web-search--small-models-can-use-the-network) |
 | 4 | Real local filesystem ops + danger warnings + confirm every time | [§4](#4-local-filesystem--safety-review--approval) |
 | 5 | Auditable: tokens, cost estimates, sensitive-file scan | [§5](#5-auditable--tokens-cost-sensitive-scan) |
-| 6 | Proactive agent: clarify unclear intent, then execute strictly | [§6](#6-proactive-intent-clarification) |
-| 7 | Multi-source memory: chat auto / `add` / `add-file` / `sync-file` / `import-chatgpt` | [§7](#7-multi-source-memory-ingest) |
+| 6 | Write-file hallucination check: clear path → approve → real write | [§6](#6-write-file-hallucination-detection) |
+| 7 | Conversation memory & knowledge: chat auto / `add` / `rag add` / `rag ingest` / `import-chatgpt` | [§7](#7-multi-source-memory-ingest) |
 | 8 | Time-aware recall priority + LLM synthesis | [§8](#8-time-aware-recall--synthesis) |
 
 **Persona (fictional)**: You are “Alex Lin”, using LocalAgent on a Mac; prefer Americano; in May 2026 held a Shenzhen roadmap meeting; in July 2026 chose Mem0 as the memory engine.
@@ -141,7 +141,7 @@ Core promise: **new session or new model — same “who I am”**. Three layers
 |-------|--------|----------------------------|
 | **Hot** | Core profile & state (name, preferences, long-term goals) | `data/core_profile.json` |
 | **Warm** | Structured long-term facts (Mem0 / JSON) | `la add` / chat extract / `la search` |
-| **Cold** | Document passages (semantic + BM25) | `la add-file` → `la search --knowledge` |
+| **Cold** | Document passages (semantic + BM25) | `la rag add` → `la search --knowledge` |
 
 ### 2.1 Write Warm: one manual fact
 
@@ -166,17 +166,17 @@ la add "In May 2026 I held a product roadmap meeting in Shenzhen; we decided to 
 **Input:**
 
 ```bash
-la add-file examples/sample-project-notes.md
+la rag add examples/sample-project-notes.md
 la search "three-layer memory" --knowledge
 ```
 
-**Expected output (add-file):**
+**Expected output (rag add):**
 
 ```text
-[add-file] source: …/examples/sample-project-notes.md (1.1 KB)
-[add-file] symlink: data/kb/sample-project-notes.md
-  ✓ sample-project-notes.md: facts=3, chunks=5
-[add-file] done
+[rag add] source: …/examples/sample-project-notes.md (1.1 KB)
+[rag add] symlink: data/kb/sample-project-notes.md
+  ✓ sample-project-notes.md: chunks=5
+[rag add] done
 ```
 
 **Expected output (Cold search):**
@@ -439,11 +439,11 @@ facts=12 · knowledge_chunks=38 · bm25=ready · chroma=ready
 
 ---
 
-## 6. Proactive intent clarification
+## 6. Write-file hallucination detection
 
-Principle: **interrupt sparingly** — memory recall and read ops act immediately; only **high-cost ambiguity** (e.g. “edit a file” with no path) asks **one** clarifying question; then execute strictly to that intent.
+Principle: with a clear path and content, go straight to the agent; writes need approval; if the model claims a write without calling the tool, it retries or errors.
 
-### 6.1 Vague request → ask (don’t guess-write)
+### 6.1 Clear request → approve then write
 
 **Input:**
 
@@ -452,30 +452,13 @@ la chat --provider ollama
 ```
 
 ```text
-you> help me edit a file
-```
-
-**Expected output:**
-
-```text
-Before I continue, I want to confirm your intent:
-
-1. Which file should be modified, or what is the full path?
-2. What exactly should change?
-
-Please add details and I’ll continue from there.
-```
-
-### 6.2 After clarification — execute strictly
-
-```text
 you> Edit tour-note.txt in the project root; append one line: cross-session persistence test
 ```
 
 **Expected output (illustrative):**
 
 ```text
-[chat] thinking…
+[chat] working…
 [chat] calling write_file…
 ⚠ Agent wants to write a file. Confirm before it executes.
 …
@@ -483,7 +466,7 @@ Allow? / Proceed anyway? [y/N] y
 Successfully appended to tour-note.txt.
 ```
 
-### 6.3 Memory questions → no clarify, just recall
+### 6.2 Memory questions → recall directly
 
 ```text
 you> what do I like to drink?
@@ -496,20 +479,16 @@ you> what do I like to drink?
 You prefer Americano and dislike latte.
 ```
 
-(Won’t treat this as a “recommend a drink” scenario.)
-
-Disable clarification if needed: `LA_INTENT_CLARIFY=0`.
-
 ---
 
-## 7. Multi-source memory ingest
+## 7. Conversation memory & knowledge ingest
 
 | Source | Command / when | Notes |
 |--------|----------------|-------|
 | Chat auto-detect | during / after `la chat` | Facts from natural conversation |
 | Manual one-liner | `la add "…"` | Precise write |
-| Document extract | `la add-file <path>` | Symlink + Warm facts + Cold full text |
-| Directory sync | `la sync-file` | Index everything under `data/kb/` |
+| Document RAG index | `la rag add <path>` | Symlink + Cold full text only |
+| Directory sync | `la rag ingest` | Index everything under `data/kb/` |
 | ChatGPT export | `la import-chatgpt <json>` | Personal memories from history |
 
 ### 7.1 Manual add (also covered in §2)
@@ -521,17 +500,17 @@ la add "In July 2026 we finalized Mem0 as the Warm-layer memory engine."
 ### 7.2 Document auto-extract
 
 ```bash
-la add-file examples/sample-project-notes.md
+la rag add examples/sample-project-notes.md
 # If multiple notes are already symlinked under kb/:
-la sync-file
+la rag ingest
 ```
 
-**Expected output (sync-file, illustrative):**
+**Expected output (rag ingest, illustrative):**
 
 ```text
-[sync-file] scanning data/kb/ …
-  ✓ sample-project-notes.md: facts=3, chunks=5 (unchanged, skip)
-[sync-file] done · indexed=0 · skipped=1
+[rag ingest] scanning data/kb/ …
+  ✓ sample-project-notes.md: chunks=5 (unchanged, skip)
+[rag ingest] done · indexed=0 · skipped=1
 ```
 
 Use `--force` to rebuild indexes.
@@ -700,7 +679,7 @@ la add "In May 2026 I held a product roadmap meeting in Shenzhen; we decided to 
 la add "In May 2026, after an architecture review we tried a lightweight approach and had not yet chosen Mem0."
 la add "In July 2026 we finalized Mem0: lighter and faster."
 
-la add-file examples/sample-project-notes.md
+la rag add examples/sample-project-notes.md
 la search "what do I like to drink"
 la search "three-layer memory" --knowledge
 la search "May 2026 memory engine" --verbose
@@ -712,7 +691,7 @@ la audit --since 7d
 echo "Demo data: $LA_DATA_DIR"
 ```
 
-Interactive bits (web search, shell approval, intent clarify) still need §3 / §4 / §6 by hand — that’s the “proactive agent” feel.
+Interactive bits (web search, shell approval, file write) still need §3 / §4 / §6 by hand.
 
 ---
 
@@ -726,8 +705,8 @@ After the tour you should be able to check:
 - [ ] Small-model chat auto-calls `web_search` with grounded answers  
 - [ ] Shell / write prompts for approval; dangerous ops show a risk warning  
 - [ ] `la audit` shows tokens & cost (Ollama = $0)  
-- [ ] “help me edit a file” clarifies first, then writes after details  
-- [ ] At least one success each: `add` / `add-file` / `sync-file` / `import-chatgpt`  
+- [ ] Clear-path file writes prompt for approval and actually write  
+- [ ] At least one success each: `add` / `rag add` / `rag ingest` / `import-chatgpt`  
 - [ ] May vs July queries rank different memories; `reflect` explains the arc  
 
 ---

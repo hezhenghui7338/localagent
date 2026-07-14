@@ -21,6 +21,7 @@ def test_complete_all_subcommands_from_empty():
     hits = suggest_completions(["LA"], build_parser())
     assert "chat" in hits
     assert "memory" in hits
+    assert "rag" in hits
     assert "tasks" in hits
     assert "add-file" not in hits
     assert "sync-file" not in hits
@@ -29,15 +30,22 @@ def test_complete_all_subcommands_from_empty():
 def test_complete_memory_actions():
     hits = suggest_completions(["LA", "memory", ""], build_parser())
     assert "add" in hits
-    assert "add-file" in hits
     assert "ingest" in hits
     assert "query" in hits
     assert "search" in hits
 
 
+def test_complete_rag_actions():
+    hits = suggest_completions(["LA", "rag", ""], build_parser())
+    assert "add" in hits
+    assert "ingest" in hits
+    assert "search" in hits
+    assert "rebuild" in hits
+
+
 def test_complete_memory_ingest_sources():
     hits = suggest_completions(["LA", "memory", "ingest", ""], build_parser())
-    assert hits == ["chat", "file", "chatgpt", "all"]
+    assert set(hits) == {"chat", "chatgpt", "all"}
 
 
 def test_list_slash_command_names_excludes_chat():
@@ -50,22 +58,42 @@ def test_list_slash_command_names_excludes_chat():
     assert "deepsearch" in names
     assert "q" in names
     assert "memory" in names
-    assert "add" in names
+    assert "rag" in names
     assert "mem" not in names
-    assert "search" in names
+    # Shortcuts stay typeable but are not top-level Tab candidates
+    assert "add" not in names
+    assert "add-file" not in names
+    assert "forget" not in names
+    assert "search" not in names
+    assert "reflect" not in names
 
 
 def test_session_slash_tab_lists_all_on_slash():
     hits = suggest_session_slash_completions("/", text="/")
     assert "/help" in hits
-    assert "/add" in hits
     assert "/memory" in hits
+    assert "/rag" in hits
     assert "/provider" in hits
     assert "/model" in hits
     assert "/deepsearch" in hits
     assert "/q" in hits
     assert "/chat" not in hits
+    assert "/add" not in hits
+    assert "/add-file" not in hits
+    assert "/forget" not in hits
+    assert "/search" not in hits
+    assert "/reflect" not in hits
     assert all(h.startswith("/") for h in hits)
+
+
+def test_session_slash_tab_memory_rag_subcommands():
+    mem = suggest_session_slash_completions("/memory ", text="")
+    assert "add" in mem
+    assert "forget" in mem
+    assert "search" in mem
+    assert "reflect" in mem
+    rag = suggest_session_slash_completions("/rag ", text="")
+    assert "add" in rag
 
 
 def test_session_slash_tab_prefix_filter():
@@ -206,3 +234,39 @@ def test_complete_init_writes_zshrc(tmp_path, monkeypatch):
     text = zshrc.read_text(encoding="utf-8")
     assert "# >>> LA CLI completion >>>" in text
     assert "compdef _la LA la" in text
+
+
+def test_venv_activate_hook_patches_activate(tmp_path, monkeypatch):
+    from localagent.completion import _install_venv_activate_hook
+
+    venv = tmp_path / ".venv"
+    (venv / "bin").mkdir(parents=True)
+    activate = venv / "bin" / "activate"
+    activate.write_text("# fake activate\nVIRTUAL_ENV=...\nexport VIRTUAL_ENV\n", encoding="utf-8")
+    monkeypatch.setenv("VIRTUAL_ENV", str(venv))
+    monkeypatch.setattr("localagent.completion.config.PROJECT_ROOT", tmp_path / "no-project")
+
+    hooks = _install_venv_activate_hook()
+    assert (venv / "activate.d" / "la-completion.zsh").is_file()
+    assert (venv / "activate.d" / "la-completion.bash").is_file()
+    assert activate in hooks
+    text = activate.read_text(encoding="utf-8")
+    assert "# >>> LA CLI completion >>>" in text
+    assert 'activate.d/la-completion.zsh' in text
+
+    # Idempotent
+    hooks2 = _install_venv_activate_hook()
+    assert activate in hooks2
+    assert activate.read_text(encoding="utf-8") == text
+
+
+def test_ensure_shell_completion_silent(tmp_path, monkeypatch, capsys):
+    from localagent.completion import ensure_shell_completion
+
+    monkeypatch.setattr("localagent.completion.Path.home", lambda: tmp_path)
+    monkeypatch.setattr("localagent.completion._install_venv_activate_hook", lambda: [])
+
+    ensure_shell_completion(shell="zsh")
+    out = capsys.readouterr().out
+    assert out == ""
+    assert "compdef _la LA la" in (tmp_path / ".zshrc").read_text(encoding="utf-8")

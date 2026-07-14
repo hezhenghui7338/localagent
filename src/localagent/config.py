@@ -103,6 +103,7 @@ INGEST_TASKS_FILE = DATA_DIR / "ingest_tasks.json"
 TASK_LOGS_DIR = DATA_DIR / "task_logs"
 AUDIT_DIR = DATA_DIR / "audit"
 USAGE_LOG_FILE = AUDIT_DIR / "usage.jsonl"
+EVENTS_LOG_FILE = AUDIT_DIR / "events.jsonl"
 
 SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt", ".xlsx"}
 DEFAULT_USER_ID = "default_user"
@@ -290,17 +291,58 @@ MEMORY_RECALL_WHEN_EVENT_NEIGHBOR_WINDOW = _env_int(
     "LA_MEMORY_RECALL_WHEN_EVENT_NEIGHBOR_WINDOW", "1"
 )
 MEMORY_RECALL_RRF_K = _env_int("LA_MEMORY_RECALL_RRF_K", "60")
+# Multi-hop / compound questions → rule-based sub-queries fused via RRF.
+MEMORY_RECALL_DECOMPOSE = _env_bool("LA_MEMORY_RECALL_DECOMPOSE", "1")
+MEMORY_RECALL_DECOMPOSE_MAX = _env_int("LA_MEMORY_RECALL_DECOMPOSE_MAX", "3")
+# How many expanded query variants to embed on the vector path (1 = original only).
+MEMORY_RECALL_VECTOR_VARIANTS = _env_int("LA_MEMORY_RECALL_VECTOR_VARIANTS", "2")
+# Soft-boost hits whose entities overlap the query.
+MEMORY_RECALL_ENTITY_BOOST = _env_bool("LA_MEMORY_RECALL_ENTITY_BOOST", "1")
+# Post-hybrid rerank over a larger candidate pool (cross-encoder / embed / llm).
+MEMORY_RERANK = _env_bool("LA_MEMORY_RERANK", "1")
+MEMORY_RERANK_BACKEND = _env("LA_MEMORY_RERANK_BACKEND", "auto").lower() or "auto"
+MEMORY_RERANK_MODEL = _env(
+    "LA_MEMORY_RERANK_MODEL",
+    "cross-encoder/ms-marco-MiniLM-L-6-v2",
+)
+MEMORY_RERANK_CANDIDATES = _env_int("LA_MEMORY_RERANK_CANDIDATES", "24")
 # Soft scope: days outside [scope_start, scope_end] still get a medium boost.
 MEMORY_SCOPE_NEAR_DAYS = _env_float("LA_MEMORY_SCOPE_NEAR_DAYS", "30")
+# Keyword scan of kb/ files — last-resort only after embedding+BM25 miss.
+DOC_KEYWORD_FALLBACK = _env_bool("LA_DOC_KEYWORD_FALLBACK", "1")
 
 # --- Ingest memory ---
-INGEST_USE_LLM = _env_bool("LA_INGEST_USE_LLM", "0")
+# Prefer LLM fact extraction; when off, sections go to Cold only (not whole-section Warm).
+INGEST_USE_LLM = _env_bool("LA_INGEST_USE_LLM", "1")
 INGEST_MEMORY_MAX_SECTION_CHARS = _env_int("LA_INGEST_MEMORY_MAX_CHARS", "1500")
 INGEST_MEMORY_MAX_FACTS = _env_int("LA_INGEST_MEMORY_MAX_FACTS", "50")
+INGEST_WHOLE_SECTION_WARM = _env_bool("LA_INGEST_WHOLE_SECTION_WARM", "0")
+# Long documents: write Warm summary facts (Cold RAG still indexes full text).
+INGEST_WARM_SUMMARY = _env_bool("LA_INGEST_WARM_SUMMARY", "1")
+INGEST_SUMMARY_MIN_CHARS = _env_int("LA_INGEST_SUMMARY_MIN_CHARS", "800")
+INGEST_SUMMARY_MAX_SECTIONS = _env_int("LA_INGEST_SUMMARY_MAX_SECTIONS", "8")
+# Shared summarizer (documents + session memorize tasks).
+MEMORY_SUMMARY_MAX_CHARS = _env_int("LA_MEMORY_SUMMARY_MAX_CHARS", "600")
+MEMORY_SUMMARY_USE_LLM = _env_bool("LA_MEMORY_SUMMARY_USE_LLM", "0")
+# Session exit extract: also write a session-level summary fact.
+MEMORY_SESSION_SUMMARY = _env_bool("LA_MEMORY_SESSION_SUMMARY", "1")
+# Reflect: limited multi-hop follow-up searches before synthesizing.
+MEMORY_REFLECT_MAX_HOPS = _env_int("LA_MEMORY_REFLECT_MAX_HOPS", "2")
+MEMORY_REFLECT_TOP_K = _env_int("LA_MEMORY_REFLECT_TOP_K", "8")
+# Write-time consolidation (ADD/UPDATE/DELETE/NOOP) against related memories.
+MEMORY_CONSOLIDATE = _env_bool("LA_MEMORY_CONSOLIDATE", "1")
+MEMORY_CONSOLIDATE_ON_MEMORIZE = _env_bool("LA_MEMORY_CONSOLIDATE_ON_MEMORIZE", "1")
+MEMORY_CONSOLIDATE_RELATED_K = _env_int("LA_MEMORY_CONSOLIDATE_RELATED_K", "5")
 
 # --- Memory enrichment ---
 MEMORY_ENRICH_USE_LLM = _env_bool("LA_MEMORY_ENRICH_LLM", "0")
 MEMORY_BACKEND = _env("LA_MEMORY_BACKEND", "mem0").lower()
+
+# --- Hot-layer profile pin ---
+# LLM decides durable identity fields; regex is fallback when LLM fails/unavailable.
+PROFILE_PIN_LLM = _env_bool("LA_PROFILE_PIN_LLM", "1")
+PROFILE_PIN_REGEX_FALLBACK = _env_bool("LA_PROFILE_PIN_REGEX_FALLBACK", "1")
+PROFILE_PIN_MIN_CONFIDENCE = _env_float("LA_PROFILE_PIN_MIN_CONFIDENCE", "0.6")
 
 # --- Mem0 (Warm-layer semantic index) ---
 MEM0_INFER = _env_bool("LA_MEM0_INFER", "0")
@@ -314,10 +356,6 @@ MEM0_EMBEDDER_MODEL = _env("LA_MEM0_EMBEDDER_MODEL")
 MEM0_EMBEDDER_BASE_URL = _env("LA_MEM0_EMBEDDER_BASE_URL")
 MEM0_EMBEDDER_API_KEY = _env("LA_MEM0_EMBEDDER_API_KEY")
 MEM0_EMBEDDER_DIMS = _env_int("LA_MEM0_EMBEDDER_DIMS", "0")
-
-# --- Agent intent clarification ---
-INTENT_CLARIFY_ENABLED = _env_bool("LA_INTENT_CLARIFY", "1")
-
 
 def ensure_data_dirs() -> None:
     """Create runtime data directories if missing."""

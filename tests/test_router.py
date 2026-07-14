@@ -148,6 +148,69 @@ def test_chat_ollama_streaming_payload():
     assert payload["think"] is False
 
 
+def test_chat_openai_compatible_streaming():
+    from localagent.model_servers import ModelServer
+
+    router = ModelRouter()
+    server = ModelServer(
+        provider="openrouter",
+        base_url="https://openrouter.example/api/v1",
+        api_key="test-key",
+        model="test-model",
+        chat_stream=True,
+    )
+    messages = [ChatMessage(role="user", content="hi")]
+    seen: list[str] = []
+    sse_lines = [
+        'data: {"choices":[{"delta":{"content":"你"}}]}',
+        'data: {"choices":[{"delta":{"content":"好"}}]}',
+        "data: [DONE]",
+    ]
+
+    class FakeStreamResp:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self):
+            return iter(sse_lines)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def stream(self, method, url, headers=None, json=None):
+            assert method == "POST"
+            assert json["stream"] is True
+            assert "/chat/completions" in url
+            return FakeStreamResp()
+
+    with patch("localagent.models.router.httpx.Client", FakeClient):
+        text, usage = router._chat_openai_compatible(
+            server=server,
+            messages=messages,
+            temperature=0.3,
+            on_token=seen.append,
+        )
+
+    assert text == "你好"
+    assert "".join(seen) == "你好"
+    assert usage == {}
+
+
 def test_chat_auto_falls_back_when_ollama_times_out(monkeypatch):
     router = ModelRouter()
     monkeypatch.setattr(

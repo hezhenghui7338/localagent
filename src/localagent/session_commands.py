@@ -36,10 +36,10 @@ _ALIASES: dict[str, str] = {
     "deepsearch": "deepsearch",
 }
 
-# 会话内快捷入口 → memory 子命令（外层 LA add 等已废弃）
-_SESSION_MEMORY_SHORTCUTS: dict[str, tuple[str, str]] = {
+# 会话内快捷入口 → 顶层/子命令（外层 LA add 等已废弃）
+_SESSION_MEMORY_SHORTCUTS: dict[str, tuple[str, ...]] = {
     "add": ("memory", "add"),
-    "add-file": ("memory", "add-file"),
+    "add-file": ("rag", "add"),
     "search": ("memory", "search"),
     "forget": ("memory", "forget"),
     "reflect": ("memory", "reflect"),
@@ -147,6 +147,10 @@ def list_slash_command_names() -> list[str]:
 
     Includes outer CLI subcommands (except ``chat``) plus session-only
     names and aliases (``help``, ``h``, ``provider``, ``q``, …).
+
+    Memory/RAG shortcuts (``add``, ``add-file``, ``forget``, …) are **not**
+    listed here — they remain typeable, but Tab completion surfaces them
+    only under ``/memory`` / ``/rag``.
     """
     from localagent.cli import build_parser
     from localagent.completion import subparser_names
@@ -154,7 +158,6 @@ def list_slash_command_names() -> list[str]:
     names = set(subparser_names(build_parser()))
     names.discard("chat")
     names.update(_ALIASES)
-    names.update(_SESSION_MEMORY_SHORTCUTS)
     return sorted(names)
 
 
@@ -193,7 +196,8 @@ def print_session_help() -> None:
     print("  /provider, /p [name]   查看或切换模型路径")
     print("  /model [name|N]        查看/翻页/切换当前路径模型（写入配置）")
     print("                          翻页: next|prev|page N；序号为本页 1–10")
-    print("  /memory …              记忆操作（与外层 LA memory 相同）")
+    print("  /memory [action]       记忆概览；无参显示 status（与外层 LA memory 相同）")
+    print("  /rag [action]          知识库概览；无参显示 status（与外层 LA rag 相同）")
     print("  /deepsearch <主题>     多步联网深度研究")
     print("  /q, /quit, /exit       退出对话")
     print()

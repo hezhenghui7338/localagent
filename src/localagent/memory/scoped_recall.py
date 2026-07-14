@@ -114,7 +114,8 @@ def _tokenize(text: str, *, for_query: bool = False) -> set[str]:
     return terms
 
 
-def _semantic_score(query: str, text: str) -> float:
+def _lexical_overlap_score(query: str, text: str) -> float:
+    """Token Jaccard-style overlap (lexical), not embedding similarity."""
     q_terms = _tokenize(query, for_query=True)
     t_terms = _tokenize(text)
     if not q_terms:
@@ -123,8 +124,14 @@ def _semantic_score(query: str, text: str) -> float:
     return overlap / len(q_terms)
 
 
+# Back-compat alias — prefer _lexical_overlap_score in new code.
+_semantic_score = _lexical_overlap_score
+
+
 def _fact_searchable_text(fact: Any) -> str:
     meta = getattr(fact, "metadata", None) or {}
+    entities = meta.get("entities") or []
+    entity_text = " ".join(str(e) for e in entities) if isinstance(entities, list) else ""
     return " ".join(
         part
         for part in (
@@ -132,6 +139,7 @@ def _fact_searchable_text(fact: Any) -> str:
             str(meta.get("title") or ""),
             str(meta.get("summary") or ""),
             " ".join(meta.get("tags") or []),
+            entity_text,
             getattr(fact, "section_heading", "") or "",
             str(meta.get("speaker") or ""),
             str(meta.get("dia_id") or ""),
@@ -332,14 +340,15 @@ def _blend_score(
     return min(1.0, blended + _compactness_bonus(text))
 
 
-def _hybrid_weights(intent: TemporalIntent) -> tuple[float, float, float, float]:
-    """RRF / base / jaccard / temporal weights for Mem0 finalize_hybrid_rank."""
+def _hybrid_weights(intent: TemporalIntent) -> tuple[float, float, float, float, float]:
+    """RRF / base / jaccard / temporal / entity weights for Mem0 finalize_hybrid_rank."""
+    entity_w = 0.15 if config.MEMORY_RECALL_ENTITY_BOOST else 0.0
     if intent.raises_temporal_weight:
-        return (0.55, 0.15, 0.10, 0.20)
+        return (0.48, 0.12, 0.08, 0.17, entity_w)
     if intent.prefers_event_neighbors:
         # WHEN/duration: keep RRF dominant; time barely helps without an anchor.
-        return (0.70, 0.15, 0.12, 0.03)
-    return (0.70, 0.15, 0.10, 0.05)
+        return (0.60, 0.12, 0.10, 0.03, entity_w)
+    return (0.60, 0.12, 0.08, 0.05, entity_w)
 
 _EN_RECALL_STOPWORDS = _EN_QUERY_STOPWORDS | frozenset(
     {
@@ -500,9 +509,12 @@ def finalize_hybrid_rank(
     """
     if not hits:
         return []
+    from localagent.memory.entities import entity_overlap_score, extract_entities
+
     profile = load_core_profile()
     intent = parse_temporal_intent(query, profile)
-    w_rrf, w_base, w_jac, w_temp = _hybrid_weights(intent)
+    w_rrf, w_base, w_jac, w_temp, w_ent = _hybrid_weights(intent)
+    query_entities = extract_entities(query) if config.MEMORY_RECALL_ENTITY_BOOST else []
 
     rrf_values = [float(hit.get("rrf_score") or 0.0) for hit in hits]
     rrf_norm = _normalize_scores(rrf_values)
@@ -512,7 +524,7 @@ def finalize_hybrid_rank(
     scored: list[tuple[float, dict[str, Any]]] = []
     for index, hit in enumerate(hits):
         searchable = _hit_searchable_text(hit)
-        jaccard = _semantic_score(query, searchable) if query.strip() else 0.0
+        jaccard = _lexical_overlap_score(query, searchable) if query.strip() else 0.0
         effective_at = memory_effective_time(
             metadata=hit.get("metadata"),
             created_at=str(hit.get("created_at") or ""),
@@ -526,18 +538,30 @@ def finalize_hybrid_rank(
             storage_at=storage_at,
             intent=intent,
         )
+        meta = hit.get("metadata") or {}
+        hit_entities = meta.get("entities") or []
+        if not isinstance(hit_entities, list):
+            hit_entities = []
+        ent = (
+            entity_overlap_score(query_entities, hit_entities, searchable)
+            if query_entities
+            else 0.0
+        )
         blended = (
             w_rrf * (rrf_norm[index] if index < len(rrf_norm) else 0.0)
             + w_base * (base_norm[index] if index < len(base_norm) else 0.0)
             + w_jac * jaccard
             + w_temp * temp
+            + w_ent * ent
         )
         if str(hit.get("source") or "") == "neighbor":
             blended *= 0.92
         enriched = dict(hit)
         enriched["score"] = blended
         enriched["semantic_score"] = jaccard if query.strip() else None
+        enriched["lexical_score"] = jaccard if query.strip() else None
         enriched["temporal_score"] = temp
+        enriched["entity_score"] = ent
         enriched["anchor"] = intent.to_dict()
         scored.append((blended, enriched))
 
@@ -593,6 +617,8 @@ def rerank_hits_temporally(
 
 def _hit_searchable_text(hit: dict[str, Any]) -> str:
     meta = hit.get("metadata") or {}
+    entities = meta.get("entities") or []
+    entity_text = " ".join(str(e) for e in entities) if isinstance(entities, list) else ""
     return " ".join(
         part
         for part in (
@@ -600,6 +626,7 @@ def _hit_searchable_text(hit: dict[str, Any]) -> str:
             str(meta.get("title") or ""),
             str(meta.get("summary") or ""),
             " ".join(meta.get("tags") or []),
+            entity_text,
             str(hit.get("section_heading") or ""),
             str(meta.get("speaker") or ""),
             str(meta.get("dia_id") or ""),
@@ -615,7 +642,11 @@ def scoped_recall(
     max_results: int = 10,
     facts: list[Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Recall memories with BM25 + Jaccard lexical signal and temporal scoring."""
+    """Recall memories with BM25 + lexical overlap and temporal scoring.
+
+    Lexical signal ranks candidates but is never a hard discard gate —
+    embedding backends should supply the primary semantic channel.
+    """
     profile = load_core_profile()
     intent = parse_temporal_intent(query, profile)
     store = get_memory_store()
@@ -629,10 +660,8 @@ def scoped_recall(
     scored: list[tuple[float, dict[str, Any]]] = []
     for index, fact in enumerate(candidate_facts):
         searchable = corpus[index]
-        jaccard = _semantic_score(query, searchable)
+        jaccard = _lexical_overlap_score(query, searchable)
         lexical = _combine_lexical_scores(jaccard, bm25_norm[index] if index < len(bm25_norm) else 0.0)
-        if lexical <= 0:
-            continue
         effective_at = memory_effective_time(metadata=fact.metadata, created_at=fact.created_at)
         storage_at = _storage_time(metadata=fact.metadata, created_at=fact.created_at)
         temp = _intent_temporal_score(
@@ -640,6 +669,7 @@ def scoped_recall(
             storage_at=storage_at,
             intent=intent,
         )
+        # When lexical is zero, temporal/recency still ranks (no hard drop).
         blended = _blend_score(lexical, temp, fact.text, intent)
         scored.append((
             blended,
@@ -648,6 +678,7 @@ def scoped_recall(
                 "text": fact.text,
                 "score": blended,
                 "semantic_score": lexical,
+                "lexical_score": lexical,
                 "jaccard_score": jaccard,
                 "bm25_score": bm25_norm[index] if index < len(bm25_norm) else 0.0,
                 "temporal_score": temp,

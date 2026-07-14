@@ -3,13 +3,6 @@
 from __future__ import annotations
 
 from localagent import config
-from localagent.agent.intent_clarification import (
-    PendingClarification,
-    assess_intent,
-    format_assumed_intent,
-    format_clarification_response,
-    merge_clarified_intent,
-)
 from localagent.agent.runtime import run_agent_turn
 from localagent.completion import install_repl_readline_completer
 from localagent.memory.core_profile import default_core_profile
@@ -34,7 +27,6 @@ class ChatREPL:
         self.history: list[dict[str, str]] = []
         self.provider = config.normalize_provider_choice(provider)
         set_repl_provider(self.provider)
-        self.pending_clarification: PendingClarification | None = None
         default_core_profile()
 
     def run(self) -> int:
@@ -108,41 +100,8 @@ class ChatREPL:
                 streamed = True
             print(chunk, end="", flush=True)
 
-        # Start status immediately so intent assessment never looks like a hang.
         with ActivityIndicator("chat", "处理中…") as activity:
             try:
-                agent_input = user_input
-                if self.pending_clarification is not None:
-                    agent_input = merge_clarified_intent(
-                        self.pending_clarification.original_message,
-                        user_input,
-                    )
-                    self.pending_clarification = None
-                elif config.INTENT_CLARIFY_ENABLED:
-                    assessment = assess_intent(
-                        user_input,
-                        self.history,
-                        provider=self.provider,
-                        session_id=self.session_id,
-                        on_status=activity.update,
-                    )
-                    if assessment.needs_clarification:
-                        self.history.append({"role": "user", "content": user_input})
-                        response = format_clarification_response(assessment)
-                        self.pending_clarification = PendingClarification(
-                            original_message=user_input
-                        )
-                        append_message(self.session_id, "user", user_input)
-                        append_message(self.session_id, "assistant", response)
-                        self.history.append({"role": "assistant", "content": response})
-                        activity.begin_streaming()
-                        print(response)
-                        return
-                    if assessment.mode == "assume" and assessment.assumptions:
-                        agent_input = format_assumed_intent(
-                            user_input, assessment.assumptions
-                        )
-
                 self.history.append({"role": "user", "content": user_input})
                 user_appended = True
 
@@ -154,7 +113,7 @@ class ChatREPL:
                     return prompt_tool_approval(tool_name, arguments, risk)
 
                 result = run_agent_turn(
-                    agent_input,
+                    user_input,
                     self.history[:-1],
                     provider=self.provider,
                     session_id=self.session_id,

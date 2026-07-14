@@ -12,15 +12,15 @@
 
 # <img src="assets/logo-icon.png" alt="LA" width="36" valign="middle"> LocalAgent
 
-> **Fully local · Asks first · Knows you long-term — machine · profile · internet, actually usable.**
+> **Fully local · Knows you long-term — machine · profile · internet, actually usable.**
 
-LocalAgent (`LA`) is not another chat client. It is a **proactive personal AI that runs on your machine**. Core narrative:
+LocalAgent (`LA`) is not another chat client. It is a **personal AI that runs on your machine**. Core narrative:
 
 1. **Fully local** — default Ollama `qwen3.5:4b`; chat, memory, retrieval, and execution all run on-device; identity and data never leave your machine  
-2. **Proactive awareness** — interrupt sparingly: act when clear, assume+state when mild ambiguity is reversible, ask one question only when a wrong guess is costly  
-3. **Long-term, multi-layer memory** — Hot / Warm / Cold layers; an assistant that actually knows you across sessions  
-4. **Where memory comes from** — **ChatGPT history**, personal documents, and live chats all ingest into one pipeline, powered by the **Mem0** memory engine  
-5. **Actually usable** — web search + local Shell, connecting **your machine · your profile · the internet**
+2. **Long-term, multi-layer memory** — Hot / Warm / Cold layers; an assistant that actually knows you across sessions  
+3. **Where memory comes from** — **ChatGPT history** and **LA live chats** feed Warm memory; personal documents go to the **RAG knowledge base** (no memory extraction), powered by **Mem0**  
+4. **Actually usable** — web search + local Shell, connecting **your machine · your profile · the internet**  
+5. **Reliable execution** — write-file hallucination detection; approve before `run_shell` / `write_file`
 
 ```bash
 pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.2.0"
@@ -31,24 +31,24 @@ la                              # asks before installing Ollama (you can skip)
 | Typical local chat | LocalAgent |
 | --- | --- |
 | Cloud or half-local; data boundary unclear | **Fully local** — identity and memory stay on device |
-| Guesses unclear references and edits anyway | **Asks first**, then calls tools after confirmation |
 | Forgets after the session | **Long-term multi-layer memory** + Mem0 |
-| Memory only from this chat | **ChatGPT history / docs / chats** as cold-start sources |
+| Memory only from this chat | **ChatGPT history / LA chats** as cold-start; docs via RAG |
 | Can't search the web or run commands | **Web search** + **local shell** — machine · profile · internet |
+| Claims it “wrote a file” without changing anything | **Hallucination detection** + approve-before-write |
 
 Optional OpenRouter / Cursor / Tavily for extras — **identity and data stay on your machine**.
 
 ## Features
 
 - **Fully local**: default `qwen3.5:4b` — chat, memory write, retrieval, workspace awareness, and Shell execution all run on-device; optional cloud models, data still owned locally
-- **Proactive awareness**: three-way gate (act / assume / clarify); file writes also have hallucination detection
 - **Long-term multi-layer memory**: Hot (core profile) / Warm (long-term) / Cold (document source) with JIT recall — an assistant that knows you
-- **Mem0 + multi-source ingest**: ChatGPT history, personal docs, and live chats → one pipeline; powered by the **Mem0** memory engine
+- **Mem0 + conversation memory**: ChatGPT history and LA chats → Warm; docs via `LA rag` into Cold knowledge
 - **Machine · profile · internet**: workspace awareness + `run_shell` + web search (ddgs by default; optional Tavily / SearXNG) — three layers that make it actually usable
 - **Approve before execute**: `run_shell` / `write_file` require your confirmation by default; dangerous commands get an extra warning
+- **Write-file hallucination detection**: if the model claims a write without calling `write_file`, it retries or errors clearly
 - **Document knowledge base**: symlink personal files in; Chroma + BM25 hybrid search
 - **Multi-model chat**: unified Ollama / OpenRouter / Cursor entry; `auto` mode falls back by priority
-- **Auditable**: token usage, cost estimates, sensitive-file scan — exportable Markdown reports
+- **Auditable**: tokens/cost, agent behavior (shell/write/web), guardrail blocks, sensitive-file scan — exportable Markdown reports
 
 ## Requirements
 
@@ -169,11 +169,11 @@ LocalAgent’s core path — **chat, memory write, memory recall, document retri
 | --- | --- | --- |
 | Chat `LA chat` | No | Default `qwen3.5:4b`, runs on a regular Mac |
 | Single memory `LA memory add` | No | Local model extracts title/tags |
-| File import `LA memory add-file` | No | Heuristic extraction by default; no LLM |
+| Doc import `LA rag add` | No | Cold knowledge index only; no memory extraction |
 | Memory/knowledge search `LA memory search` | No | BM25 + Chroma locally |
 | Workspace `LA workspace` | No | Reads local Git / files / TODOs |
 | Agent commands `run_shell` | No | Local 4B model calls shell and summarizes |
-| Audit `LA audit` | No | Reads local usage.jsonl |
+| Audit `LA audit` | No | Reads local usage.jsonl + events.jsonl |
 | Web search | No (ddgs by default) | Works out of the box; optional Tavily / self-hosted SearXNG |
 
 ```bash
@@ -183,34 +183,21 @@ ollama pull qwen3.5:4b
 LA chat --provider ollama
 ```
 
-### Proactive awareness — interrupt sparingly
+### Write-file hallucination detection
 
-A typical chat that hears “help me edit a file” often guesses a path and overwrites it. LocalAgent has **proactive awareness**: a **light intent pre-check** (on by default) chooses among **act** / **assume** / **clarify**. It asks **one** concrete question only when a wrong guess is costly; mild ambiguity proceeds with stated assumptions. Personal preference recall (e.g. “what do I like to drink?”) goes straight to memory. File writes also have **hallucination detection**: if the model claims it “wrote” something without calling `write_file`, it retries or errors clearly instead of showing fabricated empty content.
+A typical chat often claims it “wrote” a file without changing anything. LocalAgent has **hallucination detection** for file writes: if the model claims create/update/append without calling `write_file`, it retries or errors clearly instead of showing fabricated empty content. Shell and file writes also ask for your approval by default.
 
 ```text
-> help me edit a file
-Before I continue, I want to confirm your intent:
-
-1. Which file should be modified, or what is the full path?
-2. What exactly should change?
-
-Please add details and I’ll continue from there.
-> edit test.txt in the project root
-Got it — you want to modify `test.txt` at the workspace root. Tell me what to write or append.
-> append: this is a test note for cross-session persistence
-[chat] thinking…
-[chat] connecting model (auto(ollama→openrouter→aiping→cursor))…
-[chat] generating…
+> append one line to test.txt at the project root: cross-session persistence test
+[chat] working…
 [chat] calling write_file…
-[chat] synthesizing tool results (round 2)…
-[chat] ✓ synthesizing tool results (round 2)… (11.1s)
-Successfully appended the specified content to `test.txt`. Current contents:
-
-> this is a test note for cross-session persistence
+⚠ Agent wants to write a file. Confirm before it executes.
+Allow write? [y/N] y
+Successfully appended the specified content to `test.txt`.
 [via ollama/qwen3.5:4b]
 ```
 
-Best for requests where the **target or scope is unclear** (edit files, refactor, analyze a project). Disable with `LA_INTENT_CLARIFY=0` (default on). Requests that already include a concrete path skip the pre-check.
+Best for create/edit/append file work. Read-only asks and memory recall go straight to the agent — no pre-check gate.
 
 ### Local execution — Shell that actually acts
 
@@ -239,12 +226,12 @@ The repo includes a **product tour** (eight strengths, full I/O, ~30 min) and a 
 | # | Scenario | Command |
 | --- | --- | --- |
 | 1 | Write & recall a single memory | `LA memory add` → `LA memory search` |
-| 2 | Import & recall a Markdown file | `LA memory add-file` → `LA memory search --knowledge` |
+| 2 | Import & recall a Markdown file | `LA rag add` → `LA rag search` |
 | 3 | Search recent news online | `LA chat` or `/deepsearch` (no API key required by default) |
 | 4 | **Fully local** qwen3.5:4b | `LA chat --provider ollama` |
 | 5 | Answer about local work | `LA workspace` / `LA chat --cwd .` |
-| 6 | **Proactive awareness** | `LA chat` → “help me edit a file” → clarify → execute |
-| 7 | Agent runs terminal commands | `LA chat` → “count project LOC” |
+| 6 | Agent runs terminal commands | `LA chat` → “count project LOC” |
+| 7 | Write file + hallucination check | `LA chat` → clear path & content → approve |
 | 8 | Audit report (Ollama $0) | `LA audit --since 7d` |
 
 ```bash
@@ -256,7 +243,7 @@ open examples/walkthrough.md
 
 ### Mem0 long-term memory — remembers you end-to-end
 
-Memory inputs include **ChatGPT history, personal documents, and live chats**. The Warm layer is powered by the [Mem0](https://github.com/mem0ai/mem0) engine (`mem0ai` is a core dependency): **Retain → Recall → Reflect (search + LLM)**. The repo includes an “architecture decision evolution” narrative demo covering write, semantic recall, time awareness, tag browsing, and cross-memory reasoning:
+Memory inputs include **ChatGPT history and LA live chats**. Personal documents use `LA rag` for Cold knowledge. The Warm layer is powered by the [Mem0](https://github.com/mem0ai/mem0) engine (`mem0ai` is a core dependency): **Retain → Recall → Reflect (search + LLM)**. The repo includes an “architecture decision evolution” narrative demo covering write, semantic recall, time awareness, tag browsing, and cross-memory reasoning:
 
 ```bash
 # From a source checkout
@@ -279,20 +266,27 @@ Demo highlights:
 | Tag browse | `LA memory query --tag decision` | Structured query |
 | Cross-memory reasoning | `LA memory reflect "how did the choice evolve?"` | Mem0 reflect |
 
-Example files:
+**Where docs live**
+
+| Directory | Purpose |
+| --- | --- |
+| [`examples/`](examples/) | Hands-on materials: tutorials, sample inputs/outputs, demo scripts, config templates |
+| [`docs/`](docs/) | Design docs for contributors: [PRD](docs/PRD.md), [TDD](docs/TDD.md) |
+
+`examples/` contents:
 
 - [examples/product-tour.md](examples/product-tour.md) — **Product tour** (8 strengths · full I/O · ~30 min) · [中文](examples/product-tour.zh-CN.md)
 - [examples/walkthrough.md](examples/walkthrough.md) — **step-by-step tutorial** (local qwen3.5:4b first)
-- [examples/mem0-demo.md](examples/mem0-demo.md) — Mem0 deep dive (Retain / Recall / Reflect)
-- [benchmarks/locomo/README.md](benchmarks/locomo/README.md) — **LoCoMo long-term memory benchmark**
-- [examples/sample-project-notes.md](examples/sample-project-notes.md) — sample doc for `add-file`
+- [examples/mem0-demo.md](examples/mem0-demo.md) / [mem0-demo.sh](examples/mem0-demo.sh) — Mem0 deep dive (Retain / Recall / Reflect)
+- [examples/sample-project-notes.md](examples/sample-project-notes.md) — sample doc for `rag add`
 - [examples/audit-report-sample.md](examples/audit-report-sample.md) — sample audit report (Ollama $0)
 - [examples/env.local-only.example](examples/env.local-only.example) — fully local `.env` template
+- [benchmarks/locomo/README.md](benchmarks/locomo/README.md) — **LoCoMo long-term memory benchmark**
 
 ### Benchmark: LoCoMo long-term conversational memory
 
 Evaluate Warm-layer cross-session memory with ACL 2024 [LoCoMo](https://github.com/snap-research/locomo).  
-**Current recall scores (2026-07-14, `conv-26`, Mem0 hybrid, n=150):** Hit@1 **0.360** / Hit@5 **0.573** / Hit@8 **0.660**.
+**Current recall scores (2026-07-14, `conv-26`, Mem0 hybrid + cross-encoder rerank, n=150):** Hit@1 **0.433** / Hit@5 **0.627** / Hit@8 **0.673**.
 
 ```bash
 python -m benchmarks.locomo.run download
@@ -305,12 +299,14 @@ Per-category table and reproduction steps: [benchmarks/locomo/README.md](benchma
 
 ### Shell completion
 
+Shell tab completion is installed automatically on the first `LA` run (writes `~/.zshrc` / `~/.bashrc` and hooks into `.venv/bin/activate`). After `source .venv/bin/activate` (or a new terminal), `LA memory` / `LA rag` + Tab suggests subcommands.
+
+To reinstall or repair manually:
+
 ```bash
 LA complete-init
-source ~/.zshrc
+source .venv/bin/activate   # or: source ~/.zshrc
 ```
-
-After that, `LA memory add` + Tab suggests `add` / `add-file` and other subcommands.
 
 ### Ollama tips
 
@@ -334,7 +330,6 @@ See [`.env.example`](.env.example). Common variables:
 | `LA_WORKSPACE` | Workspace root (Git / files / todos / shell context) |
 | `LA_SHELL_TIMEOUT` / `LA_SHELL_MAX_OUTPUT` | Agent `run_shell` timeout (s) and output cap (default 30s / 12000 chars) |
 | `LA_TOOL_APPROVAL` | Approve before tools run: `always` (default) / `dangerous` / `off` |
-| `LA_INTENT_CLARIFY` | Clarify intent before acting (default `1`; set `0` to disable) |
 | `LA_DATA_DIR` | Custom data dir (for test isolation) |
 
 ## Commands
@@ -348,36 +343,14 @@ usage: LA [-h] <command> ...
 
 LocalAgent — local AI personal assistant
 
-options:
-  -h, --help       show this help message and exit
-
 commands:
-  Main args and options (brackets = optional):
-
-  <command>
-    chat           [--session-id ID] [-p auto|ollama|openrouter|aiping|cursor]
-                   Interactive chat
-    add            <text> Write one memory directly
-    add-file       [-b] <path> Symlink into kb/ and index
-    tasks          [--limit N] [--tail N] [list | <task_id> |
-                   delete|pause|resume|restart|logs <task_id>] Manage background index tasks
-    sync-file      [--force] Scan and index all docs under data/kb/
-    reset-memory   [--keep-knowledge] Clear memory and sync_index
-    memory-status  Diagnose Warm memory backend (Mem0 / JSON)
-    rebuild-memory
-                   Clear memory then force-rebuild kb/ index
-    forget         <id> [--yes] Delete one memory
-    rememorize-chat
-                   [--session ID] [--interactive] Re-extract memory from chat archives
-    import-chatgpt
-                   [path] [--dir DIR] [--force] [--interactive] Import ChatGPT export
-    search         <query> [--knowledge] [--top-k N] [--verbose] Search memory or knowledge base
-    reflect        <query> Cross-memory reasoning (Mem0 reflect)
-    memories       [query] [--tag TAG] [--since DATE] [--sort
-                   newest|oldest|relevance] Browse / query memories
-    workspace      [--days N] [--cwd PATH] [--todos-only] Workspace / git / todo snapshot
-    audit          [--since 7d] [--report PATH] [--cwd PATH] Audit summary and report
-    config         init | list | add | remove | set-key Manage model YAML config
+  chat           Interactive chat
+  memory         add|ingest|query|search|…  Conversation Warm memory
+  rag            add|ingest|search|…        Document Cold knowledge (no memory extract)
+  tasks          Manage background index tasks
+  workspace      Workspace / git / todo snapshot
+  audit          Audit summary and report
+  config         Manage model YAML config
 
 Use LA <command> -h for full help on a command.
 ```
@@ -399,33 +372,126 @@ data/
 ├── sessions.db                # LangGraph sessions
 ├── chroma/                    # Vector index
 ├── bm25.pkl                   # BM25 index
-└── audit/usage.jsonl          # Call audit log
+└── audit/
+    ├── usage.jsonl            # Model/search usage
+    └── events.jsonl           # Tool decisions / guardrails
 ```
 
 ## Architecture
 
-Narrative arc: **fully local** → **ask first** → **long-term multi-layer memory (Mem0)** → **multi-source ingest** → **machine · profile · internet**.
+Narrative arc: **fully local** → **long-term multi-layer memory (Mem0)** → **conversation memory + document RAG** → **machine · profile · internet**.
+
+### System overview
 
 ```
-┌─────────────────────────────────────────┐
-│              LA chat (REPL)             │
-│     Ollama / OpenRouter / Cursor        │
-│         (clarify intent → then act)     │
-└─────────────────┬───────────────────────┘
-                  │ LangGraph Agent
-    ┌─────────────┼─────────────┬──────────────┐
-    ▼             ▼             ▼              ▼
-  Hot          Warm           Cold         Web / Shell
-core_profile  Mem0     Chroma+BM25   web_search / run_shell
-(profile)     (long-term)   (docs)        (internet · machine)
+┌──────────────────────────────────────────────────────────────────┐
+│                         LA CLI / chat REPL                       │
+│                   slash commands · approval UI                   │
+└───────────────────────────────┬──────────────────────────────────┘
+                                │
+                    ┌───────────▼───────────┐
+                    │   LangGraph Agent     │
+                    │  JIT tools · tool loop│
+                    └───────────┬───────────┘
+                                │
+              ┌─────────────────┼─────────────────┐
+              ▼                 ▼                 ▼
+     ┌────────────────┐ ┌──────────────┐ ┌────────────────┐
+     │  ModelRouter   │ │ Memory stack │ │ Action surface │
+     │ Ollama → cloud │ │ Hot/Warm/Cold│ │ web · shell ·  │
+     │ (auto fallback)│ │              │ │ write_file     │
+     └────────────────┘ └──────┬───────┘ └────────────────┘
+                               │
+              ┌────────────────┼────────────────┐
+              ▼                ▼                ▼
+           Hot              Warm             Cold
+     core_profile.json    Mem0 (+ JSON     Chroma + BM25
+     (pinned facts)       fallback)        (+ RRF hybrid)
+                          conversations    data/kb/ docs
 ```
 
-- **Hot**: `core_profile.json` (pinned core facts / user profile)
-- **Warm**: Mem0 memory engine (long-term; ChatGPT / chat extract)
-- **Cold**: Chroma + BM25 (personal document source)
-- **Agent**: LangGraph tool loop; JIT memory recall, plus web search and local Shell
+### Request path (`LA chat`)
 
-See [docs/PRD.md](docs/PRD.md) and [docs/TDD.md](docs/TDD.md).
+```
+user message
+    │
+    ▼
+Agent loop
+    ├─ preload JIT context when useful (profile / memory / web / workspace)
+    ├─ model call via ModelRouter
+    ├─ tool calls (search_memory, search_knowledge, web_search,
+    │              workspace_context, retain_memory, write_file, run_shell, …)
+    ├─ approval gate for write_file / run_shell   ← LA_TOOL_APPROVAL
+    └─ synthesize answer (+ source links for web)
+```
+
+### Three-layer memory
+
+| Layer | Store | Role | Written by |
+| --- | --- | --- | --- |
+| **Hot** | `core_profile.json` | Always-on identity / pinned facts | Profile pin / explicit core updates |
+| **Warm** | Mem0 (default) or JSON `memory_store` | Long-term conversational memory | ChatGPT import · LA chat extract · `memory add` / `retain_memory` |
+| **Cold** | Chroma + BM25 (+ RRF) | Personal document source text | `LA rag add` / `rag ingest` only — **no** memory extraction |
+
+Warm and Cold stay separate on purpose: chats become durable facts about *you*; documents stay searchable source material.
+
+### Warm memory pipeline (Retain → Recall → Reflect → Consolidate)
+
+```
+Write path                          Read path
+─────────                           ─────────
+ChatGPT export / LA chats           query
+        │                              │
+        ▼                              ▼
+extract + enrich                  decompose (multi-hop splits)
+(title / tags / entities /           │
+ event time / value filter)          ▼
+        │                         hybrid recall
+        ▼                         (vector + lexical + temporal
+Consolidation                     + entity soft boost + rerank)
+(ADD / UPDATE / DELETE / NOOP)       │
+        │                              ▼
+        ▼                         Reflect (multi-hop search + LLM)
+Mem0 / JSON store                 → answer or deeper follow-ups
+```
+
+- **Retain**: extract durable facts from conversations; enrich metadata; optional consolidation against near-duplicates
+- **Recall**: hybrid retrieval with temporal intent (`range` / `as_of_now` / `when_event` / …), scoped soft boosts, optional cross-encoder / embed / LLM rerank
+- **Reflect**: multi-hop loop — recall → decide follow-up queries → synthesize (`LA memory reflect` / agent `reflect_memory`)
+- **Hot injection**: core profile is merged into answers so identity survives model switches
+
+### Agent tools & safety
+
+| Surface | Tools | Notes |
+| --- | --- | --- |
+| Profile / memory | `search_memory`, `query_memories`, `retain_memory`, `reflect_memory` | JIT Warm + Hot |
+| Documents | `search_knowledge` | Cold hybrid; falls back to raw `kb/` text on miss |
+| Internet | `web_search`, `/deepsearch` | Default **ddgs**; optional Tavily / SearXNG |
+| Machine | `workspace_context`, `run_shell`, `write_file` | Workspace-scoped; shell/write need approval |
+
+Side-effect tools are gated (`always` / `dangerous` / `off`). Extreme commands (e.g. `rm -rf /`) are blocked outright. File writes also have hallucination detection: claiming a write without calling `write_file` triggers retry or a clear error.
+
+### Model routing
+
+`ModelRouter` unifies **Ollama** (default local), **MiniMax**, **OpenRouter**, and **Cursor**. In `auto` mode it follows `LA_MODEL_PROVIDER_PRIORITY` and falls back when a path is slow or unavailable. Models are compute providers; LocalAgent owns sessions, memory, and audit data on disk.
+
+### Module map (source)
+
+```
+src/localagent/
+├── cli.py / chat_repl.py / session_commands.py   # CLI + REPL + /commands
+├── agent/           # LangGraph runtime
+├── models/          # ModelRouter (local → cloud fallback)
+├── memory/          # Hot profile · Warm backends · recall/reflect/consolidate
+├── knowledge/       # Cold Chroma + BM25 + RRF
+├── ingest/          # rag add/ingest pipeline (Cold only)
+├── tools/           # Agent tools + approval
+├── workspace/       # Git / recent files / todos
+├── persist/         # conversations · sessions · ChatGPT archives
+└── audit/           # usage · security scan · reports
+```
+
+Design docs (not end-user tutorials): [docs/PRD.md](docs/PRD.md) and [docs/TDD.md](docs/TDD.md). Hands-on walkthroughs live under [`examples/`](examples/).
 
 ## Development
 

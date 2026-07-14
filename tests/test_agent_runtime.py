@@ -8,6 +8,7 @@ from localagent.agent.runtime import (
     _build_system_prompt,
     _looks_incomplete_reply,
     _looks_like_tool_attempt,
+    _make_answer_stream_gate,
     _needs_file_tool_retry,
     _parse_tool_call,
     _prefetch_personal_context,
@@ -18,6 +19,69 @@ from localagent.agent.runtime import (
     _truncate_for_llm,
     run_agent_turn,
 )
+
+
+def test_answer_stream_gate_emits_prose():
+    seen: list[str] = []
+    gate = _make_answer_stream_gate(seen.append)
+    assert gate is not None
+    gate("你好")
+    gate("，世界")
+    assert "".join(seen) == "你好，世界"
+
+
+def test_answer_stream_gate_mutes_tool_fence():
+    seen: list[str] = []
+    gate = _make_answer_stream_gate(seen.append)
+    assert gate is not None
+    gate("```tool\n")
+    gate('{"name": "search_memory", "arguments": {"query": "x"}}\n```')
+    assert seen == []
+
+
+def test_answer_stream_gate_mutes_bare_json_tool():
+    seen: list[str] = []
+    gate = _make_answer_stream_gate(seen.append)
+    assert gate is not None
+    gate('{"name": "web_search", "arguments": {"query": "news"}}')
+    assert seen == []
+
+
+def test_answer_stream_gate_none():
+    assert _make_answer_stream_gate(None) is None
+
+
+def test_run_agent_turn_streams_final_answer_not_tool_json(isolated_data):
+    seen: list[str] = []
+    calls = {"n": 0}
+    tool = '```tool\n{"name": "search_memory", "arguments": {"query": "家庭"}}\n```'
+    answer = "根据记忆，你有一个温馨的家庭。"
+
+    def fake_chat(messages, **kwargs):
+        on_token = kwargs.get("on_token")
+        calls["n"] += 1
+        text = tool if calls["n"] == 1 else answer
+        if on_token:
+            mid = max(1, len(text) // 3)
+            on_token(text[:mid])
+            on_token(text[mid:])
+        return text
+
+    isolated_data["router"].chat.side_effect = fake_chat
+    with patch(
+        "localagent.tools.search_memory",
+        return_value="家庭相关记忆",
+    ):
+        result = run_agent_turn(
+            "关于我的家庭",
+            provider="ollama",
+            on_token=seen.append,
+        )
+
+    assert result.response == answer
+    assert "".join(seen) == answer
+    assert "```tool" not in "".join(seen)
+    assert isolated_data["router"].chat.call_count == 2
 
 
 def test_parse_tool_call_accepts_tool_fence():
@@ -318,15 +382,15 @@ def test_prefetch_web_stale_results_allow_research():
     with patch("localagent.tools.web_search", return_value=stale):
         ctx = _prefetch_web_context("深圳今天天气怎么样")
     assert "时效核对未通过" in ctx
-    assert "可再调用 web_search" in ctx
+    assert "再调用 web_search" in ctx
     assert "勿再调用 web_search" not in ctx
 
 
 def test_tool_followup_allows_research_on_freshness_failure():
     result = "【核对失败】没有与检索基准日相符的结果。"
     text = _tool_followup_instruction("web_search", result)
-    assert "可再调用一次 web_search" in text
-    assert "禁止把过期结果当作今日事实" in text
+    assert "再调用一次 web_search" in text
+    assert "禁止在未重试的情况下" in text
 
 
 def test_tool_followup_checks_basics_on_ok_search():
@@ -344,6 +408,25 @@ def test_prefetch_web_requires_source_citation():
         ctx = _prefetch_web_context("北京今天天气怎么样")
     assert "标题与完整链接" in ctx
     assert "勿再调用 web_search" in ctx
+
+
+def test_prefetch_weather_injects_home_location(isolated_data):
+    from localagent.memory.core_profile import CoreProfile, save_core_profile
+
+    save_core_profile(CoreProfile(preferences={"居住地": "深圳"}))
+    with patch("localagent.tools.web_search", return_value="摘要: 深圳多云") as search:
+        ctx = _prefetch_web_context("今天天气怎么样?")
+    assert ctx
+    search.assert_called_once_with("深圳 今天天气怎么样?")
+    assert "其他城市" in ctx
+
+
+def test_prefetch_weather_without_home_still_searches(isolated_data):
+    with patch("localagent.tools.web_search", return_value="摘要: 今日多云") as search:
+        ctx = _prefetch_web_context("今天天气怎么样?")
+    assert ctx
+    search.assert_called_once_with("今天天气怎么样?")
+    assert "其他城市" in ctx
 
 
 def test_prefetch_session_context_loads_today_messages(isolated_data):

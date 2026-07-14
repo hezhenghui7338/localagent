@@ -26,6 +26,43 @@ class ChatMessage:
     content: str
 
 
+def _parse_profile_updates_reply(reply: str) -> list[dict]:
+    """Parse LLM JSON for core_profile pin updates."""
+    import re
+
+    raw = (reply or "").strip()
+    if not raw:
+        return []
+    if raw.startswith("```"):
+        raw = re.sub(r"^```(?:json)?\s*", "", raw)
+        raw = re.sub(r"\s*```$", "", raw)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        # Try to recover a JSON object embedded in prose.
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start < 0 or end <= start:
+            return []
+        try:
+            data = json.loads(raw[start : end + 1])
+        except json.JSONDecodeError:
+            return []
+    if isinstance(data, list):
+        updates = data
+    elif isinstance(data, dict):
+        updates = data.get("updates") or []
+    else:
+        return []
+    if not isinstance(updates, list):
+        return []
+    cleaned: list[dict] = []
+    for item in updates:
+        if isinstance(item, dict) and item.get("field") and item.get("value") is not None:
+            cleaned.append(item)
+    return cleaned
+
+
 def _model_capabilities(model: dict[str, Any]) -> set[str]:
     caps = model.get("capabilities")
     if isinstance(caps, list):
@@ -203,10 +240,12 @@ class ModelRouter:
 
         if not server.api_key:
             raise RuntimeError(f"{provider} api_key not set")
+        stream = on_token is not None and server.chat_stream
         text, usage = self._chat_openai_compatible(
             server=server,
             messages=messages,
             temperature=temperature,
+            on_token=on_token if stream else None,
         )
         self.last_provider = provider
         self.last_model = server.model
@@ -545,23 +584,72 @@ class ModelRouter:
         server: ModelServer,
         messages: list[ChatMessage],
         temperature: float,
+        on_token: Callable[[str], None] | None = None,
     ) -> tuple[str, dict[str, int]]:
         headers = {
             "Authorization": f"Bearer {server.api_key}",
             "Content-Type": "application/json",
         }
         headers.update(openai_compatible_headers(server.provider))
-        payload = {
+        stream = on_token is not None
+        payload: dict[str, Any] = {
             "model": server.model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "temperature": temperature,
+            "stream": stream,
         }
+        url = f"{server.base_url.rstrip('/')}/chat/completions"
         with httpx.Client(timeout=server.timeout) as client:
-            resp = client.post(
-                f"{server.base_url.rstrip('/')}/chat/completions",
-                headers=headers,
-                json=payload,
-            )
+            if stream:
+                parts: list[str] = []
+                usage: dict[str, int] = {}
+                with client.stream("POST", url, headers=headers, json=payload) as resp:
+                    if resp.status_code >= 400:
+                        body = resp.read().decode(errors="replace")[:200]
+                        detail = body
+                        try:
+                            detail = json.loads(body).get("error", {}).get("message", body)
+                        except Exception:
+                            pass
+                        if resp.status_code == 404:
+                            raise RuntimeError(
+                                f"{server.provider} model {server.model!r} unavailable: {detail}"
+                            )
+                        resp.raise_for_status()
+                    for line in resp.iter_lines():
+                        if not line:
+                            continue
+                        if line.startswith("data: "):
+                            data_str = line[6:].strip()
+                        elif line.startswith("data:"):
+                            data_str = line[5:].strip()
+                        else:
+                            continue
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(data_str)
+                        except json.JSONDecodeError:
+                            continue
+                        usage_raw = data.get("usage") or {}
+                        if usage_raw:
+                            usage = {
+                                "prompt_tokens": int(usage_raw.get("prompt_tokens", 0)),
+                                "completion_tokens": int(
+                                    usage_raw.get("completion_tokens", 0)
+                                ),
+                            }
+                        choices = data.get("choices") or []
+                        if not choices:
+                            continue
+                        delta = choices[0].get("delta") or {}
+                        chunk = delta.get("content") or ""
+                        if chunk:
+                            parts.append(chunk)
+                            on_token(chunk)
+                return "".join(parts), usage
+
+            resp = client.post(url, headers=headers, json=payload)
             if resp.status_code == 404:
                 detail = resp.text[:200]
                 try:
@@ -623,24 +711,67 @@ class ModelRouter:
         assert last_error is not None
         raise last_error
 
-    def extract_facts(self, text: str, *, context: str = "") -> list[str]:
-        """Use LLM to extract high-value facts from text."""
-        prompt = (
-            "从以下文本提取可长期记住的个人事实（每条一行，不要编号，不要废话）。"
-            "若无有价值事实，只回复 NONE。\n"
+    def extract_memories(self, text: str, *, context: str = "") -> list:
+        """Extract structured conversation memories (narrative + slots)."""
+        from localagent.memory.conversation_extract import (
+            conversation_extract_prompt,
+            parse_extracted_memories,
         )
-        if context:
-            prompt += f"上下文: {context}\n"
-        prompt += f"\n文本:\n{text[:4000]}"
+
+        prompt = conversation_extract_prompt(context=context)
+        prompt += f"\n\n对话:\n{text[:6000]}"
         reply = self.chat(
             [ChatMessage(role="user", content=prompt)],
             temperature=0.1,
-            usage_command="extract_facts",
+            usage_command="extract_memories",
         )
-        if "NONE" in reply.upper() and len(reply.strip()) < 20:
+        return parse_extracted_memories(reply)
+
+    def extract_facts(self, text: str, *, context: str = "") -> list[str]:
+        """Backward-compatible: return narrative text lines from extract_memories."""
+        memories = self.extract_memories(text, context=context)
+        return [m.text for m in memories]
+
+    def extract_profile_updates(
+        self,
+        facts: list[str],
+        *,
+        current_profile: str = "",
+    ) -> list[dict]:
+        """Decide which durable identity attributes to pin into core_profile.
+
+        Returns a list of update dicts, e.g.
+        ``{"field": "preference", "key": "居住地", "value": "深圳", "confidence": 0.9}``.
+        """
+        if not facts:
             return []
-        lines = [line.strip().lstrip("-• ").strip() for line in reply.splitlines()]
-        return [line for line in lines if line and len(line) > 4]
+        joined = "\n".join(f"- {fact.strip()}" for fact in facts if fact.strip())
+        if not joined:
+            return []
+        prompt = (
+            "你是用户核心画像编辑器。根据下列事实，决定应写入 Hot 层 core_profile 的持久身份信息。\n"
+            "只输出 JSON（不要 markdown、不要解释）：\n"
+            '{"updates":[{"field":"name|preference|current_status|life_anchor",'
+            '"key":"偏好键可选","value":"值","label":"锚点标签可选",'
+            '"start":"YYYY或YYYY-MM可选","end":"结束或null","description":"锚点说明可选",'
+            '"confidence":0.0}]}\n'
+            "字段说明：\n"
+            "- name: 用户姓名\n"
+            "- preference: 写入 preferences；key 用 居住地/职业/家庭/喜欢/偏好 等短键\n"
+            "- current_status: 当前身份或状态一句话\n"
+            "- life_anchor: 有明确时间段的人生阶段（需 label+start）\n"
+            "规则：只 pin 稳定身份/偏好/家庭/职业/居住地；跳过一次性琐事；无更新时 "
+            '{"updates":[]}。confidence 为 0~1。\n'
+        )
+        if current_profile.strip():
+            prompt += f"\n当前画像:\n{current_profile[:1500]}\n"
+        prompt += f"\n事实:\n{joined[:4000]}"
+        reply = self.chat(
+            [ChatMessage(role="user", content=prompt)],
+            temperature=0.1,
+            usage_command="extract_profile_updates",
+        )
+        return _parse_profile_updates_reply(reply)
 
 
 _router: ModelRouter | None = None

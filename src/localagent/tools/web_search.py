@@ -24,6 +24,30 @@ _NEWS_MARKERS = ("新闻", "时事", "头条", "热点", "快讯", "news", "brea
 _TIME_MARKERS = ("几点", "当前时间", "现在时间", "今天几号", "今天日期", "what time", "current time")
 _WEATHER_MARKERS = ("天气", "气温", "降雨", "预报", "weather", "forecast", "temperature")
 
+# Common CN cities + XX市/区/县 — used to detect an explicit place in the query.
+_PLACE_IN_QUERY = re.compile(
+    r"(?:"
+    r"北京|上海|广州|深圳|杭州|南京|成都|重庆|武汉|西安|苏州|天津|长沙|郑州|"
+    r"青岛|大连|厦门|福州|宁波|无锡|合肥|济南|昆明|贵阳|南宁|海口|三亚|"
+    r"哈尔滨|长春|沈阳|石家庄|太原|兰州|南昌|台北|香港|澳门|"
+    r"东莞|佛山|珠海|中山|惠州|温州|嘉兴|金华|绍兴|"
+    r"[\u4e00-\u9fff]{2,10}(?:市|区|县|州|盟)"
+    r")"
+)
+_LOCAL_PLACE_MARKERS = ("本地", "当地", "这儿", "这里", "我们这", "这边")
+_USER_QUESTION_BLOCK = re.compile(
+    r"\[用户问题\]\s*(.*?)\s*(?=\[执行假设|\Z)",
+    re.DOTALL,
+)
+_ORIGINAL_QUESTION_BLOCK = re.compile(
+    r"\[用户原始问题\]\s*(.*?)\s*(?=\[用户澄清补充\]|\Z)",
+    re.DOTALL,
+)
+_CLARIFICATION_BLOCK = re.compile(
+    r"\[用户澄清补充\]\s*(.*)\Z",
+    re.DOTALL,
+)
+
 _YMD = re.compile(r"(20\d{2})[-/.](\d{1,2})(?:[-/.](\d{1,2}))?")
 _CN_YMD = re.compile(r"(20\d{2})\s*年\s*(\d{1,2})\s*月(?:\s*(\d{1,2})\s*日)?")
 _EN_MONTHS = {
@@ -118,12 +142,102 @@ def query_target_date(query: str, *, today: date | None = None) -> date:
     return d
 
 
+def is_weather_query(query: str) -> bool:
+    """True when the user is asking about weather / forecast."""
+    return _has_any(query, _WEATHER_MARKERS)
+
+
+def extract_searchable_query(text: str) -> str:
+    """Unwrap intent-assumption / clarification wrappers into a plain search query."""
+    raw = (text or "").strip()
+    if not raw:
+        return raw
+    assumed = _USER_QUESTION_BLOCK.search(raw)
+    if assumed:
+        return assumed.group(1).strip()
+    original = _ORIGINAL_QUESTION_BLOCK.search(raw)
+    if original:
+        base = original.group(1).strip()
+        clarification = _CLARIFICATION_BLOCK.search(raw)
+        if clarification:
+            extra = clarification.group(1).strip()
+            return f"{base} {extra}".strip() if extra else base
+        return base
+    return raw
+
+
+def query_has_explicit_place(query: str) -> bool:
+    """True when the query already names a city/district (not just 本地/这儿)."""
+    q = query.strip()
+    if not q:
+        return False
+    if any(marker in q for marker in _LOCAL_PLACE_MARKERS):
+        return False
+    return bool(_PLACE_IN_QUERY.search(q))
+
+
+def inject_home_location_for_weather(query: str) -> str:
+    """For weather with no city, prepend resolved 居住地 (profile or memory)."""
+    q = query.strip()
+    if not q or not is_weather_query(q):
+        return q
+    if query_has_explicit_place(q):
+        return q
+    from localagent.memory.core_profile import resolve_home_location
+
+    place = resolve_home_location()
+    if not place:
+        return q
+    if place in q:
+        return q
+    # Drop vague local markers so the real city dominates the search.
+    cleaned = q
+    for marker in _LOCAL_PLACE_MARKERS:
+        cleaned = cleaned.replace(marker, "")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" ，,")
+    return f"{place} {cleaned}".strip()
+
+
+def prepare_web_query(query: str, *, today: date | None = None) -> str:
+    """Normalize wrappers, inject known home city for weather, then add date hints."""
+    q = extract_searchable_query(query)
+    q = inject_home_location_for_weather(q)
+    return augment_web_query(q, today=today)
+
+
+_CN_FULL_DATE = re.compile(r"20\d{2}\s*年\s*\d{1,2}\s*月(?:\s*\d{1,2}\s*日)?")
+_ISO_LIKE_DATE = re.compile(r"20\d{2}[-/.]\d{1,2}(?:[-/.]\d{1,2})?")
+
+
+def _strip_calendar_dates(text: str) -> str:
+    """Remove absolute calendar dates that lure search engines into archive pages."""
+    cleaned = _CN_FULL_DATE.sub(" ", text)
+    cleaned = _ISO_LIKE_DATE.sub(" ", cleaned)
+    return re.sub(r"\s+", " ", cleaned).strip(" ，,")
+
+
 def augment_web_query(query: str, *, today: date | None = None) -> str:
-    """Add a current-date hint when the query lacks an explicit year."""
+    """Add a current-date hint when the query lacks an explicit year.
+
+    Weather queries are special: embedding「2026年7月14日」makes engines return
+    historical/archive pages that fail freshness checks. Prefer 今天/明天 and
+    rely on provider time_range=day instead.
+    """
     q = query.strip()
     if not q:
         return q
     d = today or date.today()
+
+    if is_weather_query(q):
+        target = query_target_date(q, today=d)
+        q = _strip_calendar_dates(q) or "天气"
+        if target > d:
+            if not _has_any(q, _TOMORROW_MARKERS):
+                q = f"{q} 明天"
+        elif not _has_any(q, _TODAY_MARKERS) and not _has_any(q, _TOMORROW_MARKERS):
+            q = f"{q} 今天"
+        return q.strip()
+
     if re.search(r"20\d{2}", q):
         return q
     mode = query_recency_mode(q)
@@ -392,12 +506,13 @@ def _search_tavily(query: str, *, max_results: int) -> str:
             "联网搜索未配置（provider=tavily，请设置 TAVILY_API_KEY；"
             "或改用 LA_WEB_SEARCH_PROVIDER=ddgs / searxng）。"
         )
-    search_query = augment_web_query(query)
+    effective = inject_home_location_for_weather(extract_searchable_query(query))
+    search_query = prepare_web_query(query)
     payload = {
         "api_key": config.TAVILY_API_KEY,
         "query": search_query,
         "max_results": max_results,
-        **derive_search_params(query),
+        **derive_search_params(effective),
     }
     try:
         with httpx.Client(timeout=30.0) as client:
@@ -420,7 +535,7 @@ def _search_tavily(query: str, *, max_results: int) -> str:
     return format_search_output(
         answer=data.get("answer") or "",
         results=results,
-        query=query,
+        query=effective,
     )
 
 
@@ -430,8 +545,9 @@ def _search_ddgs(query: str, *, max_results: int) -> str:
     except ImportError:
         return "联网搜索失败: 未安装 ddgs，请执行 pip install ddgs（或 pip install -e .）。"
 
-    search_query = augment_web_query(query)
-    params = derive_search_params(query)
+    effective = inject_home_location_for_weather(extract_searchable_query(query))
+    search_query = prepare_web_query(query)
+    params = derive_search_params(effective)
     timelimit = _timelimit_from_params(params)
     use_news = params.get("topic") == "news"
 
@@ -471,7 +587,7 @@ def _search_ddgs(query: str, *, max_results: int) -> str:
                     "published_date": "",
                 }
             )
-    return format_search_output(results=results, query=query)
+    return format_search_output(results=results, query=effective)
 
 
 def _search_searxng(query: str, *, max_results: int) -> str:
@@ -482,8 +598,9 @@ def _search_searxng(query: str, *, max_results: int) -> str:
             "或改用 LA_WEB_SEARCH_PROVIDER=ddgs）。"
         )
 
-    search_query = augment_web_query(query)
-    params = derive_search_params(query)
+    effective = inject_home_location_for_weather(extract_searchable_query(query))
+    search_query = prepare_web_query(query)
+    params = derive_search_params(effective)
     request_params: dict[str, Any] = {
         "q": search_query,
         "format": "json",
@@ -516,14 +633,101 @@ def _search_searxng(query: str, *, max_results: int) -> str:
                 "published_date": item.get("publishedDate") or item.get("published_date") or "",
             }
         )
-    return format_search_output(results=results, query=query)
+    return format_search_output(results=results, query=effective)
 
 
 def web_search(query: str, *, max_results: int = 5) -> str:
-    """Search the web via the configured provider (auto / ddgs / tavily / searxng)."""
+    """Search the web via the configured provider (auto / ddgs / tavily / searxng).
+
+    Weather queries that fail freshness or return junk (lyrics/PDF/lessons) are
+    automatically retried with sharper queries before returning.
+    """
+    result = _web_search_once(query, max_results=max_results)
+    if not is_weather_query(query) and not is_weather_query(extract_searchable_query(query)):
+        return result
+    if not weather_search_unusable(result):
+        return result
+
+    base = inject_home_location_for_weather(extract_searchable_query(query))
+    for alt in weather_retry_queries(base):
+        if alt.strip() == prepare_web_query(query).strip():
+            continue
+        retry = _web_search_once(alt, max_results=max_results)
+        if not weather_search_unusable(retry):
+            return retry
+        # Prefer a less-bad retry (has any 匹配) over the original.
+        if "[匹配" in retry and "[匹配" not in result:
+            result = retry
+    return result
+
+
+def _web_search_once(query: str, *, max_results: int = 5) -> str:
     provider = resolve_web_search_provider()
     if provider == "tavily":
         return _search_tavily(query, max_results=max_results)
     if provider == "searxng":
         return _search_searxng(query, max_results=max_results)
     return _search_ddgs(query, max_results=max_results)
+
+
+_WEATHER_JUNK = re.compile(
+    r"歌词|wordwall|weebly|\.pdf|教案|课件|what'?s the weather like|"
+    r"today.?s weather song|儿歌|教学资源",
+    re.IGNORECASE,
+)
+
+
+def weather_search_unusable(output: str) -> bool:
+    """True when weather results should be retried rather than shown as final."""
+    if not output or output.startswith(("联网搜索未配置", "联网搜索失败")):
+        return True
+    if "【核对失败】" in output:
+        return True
+    junk = len(_WEATHER_JUNK.findall(output))
+    has_match = "[匹配" in output
+    if junk >= 1 and not has_match:
+        return True
+    if junk >= 2 and output.count("[匹配") <= junk:
+        return True
+    # Freshness warning with only unknown/junk and no 匹配 → retry
+    if "【时效警告】" in output and not has_match and (
+        junk >= 1 or "日期未知" in output
+    ):
+        # If summary looks like real weather numbers, keep it.
+        if re.search(r"\d+\s*°\s*[CF]|气温|多云|晴|雨|雷阵雨", output):
+            return False
+        return True
+    return False
+
+
+def weather_retry_queries(base_query: str) -> list[str]:
+    """Alternative weather search strings that avoid archive/junk hits."""
+    q = inject_home_location_for_weather(extract_searchable_query(base_query))
+    q = _strip_calendar_dates(q)
+    place_match = _PLACE_IN_QUERY.search(q)
+    place = place_match.group(0) if place_match else ""
+    from localagent.memory.core_profile import resolve_home_location
+
+    if not place:
+        place = resolve_home_location()
+    day = "明天" if _has_any(q, _TOMORROW_MARKERS) else "今天"
+    alts: list[str] = []
+    if place:
+        alts.extend(
+            [
+                f"{place} {day} 天气预报",
+                f"{place}天气 {day} 实时",
+                f"{place} {day}天气 气象",
+            ]
+        )
+    else:
+        alts.extend([f"{day} 天气预报", f"本地 {day}天气"])
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in alts:
+        key = item.strip()
+        if key and key not in seen:
+            seen.add(key)
+            out.append(key)
+    return out

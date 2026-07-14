@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from localagent.agent.runtime import AgentResult
 from localagent.chat_repl import ChatREPL
+from localagent.memory.conversation_extract import ExtractedMemory
 from localagent.persist.conversations import load_conversation
 from localagent.session_commands import (
     SessionCommandContext,
@@ -67,10 +68,27 @@ def test_dispatch_session_help(capsys):
     assert "/provider" in out
     assert "/model" in out
     assert "/memory" in out
+    assert "无参显示 status" in out
+    assert "/rag" in out
     assert "/mem" not in out.replace("/memory", "")
     assert "/memories" not in out
     assert "/deepsearch" in out
     assert "/m [" not in out and "/model, /m" not in out
+
+
+def test_dispatch_session_bare_memory_and_rag(capsys):
+    ctx = SessionCommandContext(session_id="s-bare", provider="auto")
+    mem = dispatch_session_line("/memory", ctx)
+    assert mem.exit_code == 0
+    out = capsys.readouterr().out
+    assert "[memory status]" in out
+    assert "来源分布" in out
+
+    rag = dispatch_session_line("/rag", ctx)
+    assert rag.exit_code == 0
+    out = capsys.readouterr().out
+    assert "[rag status]" in out
+    assert "kb 目录" in out
 
 
 def test_dispatch_session_model_list_and_set(monkeypatch, capsys, tmp_path):
@@ -277,7 +295,9 @@ def test_extract_skips_slash_commands(isolated_data):
     from localagent.memory.exit_extract import extract_session_memories
     from localagent.persist.conversations import append_message
 
-    isolated_data["router"].extract_facts.return_value = ["不应提取"]
+    isolated_data["router"].extract_memories.return_value = [
+        ExtractedMemory(text="不应提取"),
+    ]
     session_id = "s-slash-cmd-only"
     append_message(session_id, "user", "/deepsearch foo")
     append_message(session_id, "assistant", "report")

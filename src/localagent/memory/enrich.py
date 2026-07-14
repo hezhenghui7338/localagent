@@ -34,6 +34,7 @@ class MemoryEnrichment:
     tags: list[str] = field(default_factory=list)
     memory_type: str = "fact"
     searchable_text: str = ""
+    entities: list[str] = field(default_factory=list)
 
     def to_metadata(self, *, extra: dict[str, Any] | None = None) -> dict[str, Any]:
         meta: dict[str, Any] = {
@@ -42,6 +43,8 @@ class MemoryEnrichment:
             "tags": self.tags,
             "type": self.memory_type,
         }
+        if self.entities:
+            meta["entities"] = self.entities
         if extra:
             meta.update(extra)
         return meta
@@ -126,14 +129,25 @@ def enrich_heuristic(
     context: str = "",
 ) -> MemoryEnrichment:
     """Fast local enrichment without LLM."""
+    from localagent.memory.entities import extract_entities
+
     clean_heading = _clean_heading(heading)
     title = clean_heading or _first_sentence(text)
     if not title:
         title = (context or "未命名记忆")[:28]
 
-    tags = _infer_tags(text, heading=clean_heading)
+    tags = _infer_tags(text, heading=clean_heading)[:2]
     memory_type = _infer_type(text, tags)
-    summary = text.strip() if len(text.strip()) <= 200 else _heuristic_summary(text)
+    # Prefer keeping short narrative text intact; avoid semicolon-soup summaries
+    from localagent.memory.value_filter import is_narrative_memory
+
+    if len(text.strip()) <= 200 and is_narrative_memory(text):
+        summary = text.strip()
+    elif len(text.strip()) <= 200:
+        summary = text.strip()
+    else:
+        summary = _heuristic_summary(text)
+    entities = extract_entities(f"{clean_heading} {text}")
 
     return MemoryEnrichment(
         title=title,
@@ -141,6 +155,7 @@ def enrich_heuristic(
         tags=tags,
         memory_type=memory_type,
         searchable_text=summary or text.strip(),
+        entities=entities,
     )
 
 
@@ -169,12 +184,15 @@ def _parse_llm_enrichment(reply: str, *, fallback_text: str) -> MemoryEnrichment
     if not summary:
         summary = _heuristic_summary(fallback_text)
 
+    from localagent.memory.entities import extract_entities
+
     return MemoryEnrichment(
         title=title,
         summary=summary,
         tags=tags or _infer_tags(fallback_text),
         memory_type=memory_type,
         searchable_text=summary,
+        entities=extract_entities(f"{title} {summary} {fallback_text}"),
     )
 
 
@@ -221,7 +239,7 @@ def enrich_memory(
     """Enrich memory content; LLM optional, heuristic always available as fallback."""
     text = text.strip()
     if not text:
-        return MemoryEnrichment(title="空记忆", summary="", tags=[], searchable_text="")
+        return MemoryEnrichment(title="空记忆", summary="", tags=[], searchable_text="", entities=[])
 
     if use_llm is None:
         use_llm = config.MEMORY_ENRICH_USE_LLM

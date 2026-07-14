@@ -146,4 +146,4 @@ def test_foreground_add_file_shows_progress(tmp_path: Path, capsys):
     out = capsys.readouterr().out
     assert "源文件" in out
     assert "加载文件" in out
-    assert "切分" in out
+    assert "知识库" in out or "chunks" in out

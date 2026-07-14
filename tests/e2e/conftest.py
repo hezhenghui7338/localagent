@@ -17,8 +17,11 @@ def la_data_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def la_env(la_data_dir: Path) -> dict[str, str]:
+    """Isolated data dir; json backend; keep offline e2e reasonably fast."""
     return {
         "LA_DATA_DIR": str(la_data_dir),
         "LA_INGEST_USE_LLM": "0",
         "LA_MEMORY_BACKEND": "json",
+        "LA_MEMORY_SESSION_SUMMARY": "0",
+        "LA_MEMORY_REFLECT_MAX_HOPS": "0",
     }

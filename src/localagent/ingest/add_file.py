@@ -8,10 +8,16 @@ import sys
 from pathlib import Path
 
 from localagent import config
+from localagent.audit.events import log_event
+from localagent.audit.security import is_sensitive_path, sensitive_path_reason
 from localagent.ingest.pipeline import IngestResult, ingest_file
 from localagent.ingest.progress import ConsoleProgressReporter, MultiProgressReporter, ProgressEvent
 from localagent.ingest.task_logs import append_task_log, ensure_task_log
 from localagent.ingest.tasks import IngestTask, get_task_store
+
+
+class SensitiveIngestError(ValueError):
+    """Raised when add-file / ingest refuses a sensitive path."""
 
 
 def _format_size(path: Path) -> str:
@@ -35,6 +41,24 @@ def prepare_symlink(source_path: str | Path) -> tuple[Path, Path]:
     if not source.is_file():
         raise ValueError(f"not a file: {source}")
 
+    if is_sensitive_path(source):
+        reason = sensitive_path_reason(source)
+        log_event(
+            "kb.blocked",
+            policy_id="kb.sensitive_path",
+            action="block",
+            path=str(source),
+            reason=reason,
+        )
+        log_event(
+            "guardrail.triggered",
+            policy_id="kb.sensitive_path",
+            action="block",
+            path=str(source),
+            reason=reason,
+        )
+        raise SensitiveIngestError(reason)
+
     suffix = source.suffix.lower()
     if suffix not in config.SUPPORTED_SUFFIXES:
         supported = ", ".join(sorted(config.SUPPORTED_SUFFIXES))
@@ -52,6 +76,7 @@ def prepare_symlink(source_path: str | Path) -> tuple[Path, Path]:
             raise FileExistsError(f"kb entry already exists: {target}")
 
     os.symlink(source, target)
+    log_event("kb.ingest", path=str(source), target=str(target), phase="symlink")
     return source, target
 
 

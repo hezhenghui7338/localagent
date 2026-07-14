@@ -11,19 +11,19 @@ from localagent.agent.runtime import (
     run_agent_turn,
 )
 from localagent.memory.core_profile import load_core_profile
-from localagent.memory.scoped_recall import _semantic_score, scoped_recall
+from localagent.memory.scoped_recall import _lexical_overlap_score, scoped_recall
 from localagent.memory.store import get_memory_store
 from localagent.tools import retain_memory
 
 
-def test_semantic_score_prefers_residence_fact_over_diary_noise():
+def test_lexical_overlap_prefers_residence_fact_over_diary_noise():
     query = "你知道我住在哪里吗?"
     fact = "用户居住在深圳"
     noise = (
         "### 张杨对代码的一些意见和建议；1. 测试：未规范；"
         "- 要采用unittest，但是我不知道采用unittest的必要性在哪里。"
     )
-    assert _semantic_score(query, fact) > _semantic_score(query, noise)
+    assert _lexical_overlap_score(query, fact) > _lexical_overlap_score(query, noise)
 
 
 def test_scoped_recall_ranks_recent_residence_first(isolated_data):
