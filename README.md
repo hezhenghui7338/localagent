@@ -23,8 +23,8 @@ LocalAgent (`LA`) is not another chat client. It is a **personal AI that runs on
 5. **Reliable execution** — write-file hallucination detection; approve before `run_shell` / `write_file`
 
 ```bash
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.2.0"
-la --version                    # expect: la-localagent 0.2.0
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
+la --version                    # expect: la-localagent 0.3.0
 la                              # asks before installing Ollama (you can skip)
 ```
 
@@ -60,17 +60,17 @@ Optional OpenRouter / Cursor / Tavily for extras — **identity and data stay on
 
 ### One-command install (recommended)
 
-Current release: **v0.2.0** (same as `src/localagent/__init__.py` / `la --version`).
+Current release: **v0.3.0** (same as `src/localagent/__init__.py` / `la --version`).
 
 ```bash
 # Install a pinned tag (recommended, reproducible)
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.2.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
 
 # Or track the default branch tip (no version pin)
 pipx install "git+https://github.com/hezhenghui7338/localagent.git"
 
 # Or with pip into the current environment
-pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.2.0"
+pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
 
 # mem0ai ships with the core install — no extra memory extra required
 ```
@@ -78,10 +78,10 @@ pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.2.0"
 Check version and upgrade:
 
 ```bash
-la --version                  # or la -V → la-localagent 0.2.0
+la --version                  # or la -V → la-localagent 0.3.0
 
 # Move to a new tag (change @vX.Y.Z, then --force reinstall)
-pipx install --force "git+https://github.com/hezhenghui7338/localagent.git@v0.2.0"
+pipx install --force "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
 
 # When tracking the default branch, pull the latest tip
 pipx upgrade la-localagent
@@ -90,7 +90,7 @@ pipx install --force "git+https://github.com/hezhenghui7338/localagent.git"
 
 # Same idea with pip
 pip install --upgrade --force-reinstall \
-  "git+https://github.com/hezhenghui7338/localagent.git@v0.2.0"
+  "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
 ```
 
 Available versions: GitHub [Releases](https://github.com/hezhenghui7338/localagent/releases) / [Tags](https://github.com/hezhenghui7338/localagent/tags).
@@ -118,7 +118,7 @@ la config my.json
 la config list
 ```
 
-> After the package is published to PyPI: `pipx install la-localagent==0.2.0` / `pipx upgrade la-localagent`
+> After the package is published to PyPI: `pipx install la-localagent==0.3.0` / `pipx upgrade la-localagent`
 
 ### Develop from source
 
