@@ -21,8 +21,21 @@ def test_e2e_version():
 def test_e2e_help_lists_core_commands():
     result = run_la(["--help"])
     assert result.returncode == 0
-    for cmd in ("memory", "rag", "chat", "tasks", "workspace", "audit", "config", "setup"):
+    for cmd in ("memory", "rag", "chat", "tasks", "workspace", "audit", "logs", "config", "setup"):
         assert cmd in result.stdout
+
+
+def test_e2e_logs_path_and_empty(la_env):
+    path_result = run_la(["logs", "--path"], env=la_env)
+    assert path_result.returncode == 0
+    assert "localagent.log" in path_result.stdout
+
+    # Trigger logging via a cheap command, then read.
+    assert run_la(["memory", "status"], env=la_env).returncode == 0
+    logs = run_la(["logs", "--tail", "20"], env=la_env)
+    assert logs.returncode == 0
+    # Either has content or the friendly empty message after a fresh data dir.
+    assert "尚无日志" in logs.stdout or "INFO" in logs.stdout or "logging configured" in logs.stdout
 
 
 def test_e2e_chat_help(la_env):

@@ -650,6 +650,40 @@ def cmd_search(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_memory_graph(args: argparse.Namespace) -> int:
+    """Inspect or rebuild the local Warm memory relation graph."""
+    from localagent import config
+    from localagent.memory.graph import get_memory_graph, rebuild_memory_graph
+
+    action = getattr(args, "graph_action", None) or "stats"
+    if action == "rebuild":
+        emit("memory graph rebuild", "从 memory_store.json 重建关系图…")
+        stats = rebuild_memory_graph()
+        print(
+            "[memory graph] 已重建: "
+            f"entities={stats['entities']} relations={stats['relations']} "
+            f"mentions={stats['mentions']} facts={stats['facts']}"
+        )
+        print(f"  文件: {config.MEMORY_GRAPH_FILE}")
+        return 0
+
+    stats = get_memory_graph().stats()
+    print("[memory graph] 本地关系图状态")
+    print(f"  启用:       {'是' if config.MEMORY_GRAPH else '否'} (LA_MEMORY_GRAPH)")
+    print(f"  hops:       {config.MEMORY_GRAPH_HOPS}")
+    print(f"  boost:      {config.MEMORY_GRAPH_BOOST}")
+    print(f"  entities:   {stats['entities']}")
+    print(f"  relations:  {stats['relations']}")
+    print(f"  mentions:   {stats['mentions']}")
+    print(f"  facts:      {stats['facts']}")
+    print(f"  文件:       {config.MEMORY_GRAPH_FILE}")
+    if not config.MEMORY_GRAPH:
+        print("\n提示: 关系图默认关闭（日常靠 hybrid + cross-encoder）。")
+        print("      实验多跳时可设 LA_MEMORY_GRAPH=1，再执行: LA memory graph rebuild")
+        print("      说明见 README「可选 Warm 关系图」；开图会增加召回延迟。")
+    return 0
+
+
 def cmd_memory_status(_args: argparse.Namespace) -> int:
     from localagent.persist.conversations import list_sessions
 
@@ -691,6 +725,10 @@ def cmd_memory_status(_args: argparse.Namespace) -> int:
     print(f"  LA 对话档案:  {chat_sessions} 个会话（已记忆化索引 {chat_ingested}）")
     print(f"  ChatGPT 导入: 已处理 {chatgpt_imported} 条")
     print(f"  Hot 画像:     {'已配置' if _core_profile_configured() else '未配置'} ({config.CORE_PROFILE_FILE})")
+    print(
+        f"  关系图:       {'开启' if config.MEMORY_GRAPH else '关闭'} "
+        f"(LA_MEMORY_GRAPH；LA memory graph stats)"
+    )
 
     print(f"  Profile pin:  {'LLM' if info.get('profile_pin_llm') else '正则'} (LA_PROFILE_PIN_LLM)")
     print(f"  Bank ID:      {info['bank_id']}")
@@ -836,6 +874,43 @@ def cmd_audit(args: argparse.Namespace) -> int:
 
     print(print_audit_summary(since=args.since, workspace_days=args.days))
     return 0
+
+
+def cmd_logs(args: argparse.Namespace) -> int:
+    """Show diagnostic application logs (data/logs/localagent.log)."""
+    from localagent.logging_setup import app_log_path, read_app_log
+
+    path = app_log_path()
+    if args.path:
+        print(path)
+        return 0
+
+    if not path.exists():
+        print("[logs] 尚无日志；运行任意 LA 命令后生成。")
+        print(f"[logs] 路径: {path}")
+        return 0
+
+    text = read_app_log(tail=args.tail, level_filter=args.level)
+    if not text.strip():
+        level_note = f"（级别 ≥ {args.level}）" if args.level else ""
+        print(f"[logs] 无匹配日志行{level_note}")
+        print(f"[logs] 路径: {path}")
+        return 0
+
+    print(text)
+    return 0
+
+
+def _extract_debug_flag(argv: list[str]) -> tuple[list[str], bool]:
+    """Pull --debug from anywhere in argv so it works before/after subcommands."""
+    debug = False
+    out: list[str] = []
+    for arg in argv:
+        if arg == "--debug":
+            debug = True
+        else:
+            out.append(arg)
+    return out, debug
 
 
 def _print_config_ensure_result(result) -> None:
@@ -1135,6 +1210,11 @@ def build_parser() -> argparse.ArgumentParser:
         version=f"la-localagent {__version__}",
         help="显示版本号并退出",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="启用 DEBUG 诊断日志（同时写入文件并输出到 stderr）",
+    )
     sub = parser.add_subparsers(
         dest="cmd",
         required=False,
@@ -1189,6 +1269,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  LA memory add \"…\"\n"
             "  LA memory ingest chat|chatgpt|all [--force]\n"
             "  LA memory query / search / reflect / consolidate / forget / status / reset / reindex\n"
+            "  LA memory graph stats|rebuild\n"
             "文档知识库请用: LA rag …"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1302,6 +1383,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="从 memory_store.json 重建 Mem0 向量索引（不删事实）",
         description="保留 JSON 注册表，清空并重建 Mem0 Warm 引擎索引",
     ).set_defaults(func=cmd_reindex_memory)
+
+    p_mem_graph = mem_sub.add_parser(
+        "graph",
+        help="[stats|rebuild]  本地记忆关系图",
+        description=(
+            "查看或重建 Warm 层 SQLite 关系图（实体/槽位边 + 对话邻接）。"
+            "默认关闭；召回 hop 需 LA_MEMORY_GRAPH=1（见 README「可选 Warm 关系图」）。"
+        ),
+    )
+    p_mem_graph.add_argument(
+        "graph_action",
+        nargs="?",
+        default="stats",
+        choices=("stats", "rebuild"),
+        help="stats 查看统计；rebuild 从注册表重建（默认 stats）",
+    )
+    p_mem_graph.set_defaults(func=cmd_memory_graph)
 
     p_mem_search = mem_sub.add_parser(
         "search",
@@ -1456,6 +1554,33 @@ def build_parser() -> argparse.ArgumentParser:
     p_audit.add_argument("--days", type=int, default=7, help="报告中工作区快照天数（默认 7）")
     p_audit.add_argument("--cwd", help="工作区根目录")
     p_audit.set_defaults(func=cmd_audit)
+
+    p_logs = sub.add_parser(
+        "logs",
+        help="[--tail N] [--level LEVEL] [--path]  查看诊断日志",
+        description=(
+            "查看本地诊断日志（data/logs/localagent.log）。\n"
+            "与 LA audit（用量/护栏问责）不同：logs 用于排查运行时决策与降级。\n"
+            "开发时可 LA --debug <command> 或设置 LA_LOG_LEVEL=DEBUG 盯 stderr。"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_logs.add_argument(
+        "--tail",
+        type=int,
+        default=80,
+        help="显示最近 N 行（默认 80；0 表示全部）",
+    )
+    p_logs.add_argument(
+        "--level",
+        help="仅显示不低于该级别的行（如 DEBUG、INFO、WARNING）",
+    )
+    p_logs.add_argument(
+        "--path",
+        action="store_true",
+        help="只打印日志文件路径",
+    )
+    p_logs.set_defaults(func=cmd_logs)
 
     p_config = sub.add_parser(
         "config",
@@ -1655,6 +1780,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"la-localagent {__version__}")
         return 0
 
+    argv, debug = _extract_debug_flag(argv)
+
     # LA ≡ LA chat：无子命令时进入对话模式
     if not argv:
         argv = ["chat"]
@@ -1663,11 +1790,13 @@ def main(argv: list[str] | None = None) -> int:
 
     from localagent import env_config
     from localagent.completion import ensure_shell_completion
+    from localagent.logging_setup import resolve_log_level, setup_logging
     from localagent.session_commands import dispatch_cli_argv
 
     env_config.ensure_config()
     ensure_shell_completion()
     config.ensure_data_dirs()
+    setup_logging(level=resolve_log_level(debug=debug))
     get_task_store().reconcile_stale()
     try:
         return dispatch_cli_argv(argv, allow_chat=True)

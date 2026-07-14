@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -19,6 +20,8 @@ from localagent.tools.approval import (
     get_approval_policy,
     needs_approval,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AgentState(TypedDict):
@@ -429,7 +432,12 @@ def _prefetch_personal_context(user_message: str) -> str:
     family = bool(_FAMILY_QUERY.search(user_message))
     if not browse and not personal and not family:
         return ""
+    from localagent.logging_setup import truncate_for_log
     from localagent.tools import query_memories_tool, search_memory
+
+    path = "family" if family else ("browse" if browse else "personal")
+    logger.info("prefetch personal context path=%s", path)
+    logger.debug("prefetch personal query=%s", truncate_for_log(user_message))
 
     profile = load_core_profile().format_for_prompt()
     memory_parts: list[str] = []
@@ -460,8 +468,12 @@ def _prefetch_personal_context(user_message: str) -> str:
         )
     else:
         recall_query = _rewrite_personal_memory_query(user_message)
+        rewritten = recall_query != user_message
+        logger.info("prefetch personal rewrite=%s", rewritten)
+        if rewritten:
+            logger.debug("prefetch rewrite→ %s", truncate_for_log(recall_query))
         memory_parts.append(search_memory(recall_query, top_k=10))
-        if recall_query != user_message:
+        if rewritten:
             memory_parts.append(search_memory(user_message, top_k=5, fallback=False))
 
     memory = "\n\n".join(part for part in memory_parts if part)
@@ -718,20 +730,30 @@ def run_agent_turn(
 
     router = get_model_router()
     prefer = None if provider == "auto" else provider
+    logger.info(
+        "agent turn start session=%s provider=%s session_recall=%s",
+        session_id or "-",
+        provider,
+        is_session_recall_query(user_message),
+    )
 
     _status(f"连接模型 ({router.format_provider_hint(provider)})…")
     personal_context = _prefetch_personal_context(user_message)
     if personal_context:
         _status("预加载个人记忆…")
+        logger.info("agent prefetch personal=yes")
     session_context = _prefetch_session_context(user_message, history, session_id)
     if session_context:
         _status("加载对话记录…")
+        logger.info("agent prefetch session=yes")
     web_context = _prefetch_web_context(user_message)
     if web_context:
         _status("联网搜索…")
+        logger.info("agent prefetch web=yes")
     workspace_ctx = _prefetch_workspace_context(user_message)
     if workspace_ctx:
         _status("加载工作区上下文…")
+        logger.info("agent prefetch workspace=yes")
     messages = [
         ChatMessage(
             role="system",
@@ -769,6 +791,7 @@ def run_agent_turn(
             reply = "" if reply is None else str(reply)
 
         if not reply.strip() and iteration < 2:
+            logger.info("agent empty reply retry iteration=%s", iteration)
             messages.append(ChatMessage(role="assistant", content=reply or "(空)"))
             messages.append(ChatMessage(role="user", content=_EMPTY_REPLY_RETRY))
             continue
@@ -778,6 +801,7 @@ def run_agent_turn(
             clean = _strip_tool_blocks(reply)
             # Truncated/malformed ```tool JSON strips to ""; retry instead of blank.
             if not clean and _looks_like_tool_attempt(reply) and iteration < 2:
+                logger.info("agent tool-format retry iteration=%s", iteration)
                 messages.append(ChatMessage(role="assistant", content=reply))
                 messages.append(ChatMessage(role="user", content=_TOOL_FORMAT_RETRY))
                 continue
@@ -785,11 +809,13 @@ def run_agent_turn(
                 _looks_incomplete_reply(clean, had_tools=bool(tool_calls))
                 and iteration < 2
             ):
+                logger.info("agent incomplete-reply retry iteration=%s", iteration)
                 messages.append(ChatMessage(role="assistant", content=reply))
                 messages.append(ChatMessage(role="user", content=_INCOMPLETE_REPLY_RETRY))
                 continue
             needs_retry = _needs_file_tool_retry(user_message, clean, tool_calls)
             if needs_retry and iteration < 2:
+                logger.info("agent file-tool retry iteration=%s", iteration)
                 messages.append(ChatMessage(role="assistant", content=reply))
                 append_mode = bool(re.search(r"追加", user_message, re.IGNORECASE))
                 mode_hint = (
@@ -821,11 +847,18 @@ def run_agent_turn(
                     f"{clean.rstrip()}…\n\n"
                     "（回答被截断。请再试一次，或提高 Ollama 的 num_predict / 换用更强模型。）"
                 )
+            logger.info(
+                "agent turn end provider=%s model=%s tools=%s",
+                router.last_provider or "-",
+                router.last_model or "-",
+                len(tool_calls),
+            )
             return AgentResult(response=clean, tool_calls=tool_calls)
 
         tool_name = call.get("name", "")
         tool_label = _TOOL_LABELS.get(tool_name, tool_name or "工具")
         arguments = call.get("arguments", {}) or {}
+        logger.info("agent tool call name=%s iteration=%s", tool_name or "-", iteration)
         query = arguments.get("query", "") or arguments.get("command", "")
         if query:
             preview = query if len(query) <= 40 else f"{query[:40]}…"
@@ -851,6 +884,12 @@ def run_agent_turn(
             f"{final.rstrip()}…\n\n"
             "（回答被截断。请再试一次，或提高 Ollama 的 num_predict / 换用更强模型。）"
         )
+    logger.info(
+        "agent turn end provider=%s model=%s tools=%s (max iterations)",
+        router.last_provider or "-",
+        router.last_model or "-",
+        len(tool_calls),
+    )
     return AgentResult(response=final, tool_calls=tool_calls)
 
 

@@ -172,7 +172,11 @@ def rerank_memory_hits(
         if ranked is not None:
             return ranked[:limit]
         if backend == "cross_encoder":
-            logger.debug("cross_encoder requested but unavailable; keeping prior order")
+            logger.warning(
+                "LA_MEMORY_RERANK_BACKEND=cross_encoder but CrossEncoder unavailable "
+                "(install: pip install 'la-localagent[rerank]' / sentence-transformers); "
+                "keeping prior order — Hit@1 will look much worse"
+            )
             return hits[:limit]
         # auto: do not fall through to embed/llm (too slow/noisy for default chat path)
         return hits[:limit]

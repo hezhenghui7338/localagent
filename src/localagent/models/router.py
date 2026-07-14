@@ -212,6 +212,13 @@ class ModelRouter:
             self.last_model = model
             if auto_mode or timeout == server.timeout:
                 self._ollama_slow = False
+            logger.info(
+                "chat provider=%s model=%s command=%s auto=%s",
+                provider,
+                model,
+                usage_command,
+                auto_mode,
+            )
             self._record_usage(
                 provider,
                 model,
@@ -227,6 +234,13 @@ class ModelRouter:
             text = self._chat_cursor(server, messages, temperature=temperature)
             self.last_provider = provider
             self.last_model = server.model
+            logger.info(
+                "chat provider=%s model=%s command=%s auto=%s",
+                provider,
+                server.model,
+                usage_command,
+                auto_mode,
+            )
             log_usage(
                 provider,
                 server.model,
@@ -249,6 +263,13 @@ class ModelRouter:
         )
         self.last_provider = provider
         self.last_model = server.model
+        logger.info(
+            "chat provider=%s model=%s command=%s auto=%s",
+            provider,
+            server.model,
+            usage_command,
+            auto_mode,
+        )
         self._record_usage(
             provider,
             server.model,

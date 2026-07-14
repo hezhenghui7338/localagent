@@ -123,6 +123,13 @@ class MemoryStore:
                 **extra,
             },
         )
+        from localagent.memory.memory_class import stamp_memory_class
+
+        metadata = stamp_memory_class(
+            metadata,
+            text=searchable,
+            memory_type=str(metadata.get("type") or enriched.memory_type),
+        )
 
         resolved_id = fact_id or str(uuid.uuid4())
         if fact_id:

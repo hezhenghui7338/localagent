@@ -30,8 +30,15 @@ class ChatREPL:
         default_core_profile()
 
     def run(self) -> int:
+        import logging
+
         install_repl_readline_completer()
         print_welcome(provider=self.provider, session_id=self.session_id)
+        logging.getLogger(__name__).info(
+            "chat session start session=%s provider=%s",
+            self.session_id,
+            self.provider,
+        )
         router = get_model_router()
         status = router.provider_status()
         if self.provider == "minimax" and not status.get("minimax"):

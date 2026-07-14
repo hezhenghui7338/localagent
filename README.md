@@ -182,6 +182,7 @@ LocalAgent’s core path — **chat, memory write, memory recall, document retri
 | Workspace `LA workspace` | No | Reads local Git / files / TODOs |
 | Agent commands `run_shell` | No | Local 4B model calls shell and summarizes |
 | Audit `LA audit` | No | Reads local usage.jsonl + events.jsonl |
+| Diagnostic logs `LA logs` | No | Reads local `data/logs/localagent.log` |
 | Web search | No (ddgs by default) | Works out of the box; optional Tavily / self-hosted SearXNG |
 
 ```bash
@@ -303,7 +304,7 @@ python -m benchmarks.locomo.measure_recall \
   --work-dir benchmarks/data/runs/locomo-mem0
 ```
 
-Per-category table and reproduction steps: [benchmarks/locomo/README.md](benchmarks/locomo/README.md).
+Per-category table and reproduction steps: [benchmarks/locomo/README.md](benchmarks/locomo/README.md). Historical runs: [benchmarks/locomo/HISTORY.md](benchmarks/locomo/HISTORY.md).
 
 ### Shell completion
 
@@ -339,6 +340,7 @@ See [`.env.example`](.env.example). Common variables:
 | `LA_SHELL_TIMEOUT` / `LA_SHELL_MAX_OUTPUT` | Agent `run_shell` timeout (s) and output cap (default 30s / 12000 chars) |
 | `LA_TOOL_APPROVAL` | Approve before tools run: `always` (default) / `dangerous` / `off` |
 | `LA_DATA_DIR` | Custom data dir (for test isolation) |
+| `LA_LOG_LEVEL` | Diagnostic log level: `INFO` (default) / `DEBUG` / `WARNING` … |
 
 ## Commands
 
@@ -358,10 +360,13 @@ commands:
   tasks          Manage background index tasks
   workspace      Workspace / git / todo snapshot
   audit          Audit summary and report
+  logs           View diagnostic logs (troubleshooting)
   config         Manage model YAML config
 
 Use LA <command> -h for full help on a command.
 ```
+
+`LA logs` shows runtime diagnostics (`data/logs/localagent.log`) — provider fallbacks, memory recall hits, agent retries. This is separate from `LA audit` (usage/cost/guardrails). Use `LA --debug <command>` or `LA_LOG_LEVEL=DEBUG` to mirror DEBUG lines to stderr while developing.
 
 In `LA` / `LA chat` REPL, prefix any CLI command with `/` (Claude Code style; `:` is a legacy alias). Examples: `/help`, `/add "…"`, `/search …`, `/provider ollama`, `/model qwen3.5:4b`, `/deepsearch <topic>`, `/q`. Outer `LA <command>` and in-session `/<command>` are equivalent (`/chat` is rejected inside the session).
 
@@ -380,6 +385,9 @@ data/
 ├── sessions.db                # LangGraph sessions
 ├── chroma/                    # Vector index
 ├── bm25.pkl                   # BM25 index
+├── task_logs/                 # Background ingest task logs
+├── logs/
+│   └── localagent.log         # Diagnostic log (LA logs / --debug)
 └── audit/
     ├── usage.jsonl            # Model/search usage
     └── events.jsonl           # Tool decisions / guardrails
@@ -438,10 +446,34 @@ Agent loop
 | Layer | Store | Role | Written by |
 | --- | --- | --- | --- |
 | **Hot** | `core_profile.json` | Always-on identity / pinned facts | Profile pin / explicit core updates |
-| **Warm** | Mem0 (default) or JSON `memory_store` | Long-term conversational memory | ChatGPT import · LA chat extract · `memory add` / `retain_memory` |
+| **Warm** | Mem0 (default) or JSON `memory_store` (+ optional SQLite relation graph) | Long-term conversational memory | ChatGPT import · LA chat extract · `memory add` / `retain_memory` |
 | **Cold** | Chroma + BM25 (+ RRF) | Personal document source text | `LA rag add` / `rag ingest` only — **no** memory extraction |
 
 Warm and Cold stay separate on purpose: chats become durable facts about *you*; documents stay searchable source material.
+
+#### Optional Warm relation graph (off by default)
+
+Code path is kept; **default is off** (`LA_MEMORY_GRAPH=0`). Day-to-day quality comes from hybrid recall + cross-encoder (`pip install 'la-localagent[rerank]'`), not the graph.
+
+| | |
+| --- | --- |
+| What | Local SQLite `data/memory_graph.db` — entity/slot edges + dialog `NEXT_TURN`; 1–2 hop pool expansion |
+| Why optional | Fair LoCoMo runs show only small Hit@5/8 gains while Hit@1 stays flat; adds a second CE pass (latency) |
+| When to enable | Experiments on multi-hop / relationship questions after `LA memory graph rebuild` |
+| CLI | `LA memory graph stats` · `LA memory graph rebuild` |
+
+Enable only when needed:
+
+```bash
+# .env
+LA_MEMORY_GRAPH=1
+LA_MEMORY_GRAPH_BOOST=0
+LA_MEMORY_GRAPH_PROTECT_TOP=1
+LA_MEMORY_GRAPH_FORCE_IN_TOP=3
+LA_MEMORY_RERANK_BACKEND=cross_encoder   # required for fair ranking
+
+LA memory graph rebuild
+```
 
 ### Warm memory pipeline (Retain → Recall → Reflect → Consolidate)
 
@@ -456,15 +488,16 @@ extract + enrich                  decompose (multi-hop splits)
  event time / value filter)          ▼
         │                         hybrid recall
         ▼                         (vector + lexical + temporal
-Consolidation                     + entity soft boost + rerank)
-(ADD / UPDATE / DELETE / NOOP)       │
-        │                              ▼
-        ▼                         Reflect (multi-hop search + LLM)
-Mem0 / JSON store                 → answer or deeper follow-ups
+Consolidation                     + entity soft boost + rerank;
+(ADD / UPDATE / DELETE / NOOP)     optional graph expand if enabled)
+        │                              │
+        ▼                              ▼
+Mem0 / JSON store                 Reflect (multi-hop search + LLM)
+                                  → answer or deeper follow-ups
 ```
 
 - **Retain**: extract durable facts from conversations; enrich metadata; optional consolidation against near-duplicates
-- **Recall**: hybrid retrieval with temporal intent (`range` / `as_of_now` / `when_event` / …), scoped soft boosts, optional cross-encoder / embed / LLM rerank
+- **Recall**: hybrid retrieval with temporal intent (`range` / `as_of_now` / `when_event` / …), scoped soft boosts, optional cross-encoder / embed / LLM rerank; graph expand is opt-in
 - **Reflect**: multi-hop loop — recall → decide follow-up queries → synthesize (`LA memory reflect` / agent `reflect_memory`)
 - **Hot injection**: core profile is merged into answers so identity survives model switches
 

@@ -31,6 +31,7 @@ def configure_data_dir(data_dir: Path | str) -> Path:
         "KB_DIR": path / "kb",
         "SYNC_INDEX_FILE": path / "sync_index.json",
         "MEMORY_STORE_FILE": path / "memory_store.json",
+        "MEMORY_GRAPH_FILE": path / "memory_graph.db",
         "KNOWLEDGE_STORE_FILE": path / "knowledge_store.json",
         "CORE_PROFILE_FILE": path / "core_profile.json",
         "CONVERSATIONS_DIR": path / "conversations",
@@ -62,8 +63,11 @@ def configure_data_dir(data_dir: Path | str) -> Path:
     ):
         Path(dirname).mkdir(parents=True, exist_ok=True)
 
+    from localagent.memory.graph import reset_memory_graph_singleton
+
     reset_sync_index_singleton()
     reset_memory_store_singleton()
+    reset_memory_graph_singleton()
     reset_knowledge_store_singleton()
     reset_knowledge_indexer()
     reset_hybrid_retriever()

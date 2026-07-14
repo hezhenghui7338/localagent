@@ -2,6 +2,8 @@
 
 用 ACL 2024 基准 [LoCoMo](https://github.com/snap-research/locomo)（*Evaluating Very Long-Term Conversational Memory of LLM Agents*）衡量 LocalAgent Warm 层记忆（JSON / Mem0）的长期召回与问答能力。
 
+历次跑分与配置差异见 **[HISTORY.md](HISTORY.md)**（只追加、不覆盖）。本页只维护**当前主结果**。
+
 ## Benchmark 结果（当前）
 
 > **主指标 = 证据召回 hit@k**：问题对应的 gold dialog（`evidence`）是否出现在 `recall` 的 top-k 中。  
@@ -29,18 +31,12 @@
 **读数要点**
 
 - **Temporal** 最好（Hit@5 ≈ 0.78）：时间意图 + session 时间戳，时间类问题更容易命中。
-- **Multi-hop** Hit@1 提升明显（0.125 → 0.344）：cross-encoder 把池内证据更稳地排到第一。
+- **Multi-hop** Hit@1 相对早期 hybrid（0.125）提升到 0.344：cross-encoder 把池内证据更稳地排到第一。
 - **Single-hop** 中等偏上（Hit@5 ≈ 0.57）：混合检索 + rerank 对字面重叠题更稳。
 - **Open-domain** Hit@5 已到 0.64，但题量少、仍偏弱：跨轮综合与语义改写仍是改进重点。
 
-复现本表（需已入库的 `locomo-mem0` work-dir；默认 hybrid + `LA_MEMORY_RERANK_BACKEND=cross_encoder`）：
-
-```bash
-python -m benchmarks.locomo.measure_recall \
-  --skip-ingest --sample-ids conv-26 \
-  --work-dir benchmarks/data/runs/locomo-mem0 \
-  --out benchmarks/data/runs/locomo-mem0/recall_hitk_rerank.json
-```
+**关系图默认关闭**（产品默认走 hybrid + CE）。开图为可选实验：`LA_MEMORY_GRAPH=1` + `PROTECT_TOP=1` + `FORCE_IN_TOP=3` + `BOOST=0`，且必须装 CE（`pip install 'la-localagent[rerank]'`）。  
+相对无图 CE：Hit@1 持平（0.433），Hit@5/8 仅小幅上升 — 见 [HISTORY.md § graph protect](HISTORY.md#2026-07-14--graph-protect--force-inject--cross-encoder推荐开图配置)。说明见主文档 README「Optional Warm relation graph」。
 
 ### 辅证：端到端 QA F1
 
@@ -50,7 +46,28 @@ python -m benchmarks.locomo.measure_recall \
 | Overall F1 | **0.339** |
 | 产物 | [`results_recall_generate_cursor.json`](../data/runs/locomo-mem0/results_recall_generate_cursor.json) |
 
-> QA F1 受答题模型影响，仅作辅证；正式对比长期记忆能力请以 hit@k 为主。该 F1 跑于 hybrid 复测前的同一 Mem0 库，未在 hybrid 上重跑全量答题。
+> QA F1 受答题模型影响，仅作辅证；正式对比长期记忆能力请以 hit@k 为主。
+
+## 如何追加一次新评测（勿覆盖旧 JSON）
+
+```bash
+# 默认写出带时间戳的文件：recall_hitk_YYYYMMDD_HHMMSS.json
+python -m benchmarks.locomo.measure_recall \
+  --skip-ingest --sample-ids conv-26 \
+  --work-dir benchmarks/data/runs/locomo-mem0 \
+  --label rerank
+
+# 或显式指定路径（请用新文件名，不要复用旧产物名）
+python -m benchmarks.locomo.measure_recall \
+  --skip-ingest --sample-ids conv-26 \
+  --work-dir benchmarks/data/runs/locomo-mem0 \
+  --out benchmarks/data/runs/locomo-mem0/recall_hitk_20260714_graph_v2.json
+```
+
+跑完后：
+
+1. 在 [HISTORY.md](HISTORY.md) **顶部**追加一节（配置 + 分表 + 产物路径）。
+2. 若该次成为新的「主结果」，再更新本页「Benchmark 结果（当前）」表。
 
 ## 评测协议
 
@@ -69,14 +86,6 @@ python -m benchmarks.locomo.measure_recall \
 | 4 | single-hop | token F1 |
 | 5 | adversarial | 正确弃答得 1，否则 0（召回评测默认跳过） |
 
-## 主指标：记忆召回 hit@k
-
-```bash
-python -m benchmarks.locomo.measure_recall \
-  --skip-ingest --sample-ids conv-26 \
-  --work-dir benchmarks/data/runs/locomo-mem0
-```
-
 ## 快速开始
 
 ```bash
@@ -93,7 +102,8 @@ python -m benchmarks.locomo.run run \
   --work-dir benchmarks/data/runs/locomo-mem0
 python -m benchmarks.locomo.measure_recall \
   --skip-ingest --sample-ids conv-26 \
-  --work-dir benchmarks/data/runs/locomo-mem0
+  --work-dir benchmarks/data/runs/locomo-mem0 \
+  --label smoke
 
 # 3) 可选：端到端 QA（依赖 LLM provider）
 python -m benchmarks.locomo.run run \

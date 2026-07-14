@@ -26,6 +26,7 @@ dependencies = [
     "ddgs>=9.0.0",
     "python-dotenv>=1.0.0",
     "pyyaml>=6.0.0",
+    "loguru>=0.7.0",
     "cursor-sdk>=0.1.9",
     "langgraph>=0.2.0",
     "langgraph-checkpoint-sqlite>=2.0.0",
