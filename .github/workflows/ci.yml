@@ -32,6 +32,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Install zsh
+        run: sudo apt-get update && sudo apt-get install -y zsh
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true

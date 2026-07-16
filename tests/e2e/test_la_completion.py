@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -15,6 +16,7 @@ pytestmark = pytest.mark.e2e
 
 ZSH_SCRIPT = PROJECT_ROOT / "scripts" / "la-completion.zsh"
 VENV_BIN = PROJECT_ROOT / ".venv" / "bin"
+HAS_ZSH = shutil.which("zsh") is not None
 
 
 def _zsh_interactive(script: str, *, timeout: int = 15) -> subprocess.CompletedProcess[str]:
@@ -53,6 +55,7 @@ def test_e2e_complete_chat_provider_flag():
     assert "--provider" in result.stdout
 
 
+@pytest.mark.skipif(not HAS_ZSH, reason="zsh not installed")
 @pytest.mark.skipif(not ZSH_SCRIPT.is_file(), reason="zsh completion script missing")
 @pytest.mark.skipif(not (VENV_BIN / "LA").exists(), reason="LA not installed in .venv")
 def test_e2e_zsh_compdef_registers_la():
@@ -63,6 +66,7 @@ def test_e2e_zsh_compdef_registers_la():
     assert "compdef_ok" in result.stdout
 
 
+@pytest.mark.skipif(not HAS_ZSH, reason="zsh not installed")
 @pytest.mark.skipif(not ZSH_SCRIPT.is_file(), reason="zsh completion script missing")
 @pytest.mark.skipif(not (VENV_BIN / "LA").exists(), reason="LA not installed in .venv")
 def test_e2e_zsh_la_memory_tab_candidates():
