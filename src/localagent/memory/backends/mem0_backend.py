@@ -125,7 +125,18 @@ def resolve_mem0_embedder_settings() -> dict[str, Any]:
     router = get_model_router()
 
     if config.MEM0_EMBEDDER_PROVIDER or config.MEM0_EMBEDDER_MODEL:
-        provider = config.MEM0_EMBEDDER_PROVIDER or "openai"
+        provider = (config.MEM0_EMBEDDER_PROVIDER or "openai").lower()
+        # Offline / e2e: deterministic bag-of-tokens vectors (no network).
+        if provider in {"hash", "local_hash", "deterministic"}:
+            dims = config.MEM0_EMBEDDER_DIMS or 64
+            return {
+                "provider": "hash",
+                "model": config.MEM0_EMBEDDER_MODEL or "hash",
+                "base_url": "hash://local",
+                "api_key": "not-needed",
+                "embedding_dims": dims,
+                "source_provider": "hash",
+            }
         model = config.MEM0_EMBEDDER_MODEL or "text-embedding-3-small"
         base_url = config.MEM0_EMBEDDER_BASE_URL or None
         api_key = config.MEM0_EMBEDDER_API_KEY or None
@@ -394,7 +405,13 @@ def _save_registry_fact(
 ) -> MemoryFact | None:
     store = get_memory_store()
     meta = dict(metadata)
+    caller_entities = meta.get("entities")
+    caller_slots = meta.get("slots")
     meta.update(enriched.to_metadata())
+    if caller_entities:
+        meta["entities"] = caller_entities
+    if caller_slots:
+        meta["slots"] = caller_slots
     meta["backend"] = "mem0"
     meta["mem0_id"] = fact_id
     meta["external_id"] = fact_id
@@ -526,6 +543,10 @@ class Mem0Backend:
         )
         retain_meta = dict(meta)
         retain_meta.update(enriched.to_metadata())
+        # Keep caller-provided graph fields (LoCoMo entities/slots) over heuristic NER.
+        for key in ("entities", "slots"):
+            if meta.get(key):
+                retain_meta[key] = meta[key]
         from localagent.memory.memory_class import stamp_memory_class
 
         retain_meta = stamp_memory_class(
@@ -700,10 +721,13 @@ class Mem0Backend:
         # Rank the seed pool alone first (matches no-graph baseline top-1).
         seed_polished = finalize_hybrid_rank(query, seed_hits, max_results=candidate_n)
         seed_ranked = rerank_memory_hits(query, seed_polished, max_results=max_results)
-        if not config.MEMORY_GRAPH:
+        if not config.MEMORY_GRAPH and not getattr(config, "NEO4J", False):
             return seed_ranked
 
-        from localagent.memory.graph import expand_hits_by_graph, protect_seed_prefix
+        from localagent.memory.graph import expand_hits_by_graph, graph_expand_enabled, protect_seed_prefix
+
+        if not graph_expand_enabled():
+            return seed_ranked
 
         expanded = expand_hits_by_graph(query, seed_hits, facts=all_facts)
         polished = finalize_hybrid_rank(query, expanded, max_results=candidate_n)

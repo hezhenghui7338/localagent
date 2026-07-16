@@ -218,6 +218,15 @@ class MemoryStore:
     def all_facts(self) -> list[MemoryFact]:
         return list(self._facts)
 
+    def update_metadata(self, fact_id: str, updates: dict[str, Any]) -> MemoryFact | None:
+        """Merge metadata updates onto an existing fact and persist."""
+        fact = self.get(fact_id)
+        if fact is None:
+            return None
+        fact.metadata = {**(fact.metadata or {}), **updates}
+        self.save()
+        return fact
+
 
 def _summarize_section(text: str, max_len: int = 400) -> str:
     """Extract a compact fact from section text for memory retain."""

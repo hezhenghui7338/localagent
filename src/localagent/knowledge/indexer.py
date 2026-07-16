@@ -2,11 +2,31 @@
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Iterator
+from typing import Any
+
 from localagent import config
 from localagent.ingest.chunker import TextChunk
 from localagent.knowledge.bm25_store import BM25Store
 from localagent.knowledge.chroma_store import ChromaStore
 from localagent.knowledge.hybrid import reset_hybrid_retriever
+
+logger = logging.getLogger(__name__)
+
+
+def _sanitize_chroma_meta(meta: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, value in meta.items():
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            out[key] = value
+        elif isinstance(value, (int, float)):
+            out[key] = value
+        else:
+            out[key] = str(value)
+    return out
 
 
 class KnowledgeIndexer:
@@ -21,16 +41,26 @@ class KnowledgeIndexer:
         ids = [c.chunk_id for c in chunks]
         texts = [c.text for c in chunks]
         metas = [
-            {
-                "source_file": filename,
-                "heading": c.heading,
-                "index": c.index,
-                **c.metadata,
-            }
+            _sanitize_chroma_meta(
+                {
+                    "source_file": filename,
+                    "heading": c.heading,
+                    "index": c.index,
+                    **c.metadata,
+                }
+            )
             for c in chunks
         ]
-        self.chroma.upsert(chunk_ids=ids, texts=texts, metadatas=metas)
+        # Sparse index first so keyword recall still works if dense embed hangs/fails.
         self.bm25.merge_build(ids, texts, metas)
+        try:
+            self.chroma.upsert(chunk_ids=ids, texts=texts, metadatas=metas)
+        except Exception as exc:
+            logger.warning(
+                "Chroma upsert failed for %s (%s); BM25 index kept",
+                filename,
+                exc,
+            )
         reset_hybrid_retriever()
         return len(chunks)
 
@@ -40,6 +70,16 @@ class KnowledgeIndexer:
         self.bm25.remove_by_source_file(filename)
         reset_hybrid_retriever()
         return before - self.bm25.count()
+
+    def remove_by_origin(self, origin: str) -> int:
+        before = self.bm25.count()
+        self.chroma.delete_by_origin(origin)
+        self.bm25.remove_by_origin(origin)
+        reset_hybrid_retriever()
+        return before - self.bm25.count()
+
+    def iter_metas(self) -> Iterator[dict[str, Any]]:
+        yield from self.bm25.metas
 
     def clear(self) -> None:
         self.chroma.reset()

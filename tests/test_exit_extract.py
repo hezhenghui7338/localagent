@@ -25,6 +25,9 @@ def test_extract_session_memories_from_persisted_conversation(isolated_data):
 
     assert len(ids) >= 1
     assert get_memory_store().count() >= before + 1
+    saved = [f for f in get_memory_store().all_facts() if f.id in ids or f.id[:8] in {i[:8] for i in ids}]
+    assert saved
+    assert any(str((f.metadata or {}).get("recorded_at") or "").strip() for f in saved)
 
 
 def test_extract_session_memories_skips_commands(isolated_data):

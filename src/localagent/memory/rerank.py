@@ -19,7 +19,10 @@ def _load_cross_encoder(model_name: str):
     try:
         from sentence_transformers import CrossEncoder
 
-        return CrossEncoder(model_name)
+        try:
+            return CrossEncoder(model_name, local_files_only=True)
+        except Exception:
+            return CrossEncoder(model_name)
     except Exception as exc:
         logger.info("Cross-encoder unavailable (%s): %s", model_name, exc)
         return None
@@ -147,6 +150,9 @@ def _llm_rerank(query: str, hits: list[dict[str, Any]]) -> list[dict[str, Any]] 
     return ranked
 
 
+_CE_USER_WARNED = False
+
+
 def rerank_memory_hits(
     query: str,
     hits: list[dict[str, Any]],
@@ -171,14 +177,26 @@ def rerank_memory_hits(
         ranked = _cross_encoder_rerank(query, candidates)
         if ranked is not None:
             return ranked[:limit]
-        if backend == "cross_encoder":
-            logger.warning(
-                "LA_MEMORY_RERANK_BACKEND=cross_encoder but CrossEncoder unavailable "
-                "(install: pip install 'la-localagent[rerank]' / sentence-transformers); "
-                "keeping prior order — Hit@1 will look much worse"
-            )
-            return hits[:limit]
-        # auto: do not fall through to embed/llm (too slow/noisy for default chat path)
+        msg = (
+            "CrossEncoder 精排不可用，已保持原序（Hit@1 可能明显偏低）。"
+            "安装: pip install 'la-localagent[rerank]'"
+        )
+        logger.warning(
+            "LA_MEMORY_RERANK_BACKEND=%s but CrossEncoder unavailable; "
+            "keeping prior order — Hit@1 will look much worse. %s",
+            backend,
+            "pip install 'la-localagent[rerank]'",
+        )
+        global _CE_USER_WARNED
+        if not _CE_USER_WARNED:
+            _CE_USER_WARNED = True
+            try:
+                import sys
+
+                if sys.stderr.isatty():
+                    print(f"[memory] {msg}", file=sys.stderr)
+            except Exception:
+                pass
         return hits[:limit]
 
     if backend == "embed":

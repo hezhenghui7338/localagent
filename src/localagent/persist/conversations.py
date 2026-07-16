@@ -309,6 +309,81 @@ def list_sessions() -> list[str]:
     return sorted(ids)
 
 
+def session_update_time(session_id: str) -> float:
+    """Return conversation update_time (unix); fall back to file mtime or 0."""
+    raw = _load_raw(session_id)
+    if raw is None:
+        raw = _migrate_jsonl_if_needed(session_id)
+    if isinstance(raw, dict):
+        ut = raw.get("update_time")
+        if isinstance(ut, (int, float)):
+            return float(ut)
+    path = conversation_file_for_fingerprint(session_id)
+    if path is not None and path.is_file():
+        try:
+            return path.stat().st_mtime
+        except OSError:
+            pass
+    return 0.0
+
+
+def list_sessions_by_update_time(*, descending: bool = True) -> list[str]:
+    """Session ids ordered by update_time (newest first by default)."""
+    ids = list_sessions()
+    ids.sort(key=session_update_time, reverse=descending)
+    return ids
+
+
+def previous_session_id(current_session_id: str | None) -> str | None:
+    """Most recently updated session other than ``current_session_id``."""
+    for sid in list_sessions_by_update_time(descending=True):
+        if current_session_id and sid == current_session_id:
+            continue
+        return sid
+    return None
+
+
+def message_create_time(message: dict[str, Any]) -> float | None:
+    """Unix timestamp for a flat message dict, if available."""
+    ct = message.get("create_time")
+    if isinstance(ct, (int, float)):
+        return float(ct)
+    ts = message.get("ts")
+    if isinstance(ts, str) and ts.strip():
+        return _iso_to_unix(ts)
+    return None
+
+
+def stm_window_start_unix(now: float | None = None) -> float:
+    """Start of the STM rolling window (unix seconds)."""
+    hours = float(getattr(config, "STM_WINDOW_HOURS", 24) or 24)
+    if hours <= 0:
+        hours = 24.0
+    base = now if now is not None else _now_unix()
+    return base - hours * 3600.0
+
+
+def list_sessions_in_stm_window(
+    *,
+    now: float | None = None,
+    descending: bool = True,
+) -> list[str]:
+    """Sessions with update_time or any message inside the STM window."""
+    since = stm_window_start_unix(now)
+    matched: list[str] = []
+    for sid in list_sessions():
+        if session_update_time(sid) >= since:
+            matched.append(sid)
+            continue
+        for msg in load_conversation(sid):
+            ct = message_create_time(msg)
+            if ct is not None and ct >= since:
+                matched.append(sid)
+                break
+    matched.sort(key=session_update_time, reverse=descending)
+    return matched
+
+
 def format_conversation_text(messages: list[dict[str, Any]] | ChatGPTConversation) -> str:
     """Format for memory extraction (ChatGPT-compatible layout)."""
     if isinstance(messages, ChatGPTConversation):

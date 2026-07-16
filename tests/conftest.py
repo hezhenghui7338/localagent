@@ -41,6 +41,7 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
         "CONVERSATIONS_DIR": data_dir / "conversations",
         "CHATGPT_DATA_DIR": data_dir / "chatGPTdata",
         "CHATGPT_IMPORT_INDEX_FILE": data_dir / "chatgpt_import_index.json",
+        "CHAT_INGEST_INDEX_FILE": data_dir / "chat_ingest_index.json",
         "SESSIONS_DB": data_dir / "sessions.db",
         "CHROMA_DIR": data_dir / "chroma",
         "BM25_PATH": data_dir / "bm25.pkl",
@@ -57,11 +58,18 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
 
     monkeypatch.setattr("localagent.config.MEMORY_BACKEND", "json")
     monkeypatch.setattr("localagent.config.TOOL_APPROVAL", "off")
+    # Tests expect immediate Warm retain unless they exercise the pending gate.
+    monkeypatch.setattr("localagent.config.MEMORY_APPROVAL_AUTO", True)
+    monkeypatch.setattr("localagent.config.MEMORY_APPROVAL_REQUIRED", False)
+    monkeypatch.setattr(
+        "localagent.config.MEMORY_PENDING_QUEUE_FILE",
+        data_dir / "pending_queue.json",
+    )
     # Unit tests use regex pin by default; LLM pin tests enable + mock explicitly.
     monkeypatch.setattr("localagent.config.PROFILE_PIN_LLM", False)
     monkeypatch.setattr("localagent.config.PROFILE_PIN_REGEX_FALLBACK", True)
-    # Keep ingest tests deterministic without requiring live LLM extraction.
-    monkeypatch.setattr("localagent.config.INGEST_USE_LLM", False)
+    # Router is mocked below; keep LLM ingest path enabled so extract_memories mocks apply.
+    monkeypatch.setattr("localagent.config.INGEST_USE_LLM", True)
     monkeypatch.setattr("localagent.config.INGEST_WHOLE_SECTION_WARM", True)
     monkeypatch.setattr("localagent.ingest.sync_index.SYNC_INDEX_FILE", paths["SYNC_INDEX_FILE"])
     monkeypatch.setattr("localagent.memory.store.MEMORY_STORE_FILE", paths["MEMORY_STORE_FILE"])
@@ -82,6 +90,24 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
     reset_memory_backend()
     reset_task_store()
     reset_chatgpt_import_index()
+
+    # Avoid live Ollama/embedder hangs in unit tests; BM25 still indexes Cold chunks.
+    monkeypatch.setattr(
+        "localagent.knowledge.chroma_store.ChromaStore.upsert",
+        lambda self, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "localagent.knowledge.chroma_store.ChromaStore.query",
+        lambda self, query, top_k: [],
+    )
+    monkeypatch.setattr(
+        "localagent.knowledge.chroma_store.ChromaStore.delete_by_source_file",
+        lambda self, source_file: None,
+    )
+    monkeypatch.setattr(
+        "localagent.knowledge.chroma_store.ChromaStore.delete_by_origin",
+        lambda self, origin: None,
+    )
 
     mock_router = MagicMock()
     mock_router.extract_facts.return_value = []

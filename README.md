@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Your AI. Your Data. Your Mac.</strong>
+  <strong>Your AI. Your Data. Your Machine.</strong>
 </p>
 
 <p align="center">
@@ -12,48 +12,72 @@
 
 # <img src="assets/logo-icon.png" alt="LA" width="36" valign="middle"> LocalAgent
 
-> **Fully local · Knows you long-term — machine · profile · internet, actually usable.**
+> **Fully local · Truly easy · Knows you long-term — a personal AI hub on your machine; data and compute stay on-device by default.**
 
-LocalAgent (`LA`) is not another chat client. It is a **personal AI that runs on your machine**. Core narrative:
+LocalAgent (`LA`) is not another chat client. It is a **personal AI hub on your machine**. Requirements live in [docs/PRD.md](docs/PRD.md); a ~30-minute runnable story is in [examples/product-tour.md](examples/product-tour.md).
 
-1. **Fully local** — default Ollama `qwen3.5:4b`; chat, memory, retrieval, and execution all run on-device; identity and data never leave your machine  
-2. **Long-term, multi-layer memory** — Hot / Warm / Cold layers; an assistant that actually knows you across sessions  
-3. **Where memory comes from** — **ChatGPT history** and **LA live chats** feed Warm memory; personal documents go to the **RAG knowledge base** (no memory extraction), powered by **Mem0**  
-4. **Actually usable** — web search + local Shell, connecting **your machine · your profile · the internet**  
-5. **Reliable execution** — write-file hallucination detection; approve before `run_shell` / `write_file`
+### Product design
 
-```bash
-# First-time install
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
-# Already installed: uninstall + reinstall is most reliable. If uv says the venv exists, set UV_VENV_CLEAR=1.
-pipx uninstall la-localagent
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
-# Or: UV_VENV_CLEAR=1 pipx install --force "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
-la --version                    # expect: la-localagent 0.3.0
-la                              # asks before installing Ollama (you can skip)
-```
+1. **Fully local** — zero-bill / zero-account default path: chat, memory, retrieval, and execution run on-device; identity and data stay local; compute defaults to local, with optional cloud/network extras — a pure-local path always remains  
+2. **Truly easy** — one-command install, ready immediately; daily path is just `la` / `la setup` / `la chat` — less is more  
+3. **Long-term, multi-layer memory** — Hot / Warm / Cold + Mem0: remember you, and decide what to keep, what to drop, and when to step in  
+4. **External tools** — local Shell, write_file, workspace awareness; approve before side effects; block dangerous commands; audit cost and behavior  
+5. **RAG** — local documents into a knowledge base; deep recall during chat
 
 | Typical local chat | LocalAgent |
 | --- | --- |
-| Cloud or half-local; data boundary unclear | **Fully local** — identity and memory stay on device |
-| Forgets after the session | **Long-term multi-layer memory** + Mem0 |
-| Memory only from this chat | **ChatGPT history / LA chats** as cold-start; docs via RAG |
-| Can't search the web or run commands | **Web search** + **local shell** — machine · profile · internet |
-| Claims it “wrote a file” without changing anything | **Hallucination detection** + approve-before-write |
+| Cloud bills and account friction | **Zero-cost local default** (Ollama); bring your own API if you want |
+| Too many commands after install | **Three-command main path**: `la` · `la setup` · `la chat` |
+| Forgets — or memorizes everything blindly | **Multi-layer memory** that knows you and prioritizes |
+| Can't act or search | **Local tools** + optional web search |
+| Docs and chats are separate silos | **RAG** + conversation archives for deep recall |
 
 Optional OpenRouter / Cursor / Tavily for extras — **identity and data stay on your machine**.
+
+**Not in this release:** workspace file-watcher incremental indexing, and external task sources.
+
+### User stories
+
+| I want to… | Where |
+| --- | --- |
+| Install once and chat | [User install](#user-install-recommended) |
+| Hack on the source / run tests | [Developer install](#developer-install) |
+| Run with my own API keys | [Configuration](#configuration) · `la config` |
+| Be profiled and remembered across sessions | [Mem0 long-term memory](#mem0-long-term-memory--remembers-you-end-to-end) · [Product tour §3](examples/product-tour.md) |
+| Search the web | [Feature highlights](#feature-highlights) · [Product tour §6](examples/product-tour.md) |
+| Use local Shell / write files | [Local Shell](#local-execution--shell-that-actually-acts) · [Product tour §7](examples/product-tour.md) |
+| Import ChatGPT history so LA knows me faster | `LA memory ingest chatgpt` · [Product tour §4](examples/product-tour.md) |
+| Have dangerous commands blocked | [Agent tools & safety](#agent-tools--safety) · [Product tour §7](examples/product-tour.md) |
+| See token / cost spend | `LA audit` · [Product tour §8](examples/product-tour.md) |
+| Put local docs in a KB and recall deeply | `LA rag add` · [Product tour §5](examples/product-tour.md) |
+
+### What we believe
+
+- AI is revolutionary — embrace it; hearing about it a thousand times beats nothing next to downloading LA and debugging it yourself  
+- “Read it a hundred times and meaning appears” does not happen by itself — you need practice  
+- LA only picks **low-hanging, mature** fruit; no uncontrolled, expensive, hard-to-own stacks  
+- LA does **one thing**: a personal AI hub on your machine. Data stays local; the full loop runs offline. Networking and new tech are welcome — barriers are not  
+- Remove obstacles to using AI; the author is still learning too — let's grow together  
+
+```bash
+# First-time install (pin a tag — reproducible and easier to debug)
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
+# Already installed: uninstall + reinstall is most reliable. If uv says the venv exists, set UV_VENV_CLEAR=1.
+la --version                    # expect: la-localagent 0.4.0
+la                              # asks before installing Ollama (you can skip)
+```
 
 ## Features
 
 - **Fully local**: default `qwen3.5:4b` — chat, memory write, retrieval, workspace awareness, and Shell execution all run on-device; optional cloud models, data still owned locally
-- **Long-term multi-layer memory**: Hot (core profile) / Warm (long-term) / Cold (document source) with JIT recall — an assistant that knows you
-- **Mem0 + conversation memory**: ChatGPT history and LA chats → Warm; docs via `LA rag` into Cold knowledge
-- **Machine · profile · internet**: workspace awareness + `run_shell` + web search (ddgs by default; optional Tavily / SearXNG) — three layers that make it actually usable
-- **Approve before execute**: `run_shell` / `write_file` require your confirmation by default; dangerous commands get an extra warning
-- **Write-file hallucination detection**: if the model claims a write without calling `write_file`, it retries or errors clearly
-- **Document knowledge base**: symlink personal files in; Chroma + BM25 hybrid search
+- **Truly easy**: main path `la` / `la setup` / `la chat`; advanced power via subcommands without blocking daily use
+- **Long-term multi-layer memory**: Hot (core profile) / Warm (facts) / Cold (docs + conversation archives) with JIT recall
+- **Mem0 + conversation memory**: ChatGPT history and LA chats → Warm facts **and** Cold searchable archives; docs via `LA rag` into Cold
+- **External tools + safety**: workspace + `run_shell` + write_file; approve before execute; hard-block dangerous commands; write-file hallucination detection
+- **Web search**: ddgs by default (no key); optional Tavily / SearXNG
+- **Document knowledge base (RAG)**: symlink personal files (incl. images textified via local Ollama VL); Chroma + BM25 hybrid search
 - **Multi-model chat**: unified Ollama / OpenRouter / Cursor entry; `auto` mode falls back by priority
-- **Auditable**: tokens/cost, agent behavior (shell/write/web), guardrail blocks, sensitive-file scan — exportable Markdown reports
+- **Auditable**: tokens/cost, agent behavior, guardrail blocks, sensitive-file scan — exportable Markdown reports
 
 ## Requirements
 
@@ -63,47 +87,41 @@ Optional OpenRouter / Cursor / Tavily for extras — **identity and data stay on
 
 ## Quick start
 
-### One-command install (recommended)
+### User install (recommended)
 
-Current release: **v0.3.0** (same as `src/localagent/__init__.py` / `la --version`).
+Current release: **v0.4.0** (same as `src/localagent/__init__.py` / `la --version`).
+
+**Faster setup**: always pin a tag (e.g. `@v0.4.0`) instead of tracking the default branch tip; if upgrading, `pipx uninstall` then reinstall is more reliable than wrestling with `--force`.
 
 ```bash
 # Install a pinned tag (recommended, reproducible)
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
 
 # Or track the default branch tip (no version pin)
 pipx install "git+https://github.com/hezhenghui7338/localagent.git"
 
 # Or with pip into the current environment
-pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
-
-# mem0ai ships with the core install — no extra memory extra required
+pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
 ```
 
 Check version and upgrade:
 
 ```bash
-la --version                  # or la -V → la-localagent 0.3.0
+la --version                  # or la -V → la-localagent 0.4.0
 
 # Move to a new tag (change @vX.Y.Z)
 pipx uninstall la-localagent
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
 # If --force fails with “virtual environment already exists”:
-# UV_VENV_CLEAR=1 pipx install --force "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
+# UV_VENV_CLEAR=1 pipx install --force "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
 
 # When tracking the default branch, pull the latest tip
 pipx upgrade la-localagent
-# or
-pipx install --force "git+https://github.com/hezhenghui7338/localagent.git"
-
-# Same idea with pip
-pip install --upgrade --force-reinstall \
-  "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
 ```
 
 Available versions: GitHub [Releases](https://github.com/hezhenghui7338/localagent/releases) / [Tags](https://github.com/hezhenghui7338/localagent/tags).
 
-Then from **any directory**:
+Then from **any directory** (three-command main path):
 
 ```bash
 la                 # same as: la chat; prompts if Ollama is missing
@@ -112,32 +130,31 @@ la setup -y        # install + pull qwen3.5:4b without prompting
 la chat --provider ollama
 ```
 
-First run creates `~/.localagent/` (config, `.env`, data). Set API keys:
+First run creates `~/.localagent/` (config, `.env`, data). Pure local needs no keys; to use your own APIs:
 
 ```bash
-# Minimal flags
-la config --provider ollama --base_url "http://localhost:11434" --model qwen3.5:4b --TAVILY_API_KEY "tvly-..."
+# Minimal flags (local-only)
+la config --provider ollama --base_url "http://localhost:11434" --model qwen3.5:4b
 
-# Or copy the example JSON, edit, then load
+# Or copy the example JSON, edit, then load (OPENROUTER_API_KEY / CURSOR_API_KEY / TAVILY_API_KEY …)
 la config-example > my.json
 la config my.json
-
-# Inspect current config
 la config list
 ```
 
-> After the package is published to PyPI: `pipx install la-localagent==0.3.0` / `pipx upgrade la-localagent`
+> After the package is published to PyPI: `pipx install la-localagent==0.4.0` / `pipx upgrade la-localagent`
 
-### Develop from source
+### Developer install
 
 ```bash
 git clone git@github.com:hezhenghui7338/localagent.git
 cd LocalAgent
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
+# or: uv sync --extra dev
 ```
 
-In a source checkout, config/data stay in the repo (`.env`, `data/`). After a normal install they live under `~/.localagent/`.
+In a source checkout, config/data stay in the repo (`.env`, `data/`). After a normal install they live under `~/.localagent/`. See [Development](#development) for tests.
 
 ### Uninstall
 
@@ -175,7 +192,7 @@ LocalAgent’s core path — **chat, memory write, memory recall, document retri
 
 | Capability | Needs cloud API? | Notes |
 | --- | --- | --- |
-| Chat `LA chat` | No | Default `qwen3.5:4b`, runs on a regular Mac |
+| Chat `LA chat` | No | Default `qwen3.5:4b`, runs on your machine |
 | Single memory `LA memory add` | No | Local model extracts title/tags |
 | Doc import `LA rag add` | No | Cold knowledge index only; no memory extraction |
 | Memory/knowledge search `LA memory search` | No | BM25 + Chroma locally |
@@ -186,7 +203,7 @@ LocalAgent’s core path — **chat, memory write, memory recall, document retri
 | Web search | No (ddgs by default) | Works out of the box; optional Tavily / self-hosted SearXNG |
 
 ```bash
-# Fully local: regular Mac + Ollama, no paid API
+# Fully local: your machine + Ollama, no paid API
 cp examples/env.local-only.example .env
 ollama pull qwen3.5:4b
 LA chat --provider ollama
@@ -230,7 +247,7 @@ In the current project (`/Users/hzh/code/LocalAgent`), main language files (Pyth
 
 Use cases: LOC counts, listing directories, Git logs, running tests/builds. Commands run in the workspace (`LA_WORKSPACE` or cwd); default timeout 30s. **Every shell/file write asks for approval by default**; `rm` / `sudo` / force-git and similar get an extra warning. Set `LA_TOOL_APPROVAL=dangerous` to only gate risky ops, or `off` to disable (not recommended).
 
-The repo includes a **product tour** (eight strengths, full I/O, ~30 min) and a shorter walkthrough:
+The repo includes a **product tour** (user-story driven, full I/O, ~30 min) and a shorter walkthrough:
 
 | # | Scenario | Command |
 | --- | --- | --- |
@@ -244,12 +261,15 @@ The repo includes a **product tour** (eight strengths, full I/O, ~30 min) and a 
 | 8 | Audit report (Ollama $0) | `LA audit --since 7d` |
 
 ```bash
-# Full product tour (recommended): 8 strengths · complete input/output
+# Full product tour (recommended): user stories · complete input/output
 open examples/product-tour.md
-# Shorter walkthrough
+# Shorter walkthrough (English)
 open examples/walkthrough.md
+# Chinese walkthrough
+open examples/walkthrough.zh-CN.md
 ```
 
+Full narrative and acceptance criteria: [docs/PRD.md](docs/PRD.md).
 ### Mem0 long-term memory — remembers you end-to-end
 
 Memory inputs include **ChatGPT history and LA live chats**. Personal documents use `LA rag` for Cold knowledge. The Warm layer is powered by the [Mem0](https://github.com/mem0ai/mem0) engine (`mem0ai` is a core dependency): **Retain → Recall → Reflect (search + LLM)**. The repo includes an “architecture decision evolution” narrative demo covering write, semantic recall, time awareness, tag browsing, and cross-memory reasoning:
@@ -284,24 +304,37 @@ Demo highlights:
 
 `examples/` contents:
 
-- [examples/product-tour.md](examples/product-tour.md) — **Product tour** (8 strengths · full I/O · ~30 min) · [中文](examples/product-tour.zh-CN.md)
-- [examples/walkthrough.md](examples/walkthrough.md) — **step-by-step tutorial** (local qwen3.5:4b first)
+- [examples/product-tour.md](examples/product-tour.md) — **Product tour** (user stories · full I/O · ~30 min) · [中文](examples/product-tour.zh-CN.md)
+- [examples/walkthrough.md](examples/walkthrough.md) — **step-by-step tutorial** (local qwen3.5:4b first) · [中文](examples/walkthrough.zh-CN.md)
 - [examples/mem0-demo.md](examples/mem0-demo.md) / [mem0-demo.sh](examples/mem0-demo.sh) — Mem0 deep dive (Retain / Recall / Reflect)
 - [examples/sample-project-notes.md](examples/sample-project-notes.md) — sample doc for `rag add`
 - [examples/audit-report-sample.md](examples/audit-report-sample.md) — sample audit report (Ollama $0)
 - [examples/env.local-only.example](examples/env.local-only.example) — fully local `.env` template
+- [benchmarks/stm/README.md](benchmarks/stm/README.md) — **STM short-term memory benchmark** (CI-friendly)
 - [benchmarks/locomo/README.md](benchmarks/locomo/README.md) — **LoCoMo long-term memory benchmark**
+
+### Benchmark: short-term memory (STM)
+
+Daily / same-session recall (history + today's conversations). Fast, no LLM required:
+
+```bash
+python -m benchmarks.stm
+```
+
+Details: [benchmarks/stm/README.md](benchmarks/stm/README.md).
 
 ### Benchmark: LoCoMo long-term conversational memory
 
-Evaluate Warm-layer cross-session memory with ACL 2024 [LoCoMo](https://github.com/snap-research/locomo).  
-**Current recall scores (2026-07-14, `conv-26`, Mem0 hybrid + cross-encoder rerank, n=150):** Hit@1 **0.433** / Hit@5 **0.627** / Hit@8 **0.673**.
+Evaluate cross-session LTM with ACL 2024 [LoCoMo](https://github.com/snap-research/locomo).
+**Primary metric = Joint Warm∪Cold evidence hit@k** (RRF fusion). Warm-only / Cold-only are diagnostics.
+**Current Warm-only baseline (2026-07-14, `conv-26`, Mem0 hybrid + CE, n=150):** Hit@1 **0.433** / Hit@5 **0.627** / Hit@8 **0.673** — Joint baseline pending re-run (see HISTORY).
 
 ```bash
 python -m benchmarks.locomo.run download
 python -m benchmarks.locomo.measure_recall \
   --skip-ingest --sample-ids conv-26 \
-  --work-dir benchmarks/data/runs/locomo-mem0
+  --work-dir benchmarks/data/runs/locomo-mem0 \
+  --diagnostics --label joint
 ```
 
 Per-category table and reproduction steps: [benchmarks/locomo/README.md](benchmarks/locomo/README.md). Historical runs: [benchmarks/locomo/HISTORY.md](benchmarks/locomo/HISTORY.md).
@@ -344,6 +377,8 @@ See [`.env.example`](.env.example). Common variables:
 
 ## Commands
 
+Daily use is chat-first. Outer commands and in-session `/command` share the same paths (e.g. `/memory add` ≡ `LA memory add`). Session-only shortcuts: `/add` → `memory add`, `/search` → `memory search` (`/chat` is rejected inside the session).
+
 ```bash
 $ LA -h
 ```
@@ -351,24 +386,27 @@ $ LA -h
 ```text
 usage: LA [-h] <command> ...
 
-LocalAgent — local AI personal assistant
+LocalAgent — personal AI hub on your machine
 
-commands:
-  chat           Interactive chat
-  memory         add|ingest|query|search|…  Conversation Warm memory
-  rag            add|ingest|search|…        Document Cold knowledge (no memory extract)
-  tasks          Manage background index tasks
-  workspace      Workspace / git / todo snapshot
-  audit          Audit summary and report
-  logs           View diagnostic logs (troubleshooting)
-  config         Manage model YAML config
+Main path:
+  la / la chat     Chat
+  la setup [-y]    Install/pull local Ollama model
+  la config …      Local-only or bring-your-own API
 
-Use LA <command> -h for full help on a command.
+Everyday:
+  LA memory add|search|pending|approve|reject|forget
+  LA memory ingest chatgpt <path>   # Import ChatGPT export
+  LA rag add|search                 # Documents → Cold KB
+  LA audit                          # Spend / safety report
+
+Maintenance (advanced):
+  memory ingest chat|all · query · reflect · status · reindex · reset · graph
+  rag ingest|rebuild|reset · tasks · workspace · logs · websearch
 ```
 
 `LA logs` shows runtime diagnostics (`data/logs/localagent.log`) — provider fallbacks, memory recall hits, agent retries. This is separate from `LA audit` (usage/cost/guardrails). Use `LA --debug <command>` or `LA_LOG_LEVEL=DEBUG` to mirror DEBUG lines to stderr while developing.
 
-In `LA` / `LA chat` REPL, prefix any CLI command with `/` (Claude Code style; `:` is a legacy alias). Examples: `/help`, `/add "…"`, `/search …`, `/provider ollama`, `/model qwen3.5:4b`, `/deepsearch <topic>`, `/q`. Outer `LA <command>` and in-session `/<command>` are equivalent (`/chat` is rejected inside the session).
+Interactive input uses [prompt_toolkit](https://github.com/prompt-toolkit/python-prompt-toolkit) (Unicode-safe editing / Tab completion; avoids macOS libedit CJK bugs).
 
 ## Data directory
 
@@ -395,7 +433,7 @@ data/
 
 ## Architecture
 
-Narrative arc: **fully local** → **long-term multi-layer memory (Mem0)** → **conversation memory + document RAG** → **machine · profile · internet**.
+Narrative arc: **fully local (zero-cost by default)** → **truly easy** → **smart multi-layer memory** → **external tools** → **RAG**.
 
 ### System overview
 
@@ -437,6 +475,7 @@ Agent loop
     ├─ model call via ModelRouter
     ├─ tool calls (search_memory, search_knowledge, web_search,
     │              workspace_context, retain_memory, write_file, run_shell, …)
+    ├─ compress observations (heuristic; LA_OBSERVE_BUDGET_CHARS) before feedback
     ├─ approval gate for write_file / run_shell   ← LA_TOOL_APPROVAL
     └─ synthesize answer (+ source links for web)
 ```
@@ -446,10 +485,12 @@ Agent loop
 | Layer | Store | Role | Written by |
 | --- | --- | --- | --- |
 | **Hot** | `core_profile.json` | Always-on identity / pinned facts | Profile pin / explicit core updates |
-| **Warm** | Mem0 (default) or JSON `memory_store` (+ optional SQLite relation graph) | Long-term conversational memory | ChatGPT import · LA chat extract · `memory add` / `retain_memory` |
-| **Cold** | Chroma + BM25 (+ RRF) | Personal document source text | `LA rag add` / `rag ingest` only — **no** memory extraction |
+| **Warm** | Mem0 (default) or JSON `memory_store` (+ optional SQLite relation graph) | Long-term conversational **facts** | ChatGPT / LA chat extract · `memory add` / `retain_memory` |
+| **Cold** | Chroma + BM25 (+ RRF) | Searchable source material (docs, images via VL caption, conversation archives) | `LA rag add` / `rag ingest` (kb/) · `memory ingest chat|chatgpt` / session exit (summary + body chunks) |
 
-Warm and Cold stay separate on purpose: chats become durable facts about *you*; documents stay searchable source material.
+Warm holds durable facts about *you*. Cold holds **retrievable originals**: personal documents plus LA/ChatGPT transcripts (with a summary chunk for large chats). Warm extract failure no longer discards the transcript — Cold still indexes it. Use `LA rag search` / `search_knowledge` for archive text; `LA memory search` for facts.
+
+`LA rag rebuild` re-indexes `kb/` **and** conversation archives into Cold. `LA memory reset chat|chatgpt` also removes the matching Cold conversation chunks.
 
 #### Optional Warm relation graph (off by default)
 
@@ -475,6 +516,31 @@ LA_MEMORY_RERANK_BACKEND=cross_encoder   # required for fair ranking
 LA memory graph rebuild
 ```
 
+#### Optional Neo4j precise queries (off by default)
+
+For **counts, aggregations, and formal multi-hop**, LA can replace text retrieval with a structured Cypher query that returns a **computed** result (not a sampled answer). This is independent of the SQLite hop-expand graph above.
+
+| | |
+| --- | --- |
+| What | Neo4j (or `LA_NEO4J_URI=memory://` in-process) + Cypher templates |
+| When | 「how many / list all / mentioned together」 style questions |
+| Agent tool | `query_memory_graph` (do not estimate numbers via `search_memory`) |
+| CLI | `LA memory graph neo4j stats\|rebuild` · `LA memory graph query "…"` |
+| Install | `pip install 'la-localagent[neo4j]'` |
+
+```bash
+# .env
+LA_NEO4J=1
+LA_NEO4J_URI=bolt://localhost:7687   # or memory:// for local experiments
+# LA_NEO4J_USER=neo4j
+# LA_NEO4J_PASSWORD=password
+
+LA memory graph neo4j rebuild
+LA memory graph query "How many times was Caroline mentioned?"
+```
+
+Open-ended semantic questions still use Warm hybrid recall / Cold RAG.
+
 ### Warm memory pipeline (Retain → Recall → Reflect → Consolidate)
 
 ```
@@ -482,22 +548,19 @@ Write path                          Read path
 ─────────                           ─────────
 ChatGPT export / LA chats           query
         │                              │
-        ▼                              ▼
-extract + enrich                  decompose (multi-hop splits)
-(title / tags / entities /           │
- event time / value filter)          ▼
-        │                         hybrid recall
-        ▼                         (vector + lexical + temporal
-Consolidation                     + entity soft boost + rerank;
-(ADD / UPDATE / DELETE / NOOP)     optional graph expand if enabled)
-        │                              │
-        ▼                              ▼
-Mem0 / JSON store                 Reflect (multi-hop search + LLM)
-                                  → answer or deeper follow-ups
+        ├─► Cold: summary + body       ├─► Warm hybrid recall (facts)
+        │   chunks (always)            └─► Cold hybrid (docs + archives)
+        ▼
+extract + enrich (Warm facts)
+(title / tags / entities /
+ event time / value filter)
+        │
+        ▼
+Consolidation → Mem0 / JSON
 ```
 
-- **Retain**: extract durable facts from conversations; enrich metadata; optional consolidation against near-duplicates
-- **Recall**: hybrid retrieval with temporal intent (`range` / `as_of_now` / `when_event` / …), scoped soft boosts, optional cross-encoder / embed / LLM rerank; graph expand is opt-in
+- **Retain**: extract durable facts from conversations; enrich metadata; optional consolidation against near-duplicates. Transcripts are also indexed into Cold so missing facts still leave searchable archives.
+- **Recall**: Warm hybrid retrieval for facts; Cold hybrid (`rag search` / `search_knowledge`) for kb docs and conversation body/summary chunks with provenance metadata
 - **Reflect**: multi-hop loop — recall → decide follow-up queries → synthesize (`LA memory reflect` / agent `reflect_memory`)
 - **Hot injection**: core profile is merged into answers so identity survives model switches
 
@@ -506,7 +569,7 @@ Mem0 / JSON store                 Reflect (multi-hop search + LLM)
 | Surface | Tools | Notes |
 | --- | --- | --- |
 | Profile / memory | `search_memory`, `query_memories`, `retain_memory`, `reflect_memory` | JIT Warm + Hot |
-| Documents | `search_knowledge` | Cold hybrid; falls back to raw `kb/` text on miss |
+| Documents / archives | `search_knowledge` | Cold hybrid (kb + chat + ChatGPT); falls back to raw `kb/` text on miss |
 | Internet | `web_search`, `/deepsearch` | Default **ddgs**; optional Tavily / SearXNG |
 | Machine | `workspace_context`, `run_shell`, `write_file` | Workspace-scoped; shell/write need approval |
 
@@ -521,7 +584,7 @@ Side-effect tools are gated (`always` / `dangerous` / `off`). Extreme commands (
 ```
 src/localagent/
 ├── cli.py / chat_repl.py / session_commands.py   # CLI + REPL + /commands
-├── agent/           # LangGraph runtime
+├── agent/           # Agent runtime + Observe compression
 ├── models/          # ModelRouter (local → cloud fallback)
 ├── memory/          # Hot profile · Warm backends · recall/reflect/consolidate
 ├── knowledge/       # Cold Chroma + BM25 + RRF
@@ -536,11 +599,13 @@ Design docs (not end-user tutorials): [docs/PRD.md](docs/PRD.md) and [docs/TDD.m
 
 ## Development
 
+GitHub Actions CI runs `uv run pytest` (unit + integration, including STM; excludes `e2e` / `e2e_live`) and a separate **e2e-offline** job (`pytest tests/e2e -m e2e`). Live Ollama tests stay local-only.
+
 ```bash
-# Unit + integration tests (temp dirs; no Ollama required)
+# Unit + integration tests (temp dirs; no Ollama required; includes STM)
 pytest
 
-# End-to-end: subprocess LA commands
+# End-to-end: subprocess LA commands (also run in CI e2e-offline job)
 pytest tests/e2e -m e2e
 
 # Live Ollama chat (needs a pulled chat model locally)

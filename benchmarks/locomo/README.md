@@ -1,14 +1,19 @@
 # LoCoMo × LocalAgent 长期记忆评测
 
-用 ACL 2024 基准 [LoCoMo](https://github.com/snap-research/locomo)（*Evaluating Very Long-Term Conversational Memory of LLM Agents*）衡量 LocalAgent Warm 层记忆（JSON / Mem0）的长期召回与问答能力。
+用 ACL 2024 基准 [LoCoMo](https://github.com/snap-research/locomo)（*Evaluating Very Long-Term Conversational Memory of LLM Agents*）衡量 LocalAgent **长期记忆（LTM）**：Warm 事实 + Cold 对话细节的联合召回与问答能力。
+
+短期记忆（会话内 / 当日）见并列套件 **[../stm/README.md](../stm/README.md)**。
 
 历次跑分与配置差异见 **[HISTORY.md](HISTORY.md)**（只追加、不覆盖）。本页只维护**当前主结果**。
 
 ## Benchmark 结果（当前）
 
-> **主指标 = 证据召回 hit@k**：问题对应的 gold dialog（`evidence`）是否出现在 `recall` 的 top-k 中。  
-> 这直接反映 LA 的长期记忆检索能力；端到端 QA F1 受答题模型影响，仅作辅证。
+> **主指标 = Joint Warm∪Cold 证据 hit@k**：`joint_recall`（双向 RRF）后，gold dialog（`evidence`）是否出现在 top-k。  
+> Warm-only / Cold-only 为诊断轨（`--diagnostics` 或 `--mode warm_only|cold_only`）。  
+> 端到端 QA F1 受答题模型影响，仅作辅证。
 
+> **当前表状态（2026-07-16）**：评测**协议**已切换为 Joint RRF；下表数字仍是 2026-07-14 **Warm-only / 旧 backfill** 历史对照，**不是** Joint 正式主基线。  
+> Joint 正式分表待在带 cross-encoder 的环境对 `locomo-mem0/conv-26` 重跑后替换（见 HISTORY）。实验轨可参考 `locomo-mem0-layered`（Hit@1=0.360 / Hit@8=0.727），**不升格为主表**。
 | 项目 | 值 |
 |------|-----|
 | 日期 | 2026-07-14 |
@@ -73,10 +78,11 @@ python -m benchmarks.locomo.measure_recall \
 
 对每段超长多 session 对话：
 
-1. **Ingest**：把每条 dialog turn 写成记忆（`retain`），隔离到独立 `LA_DATA_DIR`
-2. **Recall**：用问题查询记忆（`recall`，top-k）
-3. **Answer**（可选）：用召回上下文让 LLM 生成短答案（对齐 LoCoMo RAG）
+1. **Ingest**：把每条 dialog turn 写入 Warm（`retain`）并索引 Cold；隔离到独立 `LA_DATA_DIR`。可选 `--incremental-sessions` 按 session 分批 retain。
+2. **Recall（主）**：`joint_recall` = Warm pool + Cold `conversation_only` → RRF 融合 → `dia_id` 去重 → top-k
+3. **Answer**（可选）：用联合召回上下文让 LLM 生成短答案（对齐 LoCoMo RAG）
 4. **Score**：召回用证据 hit@k；问答按官方 `task_eval/evaluation.py` 算 F1
+5. **Hot 辅轨**：`python -m benchmarks.locomo.measure_profile`（画像字段 EM，不进 hit@k）
 
 | category | 名称 | QA 计分 |
 |----------|------|------|
@@ -103,7 +109,7 @@ python -m benchmarks.locomo.run run \
 python -m benchmarks.locomo.measure_recall \
   --skip-ingest --sample-ids conv-26 \
   --work-dir benchmarks/data/runs/locomo-mem0 \
-  --label smoke
+  --diagnostics --label joint_smoke
 
 # 3) 可选：端到端 QA（依赖 LLM provider）
 python -m benchmarks.locomo.run run \

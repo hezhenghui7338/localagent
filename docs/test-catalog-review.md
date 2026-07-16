@@ -1,21 +1,40 @@
 # LocalAgent 测试用例审查目录
 
-> 更新于 **2026-07-14** · 共 **549** 条 · 有 docstring **5.1%** · E2E **103** 条
+> 更新于 **2026-07-16** · E2E 离线约 **110+** 条（含 journeys/pending/websearch/safety/graph）· 默认 `pytest` 含 STM · CI 另跑 `e2e-offline`
 >
 > 建议审查顺序：Config/Models → Memory → Agent/Tools → Ingest/Tasks → CLI/UX → Audit → E2E → Benchmark
+>
+> **验收真源**：[`docs/PRD.md`](PRD.md) §6 + [`examples/product-tour.zh-CN.md`](../examples/product-tour.zh-CN.md) 验收清单（本目录为用例索引，非完整验收矩阵）。
 
 ## 分类概览
 
 | 分类 | 数量 |
 |------|------|
 | [Config/Models](#configmodels) | 69 |
-| [Memory](#memory) | 130 |
-| [Agent/Tools](#agenttools) | 111 |
-| [Ingest/Tasks](#ingesttasks) | 14 |
+| [Memory](#memory) | 130+（含 pending/observe/cold/neo4j/temporal 等新单测） |
+| [Agent/Tools](#agenttools) | 111+ |
+| [Ingest/Tasks](#ingesttasks) | 14+ |
 | [CLI/UX](#cliux) | 93 |
 | [Audit](#audit) | 20 |
-| [E2E](#e2e) | 103 |
-| [Benchmark](#benchmark) | 9 |
+| [E2E](#e2e) | ~110 offline + 7 live |
+| [Benchmark](#benchmark) | 9 + STM (`test_stm_benchmark.py`，进日常 CI) |
+
+## PRD §6 ↔ E2E 映射
+
+| 验收项 | 主要自动化 | 状态 |
+|--------|------------|------|
+| §6.1 安装/配置/chat 外壳 | `test_la_ops` version/config/setup/chat help | ✅ offline |
+| §6.2 跨会话 Warm | `test_la_journeys.test_journey_cross_session_warm_recall`；live chat 召回 | ✅ / live |
+| §6.2 pending 确认门 | `test_la_pending` | ✅ |
+| §6.2 Cold 先于 Warm | `test_la_journeys` chatgpt/chat cold；收紧的 ingest 断言 | ✅ |
+| §6.2 rag 不写 Warm | `test_journey_rag_does_not_create_warm` | ✅ |
+| §6.2 reset 清 Cold 对话块 | `test_journey_reset_chatgpt_clears_cold_archive` | ✅ |
+| §6.3 websearch / 不入库 | `test_la_websearch` | ✅ |
+| §6.3 危险硬拦 / 审批 / 幻觉 | `test_la_safety` | ✅ |
+| §6.3 无意图预检 | `test_e2e_safety_no_intent_precheck_before_tools` | ✅ |
+| §6.4 audit HTML | `test_journey_audit_report_html` | ✅ |
+| 可选 Neo4j `memory://` | `test_la_graph` | ✅ P2 |
+| Observe / STM | unit + `test_stm_benchmark`（非 CLI e2e） | ✅ CI |
 
 ## E2E 核心命令覆盖（目标 ≥3）
 
@@ -23,45 +42,54 @@
 
 | 命令 | 关联用例数 | 状态 |
 |------|-----------|------|
-| `memory add` | 16 | ✅ |
-| `memory search` | 14 | ✅ |
+| `memory add` | 16+ | ✅ |
+| `memory search` | 14+ | ✅ |
 | `memory query` | 5 | ✅ |
+| `memory pending/approve/reject` | 5 | ✅ |
 | `memory reflect` | 5 | ✅ |
 | `memory forget` | 3 | ✅ |
-| `memory reset` | 6 | ✅ |
-| `memory ingest` | 10 | ✅ |
+| `memory reset` | 6+ | ✅ |
+| `memory ingest` | 10+ | ✅ |
 | `memory consolidate` | 4 | ✅ |
 | `memory status` | 9 | ✅ |
 | `memory reindex` | 4 | ✅ |
-| `rag add` | 27 | ✅ |
-| `rag search` | 16 | ✅ |
+| `memory graph` (neo4j memory://) | 1 | ✅ |
+| `rag add` | 27+ | ✅ |
+| `rag search` | 16+ | ✅ |
 | `rag ingest` | 9 | ✅ |
 | `rag status` | 9 | ✅ |
 | `rag reset` | 7 | ✅ |
 | `rag rebuild` | 6 | ✅ |
+| `websearch` | 3 | ✅ |
 | `tasks` | 6 | ✅ |
 | `workspace` | 4 | ✅ |
-| `audit` | 4 | ✅ |
+| `audit` | 5+ | ✅ |
 | `config` | 5 | ✅ |
 | `setup` | 3 | ✅ |
-| `chat` | 9 | ✅ |
+| `chat` | 9+ | ✅ |
 
 **E2E 文件分工**
 
 | 文件 | 职责 |
 |------|------|
 | `e2e/test_la_commands.py` | 冒烟：help / add / rag / search / forget / reset / tasks |
-| `e2e/test_la_memory.py` | Warm：status / query / reflect / consolidate / ingest / reindex |
+| `e2e/test_la_memory.py` | Warm：status / query / reflect smoke / consolidate / ingest / reindex |
 | `e2e/test_la_rag.py` | Cold：add / ingest / search / status / reset / rebuild |
 | `e2e/test_la_ops.py` | chat / config / workspace / audit / setup / tasks 运维 |
 | `e2e/test_la_completion.py` | Tab 补全 |
-| `e2e/test_la_live.py` | 需 Ollama 的实机语义检索 / reflect / chat |
+| `e2e/test_la_journeys.py` | PRD 旅程：跨会话 / Cold-first / rag 边界 / reset Cold / audit HTML |
+| `e2e/test_la_pending.py` | pending / approve / reject 确认门 |
+| `e2e/test_la_websearch.py` | websearch CLI + 不入库 |
+| `e2e/test_la_safety.py` | 护栏 / 审批 / 幻觉 / 无意图预检 |
+| `e2e/test_la_graph.py` | Neo4j `memory://` 冒烟 |
+| `e2e/test_la_live.py` | 需 Ollama 的实机语义检索 / reflect / chat / 跨 session |
 
 运行：
 
 ```bash
-pytest tests/e2e/ -m e2e          # 默认离线 e2e
-pytest tests/e2e/ -m e2e_live     # 实机 Ollama
+pytest                            # CI 主 job：排除 e2e / e2e_live；含 STM
+pytest tests/e2e/ -m e2e          # CI e2e-offline job
+pytest tests/e2e/ -m e2e_live     # 实机 Ollama（本机）
 ```
 
 ## Config/Models
@@ -77,6 +105,7 @@ pytest tests/e2e/ -m e2e_live     # 实机 Ollama
 - **位置**：`test_core.py:15-17` · 意图由函数名推断
 
 #### 2. `test_should_retain_as_memory`
+
 
 - **意图**：覆盖: should retain as memory
 - **输入**：无外部夹具
@@ -2001,7 +2030,7 @@ pytest tests/e2e/ -m e2e_live     # 实机 Ollama
 - **意图**：覆盖: prefetch weather injects home location
 - **输入**：夹具: isolated_data
 - **方法**：mock + temp data
-- **校验**：`ctx; '其他城市' in ctx`
+- **校验**：`ctx; '其他城市' not in ctx`
 - **位置**：`test_agent_runtime.py:413-421` · 意图由函数名推断
 
 #### 36. `test_prefetch_weather_without_home_still_searches`
@@ -2009,7 +2038,7 @@ pytest tests/e2e/ -m e2e_live     # 实机 Ollama
 - **意图**：覆盖: prefetch weather without home still searches
 - **输入**：夹具: isolated_data
 - **方法**：mock + temp data
-- **校验**：`ctx; '其他城市' in ctx`
+- **校验**：`ctx; '其他城市' not in ctx`
 - **位置**：`test_agent_runtime.py:424-429` · 意图由函数名推断
 
 #### 37. `test_prefetch_session_context_loads_today_messages`
@@ -3422,7 +3451,7 @@ pytest tests/e2e/ -m e2e_live     # 实机 Ollama
 - **意图**：覆盖: render welcome shows project basics
 - **输入**：无外部夹具
 - **方法**：unit
-- **校验**：`f'LocalAgent v{__version__}' in out; 'LOCAL' in out and 'AGENT' in out; 'Your AI. Your Data. Your Mac.' in out; 'qwen3.5:4b' in out; '联网 · ddgs（免费）' in out`
+- **校验**：`f'LocalAgent v{__version__}' in out; 'LOCAL' in out and 'AGENT' in out; 'Your AI. Your Data. Your Machine.' in out; 'qwen3.5:4b' in out; '联网 · ddgs（免费）' in out`
 - **位置**：`test_ui.py:68-96` · 意图由函数名推断
 
 #### 8. `test_format_web_search_hint_tavily_when_key_set`

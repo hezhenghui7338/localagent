@@ -16,16 +16,28 @@ def test_emit(capsys):
 
 
 def test_read_repl_line_passes_prompt_to_input(monkeypatch):
-    """Prompt must go through input() so backspace cannot erase ``>``."""
+    """Non-TTY fallback: prompt must go through input() so backspace cannot erase ``>``."""
     seen: list[str] = []
 
     def fake_input(prompt: str = "") -> str:
         seen.append(prompt)
         return "hello"
 
+    monkeypatch.setattr("localagent.ui.console.use_prompt_toolkit_repl", lambda: False)
     monkeypatch.setattr("builtins.input", fake_input)
     assert read_repl_line("> ") == "hello"
     assert seen == ["> "]
+
+
+def test_read_repl_line_uses_prompt_toolkit_on_tty(monkeypatch):
+    monkeypatch.setattr("localagent.ui.console.use_prompt_toolkit_repl", lambda: True)
+
+    def fake_read(prompt: str = "> ") -> str:
+        assert prompt == "> "
+        return "中文"
+
+    monkeypatch.setattr("localagent.ui.prompt_session.read_line_prompt_toolkit", fake_read)
+    assert read_repl_line("> ") == "中文"
 
 
 def test_spinner_non_tty(capsys):
@@ -79,7 +91,7 @@ def test_render_welcome_shows_project_basics():
     out = render_welcome(info, width=88, color=False)
     assert f"LocalAgent v{__version__}" in out
     assert "LOCAL" in out and "AGENT" in out
-    assert "Your AI. Your Data. Your Mac." in out
+    assert "Your AI. Your Data. Your Machine." in out
     assert "qwen3.5:4b" in out
     assert "联网 · ddgs（免费）" in out
     assert "~/code/LocalAgent" in out
@@ -145,7 +157,7 @@ def test_chat_repl_prints_welcome(capsys, monkeypatch, tmp_path: Path):
     from localagent.chat_repl import ChatREPL
 
     inputs = iter([":q"])
-    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("localagent.chat_repl.read_repl_line", lambda _prompt="> ": next(inputs))
     monkeypatch.setattr(
         "localagent.chat_repl.schedule_session_memory_extract",
         lambda _session_id: None,

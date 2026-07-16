@@ -11,6 +11,7 @@ from localagent.agent.runtime import (
     _make_answer_stream_gate,
     _needs_file_tool_retry,
     _parse_tool_call,
+    _prefetch_archive_context,
     _prefetch_personal_context,
     _prefetch_session_context,
     _prefetch_web_context,
@@ -268,6 +269,57 @@ def test_run_agent_turn_returns_final_answer_after_tool(isolated_data):
     assert isolated_data["router"].chat.call_count == 2
 
 
+def test_run_agent_turn_compacts_prior_tool_observations(isolated_data):
+    """Second tool round should leave older observations compressed in messages."""
+    first = '```tool\n{"name": "search_memory", "arguments": {"query": "a"}}\n```'
+    second = '```tool\n{"name": "web_search", "arguments": {"query": "b"}}\n```'
+    replies = [first, second, "根据工具结果，这是完整综合答案。"]
+    captured: list[list] = []
+    state = {"n": 0}
+
+    def chat_side_effect(messages, **_kwargs):
+        captured.append(list(messages))
+        reply = replies[state["n"]]
+        state["n"] += 1
+        return reply
+
+    isolated_data["router"].chat.side_effect = chat_side_effect
+
+    with (
+        patch(
+            "localagent.tools.search_memory",
+            return_value="### 1. 旧记忆\n" + ("很长" * 40),
+        ),
+        patch(
+            "localagent.tools.web_search",
+            return_value="摘要: ok\n- [匹配] t: c\n  链接: https://ex.com",
+        ),
+        patch("localagent.agent.runtime._prefetch_web_context", return_value=""),
+        patch("localagent.agent.runtime._prefetch_personal_context", return_value=""),
+    ):
+        result = run_agent_turn("随便问", provider="ollama")
+
+    assert result.response == "根据工具结果，这是完整综合答案。"
+    assert len(result.tool_calls) == 2
+    assert len(captured) == 3
+    third_msgs = captured[2]
+    compacted = [
+        m.content
+        for m in third_msgs
+        if getattr(m, "role", None) == "user" and "已压缩" in str(getattr(m, "content", ""))
+    ]
+    latest = [
+        m.content
+        for m in third_msgs
+        if getattr(m, "role", None) == "user"
+        and str(getattr(m, "content", "")).startswith("工具结果:")
+    ]
+    assert compacted
+    assert "search_memory" in compacted[0]
+    assert latest
+    assert "https://ex.com" in latest[-1] or "摘要" in latest[-1]
+
+
 def test_run_agent_turn_executes_json_fenced_tool_call(isolated_data):
     tool_reply = (
         '```json\n{"name": "search_knowledge", "arguments": {"query": "几年前"}}\n```'
@@ -289,27 +341,61 @@ def test_run_agent_turn_executes_json_fenced_tool_call(isolated_data):
 
 
 def test_prefetch_personal_context_for_identity_question():
-    with patch("localagent.tools.search_memory", return_value="未找到相关记忆。") as search:
+    with (
+        patch("localagent.tools.search_memory", return_value="未找到相关记忆。") as search,
+        patch(
+            "localagent.tools.search_knowledge",
+            return_value="未找到相关知识。",
+        ) as cold,
+    ):
         ctx = _prefetch_personal_context("我是谁?")
     assert ctx
     assert "已预加载" in ctx
     assert "未找到相关记忆" in ctx
-    search.assert_called_once_with("我是谁?", top_k=10)
+    assert "Cold" in ctx
+    search.assert_called_once_with("我是谁?", top_k=8)
+    cold.assert_called_once()
+    assert cold.call_args.kwargs.get("conversation_only") is True
 
 
 def test_prefetch_memory_browse_question():
-    with patch(
-        "localagent.tools.query_memories_tool",
-        return_value="记忆库共 3 条，返回 3 条",
-    ) as browse:
+    with (
+        patch(
+            "localagent.tools.query_memories_tool",
+            return_value="记忆库共 3 条，返回 3 条",
+        ) as browse,
+        patch(
+            "localagent.tools.search_knowledge",
+            return_value="- [0.02] [chatgpt] 用户讨论 Rust 与葡萄酒品鉴",
+        ) as cold,
+    ):
         ctx = _prefetch_personal_context("我的记忆库里有什么有趣的东西吗?")
     assert ctx
     assert "已预加载" in ctx
     assert "记忆库共 3 条" in ctx
+    assert "Warm" in ctx
+    assert "Cold" in ctx
+    assert "葡萄酒品鉴" in ctx
     browse.assert_called_once_with(
         query="我的记忆库里有什么有趣的东西吗?",
         sort="relevance",
-        limit=25,
+        limit=8,
+    )
+    cold.assert_called_once()
+    assert cold.call_args.kwargs.get("top_k") == 5
+    assert cold.call_args.kwargs.get("fallback") is False
+    assert cold.call_args.kwargs.get("conversation_only") is not True
+
+
+def test_browse_cold_query_strips_boilerplate():
+    from localagent.agent.runtime import _browse_cold_query
+
+    assert (
+        _browse_cold_query("搜索我的记忆库,我之前主要感兴趣的事情在哪些方面?")
+        == "我之前主要感兴趣的事情在哪些方面"
+    )
+    assert _browse_cold_query("我的记忆库里有什么有趣的东西吗?") == (
+        "有什么有趣的东西吗"
     )
 
 
@@ -323,13 +409,20 @@ def test_prefetch_family_question_uses_tag_search():
             "localagent.tools.search_memory",
             return_value="妻子相关记忆",
         ) as search,
+        patch(
+            "localagent.tools.search_knowledge",
+            return_value="- [chatgpt] 家庭相关对话",
+        ) as cold,
     ):
         ctx = _prefetch_personal_context("关于我的家庭,你都知道些什么?深入搜索我的记忆库.")
     assert ctx
     assert "已预加载" in ctx
+    assert "Cold" in ctx
     query.assert_called_once()
     assert query.call_args.kwargs.get("tags") == ["家庭"]
     search.assert_called_once()
+    cold.assert_called_once()
+    assert cold.call_args.kwargs.get("conversation_only") is True
 
 
 def test_prefetch_skips_generic_question():
@@ -418,7 +511,7 @@ def test_prefetch_weather_injects_home_location(isolated_data):
         ctx = _prefetch_web_context("今天天气怎么样?")
     assert ctx
     search.assert_called_once_with("深圳 今天天气怎么样?")
-    assert "其他城市" in ctx
+    assert "其他城市" not in ctx
 
 
 def test_prefetch_weather_without_home_still_searches(isolated_data):
@@ -426,24 +519,134 @@ def test_prefetch_weather_without_home_still_searches(isolated_data):
         ctx = _prefetch_web_context("今天天气怎么样?")
     assert ctx
     search.assert_called_once_with("今天天气怎么样?")
-    assert "其他城市" in ctx
+    assert "其他城市" not in ctx
 
 
 def test_prefetch_session_context_loads_today_messages(isolated_data):
     from localagent.persist.conversations import append_message
 
-    session_id = "s-recall-test"
-    append_message(session_id, "user", "介绍一下我的军事策略")
-    append_message(session_id, "assistant", "根据记忆库…")
+    # Other session in STM window (current session uses in-memory history).
+    append_message("s-other-today", "user", "介绍一下我的军事策略")
+    append_message("s-other-today", "assistant", "根据记忆库…")
 
     ctx = _prefetch_session_context(
         "今天的聊天记录",
-        history=[{"role": "user", "content": "我今天问了啥?"}],
-        session_id=session_id,
+        history=[
+            {"role": "user", "content": "介绍一下我的军事策略"},
+            {"role": "assistant", "content": "根据记忆库…"},
+            {"role": "user", "content": "我今天问了啥?"},
+        ],
+        session_id="s-recall-test",
     )
     assert "已预加载" in ctx
     assert "介绍一下我的军事策略" in ctx
     assert "我今天问了啥?" in ctx
+
+
+def test_prefetch_session_context_prefers_recent_over_lexicographic(isolated_data, monkeypatch):
+    """Newest sessions must survive budget; id sort must not bury them."""
+    import time
+
+    from localagent.persist.conversations import (
+        _append_to_mapping,
+        _empty_conversation,
+        _save_raw,
+    )
+
+    monkeypatch.setattr("localagent.config.PREFETCH_BUDGET_CHARS", 400)
+    monkeypatch.setattr("localagent.config.STM_WINDOW_HOURS", 24.0)
+
+    now = time.time()
+    # Lexicographically first id, older, padded to burn budget if sorted by id.
+    old = _empty_conversation("s-aaa-old", now=now - 3600)
+    for i in range(8):
+        _append_to_mapping(
+            old,
+            role="user" if i % 2 == 0 else "assistant",
+            content=("旧会话填充内容-" * 8) + f"-{i}",
+            create_time=now - 3600 + i,
+        )
+    _save_raw("s-aaa-old", old)
+
+    recent = _empty_conversation("s-zzz-wine", now=now - 60)
+    _append_to_mapping(
+        recent,
+        role="user",
+        content="借问酒家何处有",
+        create_time=now - 60,
+    )
+    _append_to_mapping(
+        recent,
+        role="assistant",
+        content="附近有粤菜馆。",
+        create_time=now - 50,
+    )
+    _save_raw("s-zzz-wine", recent)
+
+    ctx = _prefetch_session_context("我今天问了什么", history=None, session_id="s-current")
+    assert "借问酒家何处有" in ctx
+
+
+def test_prefetch_session_context_respects_stm_window_hours(isolated_data, monkeypatch):
+    import time
+
+    from localagent.persist.conversations import (
+        _append_to_mapping,
+        _empty_conversation,
+        _save_raw,
+    )
+
+    monkeypatch.setattr("localagent.config.STM_WINDOW_HOURS", 1.0)
+    now = time.time()
+
+    inside = _empty_conversation("s-inside", now=now - 600)
+    _append_to_mapping(
+        inside, role="user", content="窗内话题爬山", create_time=now - 600
+    )
+    _save_raw("s-inside", inside)
+
+    outside = _empty_conversation("s-outside", now=now - 7200)
+    _append_to_mapping(
+        outside, role="user", content="窗外话题相机", create_time=now - 7200
+    )
+    _save_raw("s-outside", outside)
+
+    ctx = _prefetch_session_context("我今天聊了啥", history=None, session_id=None)
+    assert "爬山" in ctx
+    assert "相机" not in ctx
+
+
+def test_prefetch_last_session_loads_previous_not_archive(isolated_data):
+    import time
+
+    from localagent.persist.conversations import (
+        _append_to_mapping,
+        _empty_conversation,
+        _save_raw,
+    )
+
+    now = time.time()
+    prev = _empty_conversation("s-prev", now=now - 120)
+    _append_to_mapping(
+        prev, role="user", content="借问酒家何处有", create_time=now - 120
+    )
+    _save_raw("s-prev", prev)
+
+    older = _empty_conversation("s-older", now=now - 86400 * 3)
+    _append_to_mapping(
+        older, role="user", content="卧室怎么摆家具", create_time=now - 86400 * 3
+    )
+    _save_raw("s-older", older)
+
+    ctx = _prefetch_session_context(
+        "我上次对话问了啥?",
+        history=[{"role": "user", "content": "我上次对话问了啥?"}],
+        session_id="s-current-new",
+    )
+    assert "上一场" in ctx or "借问酒家" in ctx
+    assert "借问酒家何处有" in ctx
+    assert "卧室" not in ctx
+    assert _prefetch_archive_context("我上次对话问了啥?") == ""
 
 
 def test_run_agent_turn_prefetches_session_recall_without_web(isolated_data):
@@ -492,10 +695,16 @@ def test_run_agent_turn_prefetches_without_tool_round(isolated_data, monkeypatch
 def test_run_agent_turn_prefetches_memory_browse(isolated_data):
     isolated_data["router"].chat.return_value = "你的记忆库里有不少有趣的内容。"
 
-    with patch(
-        "localagent.tools.query_memories_tool",
-        return_value="记忆库共 5 条，返回 5 条",
-    ) as browse:
+    with (
+        patch(
+            "localagent.tools.query_memories_tool",
+            return_value="记忆库共 5 条，返回 5 条",
+        ) as browse,
+        patch(
+            "localagent.tools.search_knowledge",
+            return_value="- [0.01] [chat] 讨论过项目架构",
+        ) as cold,
+    ):
         result = run_agent_turn("我的记忆库里有什么有趣的东西吗?", provider="ollama")
 
     assert "有趣" in result.response
@@ -503,11 +712,14 @@ def test_run_agent_turn_prefetches_memory_browse(isolated_data):
     browse.assert_called_once_with(
         query="我的记忆库里有什么有趣的东西吗?",
         sort="relevance",
-        limit=25,
+        limit=8,
     )
+    cold.assert_called_once()
     system_prompt = isolated_data["router"].chat.call_args.args[0][0].content
     assert "已预加载" in system_prompt
     assert "记忆库共 5 条" in system_prompt
+    assert "Cold" in system_prompt
+    assert "项目架构" in system_prompt
 
 
 def test_run_agent_turn_prefetches_web_for_news(isolated_data):

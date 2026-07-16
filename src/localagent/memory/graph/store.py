@@ -23,6 +23,20 @@ def graph_enabled() -> bool:
     return bool(getattr(config, "MEMORY_GRAPH", False))
 
 
+def graph_expand_enabled() -> bool:
+    """True when recall should hop-expand via SQLite and/or Neo4j."""
+    if graph_enabled():
+        return True
+    if bool(getattr(config, "NEO4J", False)):
+        try:
+            from localagent.memory.graph.neo4j_store import neo4j_available
+
+            return neo4j_available()
+        except Exception:
+            return False
+    return False
+
+
 def memory_graph_path() -> Path:
     return Path(config.MEMORY_GRAPH_FILE)
 
@@ -291,47 +305,66 @@ def reset_memory_graph_singleton() -> None:
             _graph = None
 
 
-def sync_fact_to_graph(fact: Any) -> None:
-    """Index one MemoryFact into the graph when LA_MEMORY_GRAPH is enabled."""
-    if not graph_enabled():
-        return
-    from localagent.memory.graph.extract import extract_graph_payload
+def sync_fact_to_graph(fact: Any, *, neo4j: bool = True) -> None:
+    """Index one MemoryFact into SQLite (optional) and/or Neo4j (optional)."""
+    if graph_enabled():
+        from localagent.memory.graph.extract import extract_graph_payload
 
-    try:
-        payload = extract_graph_payload(fact)
-        graph = get_memory_graph()
-        fact_id = str(getattr(fact, "id", "") or "")
-        if not fact_id:
-            return
-        graph.remove_fact(fact_id)
-        entity_ids: dict[str, str] = {}
-        for name, etype in payload.entities:
-            eid = graph.upsert_entity(name, entity_type=etype)
-            if eid:
-                entity_ids[name.casefold()] = eid
-                graph.add_mention(eid, fact_id)
-        for src, pred, dst, conf in payload.relations:
-            src_id = entity_ids.get(src.casefold()) or graph.upsert_entity(src)
-            dst_id = entity_ids.get(dst.casefold()) or graph.upsert_entity(dst)
-            if src_id and dst_id:
-                graph.add_relation(src_id, pred, dst_id, fact_id=fact_id, confidence=conf)
-                graph.add_mention(src_id, fact_id)
-                graph.add_mention(dst_id, fact_id)
-    except Exception as exc:
-        logger.warning("memory graph sync failed for %s: %s", getattr(fact, "id", "?"), exc)
+        try:
+            payload = extract_graph_payload(fact)
+            graph = get_memory_graph()
+            fact_id = str(getattr(fact, "id", "") or "")
+            if fact_id:
+                graph.remove_fact(fact_id)
+                entity_ids: dict[str, str] = {}
+                for name, etype in payload.entities:
+                    eid = graph.upsert_entity(name, entity_type=etype)
+                    if eid:
+                        entity_ids[name.casefold()] = eid
+                        graph.add_mention(eid, fact_id)
+                for src, pred, dst, conf in payload.relations:
+                    src_id = entity_ids.get(src.casefold()) or graph.upsert_entity(src)
+                    dst_id = entity_ids.get(dst.casefold()) or graph.upsert_entity(dst)
+                    if src_id and dst_id:
+                        graph.add_relation(
+                            src_id, pred, dst_id, fact_id=fact_id, confidence=conf
+                        )
+                        graph.add_mention(src_id, fact_id)
+                        graph.add_mention(dst_id, fact_id)
+        except Exception as exc:
+            logger.warning(
+                "memory graph sync failed for %s: %s", getattr(fact, "id", "?"), exc
+            )
+
+    if neo4j:
+        try:
+            from localagent.memory.graph.neo4j_store import sync_fact_to_neo4j
+
+            sync_fact_to_neo4j(fact)
+        except Exception as exc:
+            logger.debug("neo4j sync dispatch failed: %s", exc)
 
 
 def unsync_fact_from_graph(fact_id: str) -> None:
-    if not graph_enabled() and not memory_graph_path().exists():
-        return
+    if graph_enabled() or memory_graph_path().exists():
+        try:
+            get_memory_graph().remove_fact(fact_id)
+        except Exception as exc:
+            logger.debug("memory graph unsync failed for %s: %s", fact_id, exc)
     try:
-        get_memory_graph().remove_fact(fact_id)
+        from localagent.memory.graph.neo4j_store import unsync_fact_from_neo4j
+
+        unsync_fact_from_neo4j(fact_id)
     except Exception as exc:
-        logger.debug("memory graph unsync failed for %s: %s", fact_id, exc)
+        logger.debug("neo4j unsync dispatch failed: %s", exc)
 
 
 def rebuild_memory_graph(*, facts: list[Any] | None = None) -> dict[str, int]:
-    """Clear and rebuild the graph from the Warm registry."""
+    """Clear and rebuild the SQLite graph from the Warm registry.
+
+    When LA_NEO4J is enabled, also rebuilds the Neo4j precise index
+    (returned stats remain SQLite-only; Neo4j stats via rebuild_neo4j_graph).
+    """
     from localagent.memory.store import get_memory_store
 
     previous = config.MEMORY_GRAPH
@@ -341,11 +374,21 @@ def rebuild_memory_graph(*, facts: list[Any] | None = None) -> dict[str, int]:
         graph.clear()
         source = facts if facts is not None else list(get_memory_store().all_facts())
         for fact in source:
-            sync_fact_to_graph(fact)
+            sync_fact_to_graph(fact, neo4j=False)
         _link_dialog_neighbors(graph, source)
-        return graph.stats()
+        stats = graph.stats()
     finally:
         config.MEMORY_GRAPH = previous
+
+    try:
+        from localagent.memory.graph.neo4j_store import neo4j_enabled, rebuild_neo4j_graph
+
+        if neo4j_enabled():
+            rebuild_neo4j_graph(facts=facts)
+    except Exception as exc:
+        logger.warning("neo4j rebuild during memory graph rebuild failed: %s", exc)
+
+    return stats
 
 
 def _link_dialog_neighbors(graph: MemoryGraphStore, facts: list[Any]) -> None:

@@ -104,10 +104,13 @@ class JsonMemoryBackend:
         seed_hits = list(merged)
         seed_polished = finalize_hybrid_rank(query, seed_hits, max_results=candidate_n)
         seed_ranked = rerank_memory_hits(query, seed_polished, max_results=max_results)
-        if not config.MEMORY_GRAPH:
+        if not config.MEMORY_GRAPH and not getattr(config, "NEO4J", False):
             return seed_ranked
 
-        from localagent.memory.graph import expand_hits_by_graph, protect_seed_prefix
+        from localagent.memory.graph import expand_hits_by_graph, graph_expand_enabled, protect_seed_prefix
+
+        if not graph_expand_enabled():
+            return seed_ranked
 
         expanded = expand_hits_by_graph(query, seed_hits)
         polished = finalize_hybrid_rank(query, expanded, max_results=candidate_n)

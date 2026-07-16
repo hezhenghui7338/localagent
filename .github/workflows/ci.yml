@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install (dev)
+        run: uv sync --extra dev
+      - name: Unit + integration (incl. STM)
+        run: uv run pytest -q
+        env:
+          LA_MEMORY_APPROVAL_AUTO: "1"
+          LA_MEMORY_APPROVAL_REQUIRED: "0"
+          LA_SKIP_OLLAMA_SETUP: "1"
+          LA_MEMORY_BACKEND: json
+          LA_NEO4J: "0"
+          LA_MEMORY_GRAPH: "0"
+          LA_MEMORY_RERANK: "0"
+
+  e2e-offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install (dev)
+        run: uv sync --extra dev
+      - name: Offline subprocess e2e
+        run: uv run pytest tests/e2e -m e2e -q
+        env:
+          LA_MEMORY_APPROVAL_AUTO: "1"
+          LA_MEMORY_APPROVAL_REQUIRED: "0"
+          LA_SKIP_OLLAMA_SETUP: "1"
+          LA_MEMORY_BACKEND: json
+          LA_NEO4J: "0"
+          LA_MEMORY_GRAPH: "0"
+          LA_MEMORY_RERANK: "0"
+          LA_MEM0_EMBEDDER_PROVIDER: hash
+          LA_INGEST_USE_LLM: "0"
+          LA_PROFILE_PIN_LLM: "0"

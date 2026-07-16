@@ -158,3 +158,72 @@ def memory_effective_time(*, metadata: dict[str, Any] | None, created_at: str = 
         indexed_at=str(meta.get("indexed_at") or "") or None,
         created_at=created_at or None,
     )
+
+
+def memory_recorded_time(*, metadata: dict[str, Any] | None, created_at: str = "") -> str:
+    """Conversation/recording time for 'what did I ask' style queries.
+
+    Prefers recorded_at / chatgpt_created_at over occurred_at (event time in text).
+    """
+    meta = metadata or {}
+    for key in ("recorded_at", "chatgpt_created_at"):
+        raw = str(meta.get(key) or "").strip()
+        if raw:
+            return raw
+    return memory_effective_time(metadata=meta, created_at=created_at)
+
+
+def to_ymd(value: str | None) -> str:
+    """Normalize an ISO/date string to YYYY-MM-DD when possible."""
+    if not value or not str(value).strip():
+        return ""
+    text = str(value).strip()
+    parsed = extract_occurred_at(text)
+    if parsed:
+        return parsed
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).strftime("%Y-%m-%d")
+    except ValueError:
+        return text[:10] if len(text) >= 10 and text[4] == "-" else ""
+
+
+def parse_timestamp(value: str | None) -> datetime | None:
+    """Parse ISO / YYYY-MM-DD timestamps for range filters."""
+    if not value or not str(value).strip():
+        return None
+    text = str(value).strip()
+    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(text[:19] if "T" in text else text[:10], fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        ymd = to_ymd(text)
+        if ymd:
+            try:
+                return datetime.strptime(ymd, "%Y-%m-%d")
+            except ValueError:
+                return None
+        return None
+
+
+def in_time_window(
+    value: str | None,
+    *,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    keep_undated: bool = False,
+) -> bool:
+    """True if value falls in [since, until]. Undated → False unless keep_undated."""
+    if not since and not until:
+        return True
+    created = parse_timestamp(value)
+    if created is None:
+        return keep_undated
+    if since and created < since:
+        return False
+    if until and created > until:
+        return False
+    return True

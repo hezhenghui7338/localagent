@@ -66,6 +66,34 @@ def require_ollama_completion() -> list[str]:
     return models
 
 
+def ollama_vl_models() -> list[str]:
+    try:
+        with httpx.Client(timeout=3.0) as client:
+            resp = client.get("http://localhost:11434/api/tags")
+            resp.raise_for_status()
+            models = resp.json().get("models", [])
+    except Exception:
+        return []
+
+    names: list[str] = []
+    for model in models:
+        name = model.get("name", "")
+        if not name:
+            continue
+        caps = {str(c) for c in (model.get("capabilities") or [])}
+        lower = name.lower()
+        if "vision" in caps or "-vl" in lower or "vision" in lower:
+            names.append(name)
+    return names
+
+
+def require_ollama_vl() -> str:
+    models = ollama_vl_models()
+    if not models:
+        pytest.skip("需要 Ollama 视觉模型")
+    return models[0]
+
+
 def parse_task_id(stdout: str) -> str:
     """Extract first ``t-…`` token from CLI output mentioning 后台任务."""
     for line in stdout.splitlines():
@@ -118,6 +146,65 @@ def write_kb_doc(tmp_path: Path, name: str, body: str) -> Path:
     path = tmp_path / name
     path.write_text(body, encoding="utf-8")
     return path
+
+
+def write_chat_session(
+    data_dir: Path,
+    session_id: str,
+    records: list[dict],
+) -> Path:
+    """Write a minimal LA chat jsonl under data/conversations/."""
+    path = data_dir / "conversations" / f"{session_id}.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "\n".join(json.dumps(r, ensure_ascii=False) for r in records) + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def seed_pending_queue(
+    data_dir: Path,
+    texts: list[str],
+    *,
+    source: str = "e2e",
+) -> list[str]:
+    """Write pending_queue.json directly (CLI memory add bypasses the gate)."""
+    items = []
+    ids: list[str] = []
+    for i, text in enumerate(texts):
+        pid = f"pend{i:04d}{os.urandom(2).hex()}"
+        ids.append(pid)
+        items.append(
+            {
+                "id": pid,
+                "text": text,
+                "kind": "fact",
+                "metadata": {"source": source},
+                "slots": {},
+                "memory_type": "fact",
+                "tags": [],
+                "created_at": "2026-07-16T00:00:00+00:00",
+                "title": "e2e pending",
+            }
+        )
+    path = data_dir / "pending_queue.json"
+    path.write_text(
+        json.dumps({"updated_at": "2026-07-16T00:00:00+00:00", "items": items}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return ids
+
+
+def warm_count(env: dict[str, str]) -> int:
+    """Parse Warm fact count from ``LA memory status``."""
+    result = run_la(["memory", "status"], env=env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    for line in result.stdout.splitlines():
+        if "记忆条数" in line:
+            token = line.split(":")[-1].strip().split()[0]
+            return int(token)
+    raise AssertionError(f"未找到记忆条数:\n{result.stdout}")
 
 
 def minimal_chatgpt_export(

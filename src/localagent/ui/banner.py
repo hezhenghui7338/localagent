@@ -37,7 +37,7 @@ class WelcomeInfo:
     memory_count: int
     kb_count: int
     git_line: str
-    tagline: str = "Your AI. Your Data. Your Mac."
+    tagline: str = "Your AI. Your Data. Your Machine."
 
 
 _WEB_SEARCH_LABELS = {
@@ -235,6 +235,7 @@ def render_welcome(info: WelcomeInfo, *, width: int | None = None, color: bool |
         "/help 查看全部命令",
         "/provider 切换模型路径",
         "/model 切换默认模型",
+        "/websearch <关键词> 联网",
         "/deepsearch <主题> 研究",
         "/q / Ctrl+C×2 退出",
         _c("───────────────", _DIM, enabled=use_color),

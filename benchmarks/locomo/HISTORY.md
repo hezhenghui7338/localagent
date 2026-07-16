@@ -11,6 +11,44 @@
 
 ---
 
+## 2026-07-16 · 主协议升级为 Joint Warm∪Cold RRF
+
+| 项目 | 值 |
+|------|-----|
+| 变更 | `measure_recall` 默认 `mode=joint`：`joint_recall` = Warm∪Cold 双向 RRF + dia_id 去重；`--mode warm_only\|cold_only` 与 `--diagnostics` 作归因 |
+| 产品对齐 | 个人/家庭记忆预取默认联合 Cold（`conversation_only`）；STM 分流不变（见 `benchmarks/stm/`） |
+| 辅轨 | `--incremental-sessions`；`python -m benchmarks.locomo.measure_profile`（Hot Profile Field Hit） |
+| Joint 基线 | **协议已切 Joint**；正式分表仍待对 `locomo-mem0/conv-26` 重跑（需 CE：`pip install 'la-localagent[rerank]'`）。当前 README 主表数字为 Warm-only **历史对照**，勿当成 Joint。临时实验轨见下方 layered（不升格） |
+
+```bash
+python -m benchmarks.locomo.measure_recall \
+  --skip-ingest --sample-ids conv-26 \
+  --work-dir benchmarks/data/runs/locomo-mem0 \
+  --diagnostics --label joint_rrf
+```
+
+对照：此前 README 主结果（Warm-only / 旧 Warm-优先 backfill）overall Hit@1=0.433 / Hit@5=0.627 / Hit@8=0.673（2026-07-14 `recall_hitk_rerank.json`）。
+
+### 2026-07-16 实验轨：`locomo-mem0-layered`（Cold 入库 + entities/slots + 弃答重召回）
+
+| 项目 | 值 |
+|------|-----|
+| work-dir | `benchmarks/data/runs/locomo-mem0-layered`（439 Warm facts + Cold locomo chunks） |
+| 产物 | [`recall_hitk_20260716_102042_layered_graph.json`](../data/runs/locomo-mem0-layered/recall_hitk_20260716_102042_layered_graph.json) |
+| 配置 | Joint 路径 + graph protect；Mem0 Qdrant 锁冲突时 JSON fallback + CE |
+
+| Category | n | Hit@1 | Hit@5 | Hit@8 |
+|----------|--:|------:|------:|------:|
+| overall | 150 | 0.360 | 0.620 | **0.727** |
+| multi-hop | 32 | 0.063 | 0.500 | **0.750** |
+| temporal | 37 | **0.703** | **0.838** | **0.865** |
+| open-domain | 11 | 0.273 | 0.455 | 0.636 |
+| single-hop | 70 | 0.329 | 0.586 | 0.657 |
+
+相对 07-14 主结果：Hit@8 / temporal 抬升；multi-hop Hit@1 回退（摘要/干扰占 top-1）。**不替换 README 主表**。配套代码：`joint_recall`、Cold ingest、entities/slots 保留、弃答 follow-up、`SAID_ABOUT` 图边。
+
+---
+
 ## 2026-07-14 · memory_class 软加权回归（Phase A）
 
 | 项目 | 值 |

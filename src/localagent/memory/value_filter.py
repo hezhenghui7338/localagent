@@ -82,9 +82,19 @@ _EPHEMERAL_TURN = [
     re.compile(r"(新闻|资讯|热点|头条)"),
     re.compile(r"^(你好|您好|hi|hello|hey|在吗|早|晚安)[\s。.!！?？]*$", re.I),
     re.compile(r"^我是谁[\s。.!！?？]*$"),
-    re.compile(r"^(你是谁|你叫什么)[\s。.!！?？]*$"),
+    re.compile(r"^(你是谁|你叫什么)[\s。.!！?？]*$", re.I),
     re.compile(r"^(几点了|现在几点|今天几号|今天星期几)[\s。.!！?？]*$"),
     re.compile(r"^(测试|test|ping)[\s。.!！?？\d]*$", re.I),
+    re.compile(r"^(谢谢|感谢|thanks|thx|谢谢你|多谢)[\s。.!！?？]*$", re.I),
+    re.compile(r"^(好的|嗯嗯|行|可以|收到|明白了|知道了|ok)[\s。.!！?？]*$", re.I),
+    re.compile(r"^(继续|接着说|然后呢|还有吗)[\s。.!！?？]*$", re.I),
+]
+
+# Meta / tool chatter that should never become Warm facts.
+_META_CHATTER = [
+    re.compile(r"^(请|麻烦)?(帮我)?(再)?(搜|查|搜索|google)", re.I),
+    re.compile(r"^(忽略|忘掉|不要记住|别记)(上面|刚才|这个)?", re.I),
+    re.compile(r"do not remember|don'?t remember|forget (that|this)", re.I),
 ]
 
 # Durable signals: personal facts/preferences worth a Warm bridge summary.
@@ -186,6 +196,10 @@ def is_narrative_memory(text: str) -> bool:
     if not is_valuable(text):
         return False
     if len(text) < _MIN_NARRATIVE_CHARS:
+        return False
+    if any(pat.search(text) for pat in _META_CHATTER):
+        return False
+    if _is_ephemeral_turn(text) and len(text) < 40:
         return False
     # Pure keyword soup with separators and no sentence punctuation
     compact = re.sub(r"\s+", "", text)

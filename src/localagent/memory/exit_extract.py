@@ -6,11 +6,17 @@ import subprocess
 import sys
 
 from localagent import config
+from localagent.ingest.conversation_cold import index_conversation_cold
 from localagent.memory.rememorize import mark_chat_ingested
 from localagent.memory.save import confirm_save_facts
 from localagent.memory.value_filter import filter_facts
 from localagent.models.router import get_model_router
-from localagent.persist.conversations import load_conversation
+from localagent.persist.chatgpt import timestamp_to_iso
+from localagent.persist.conversations import (
+    conversation_file_for_fingerprint,
+    load_conversation,
+    load_conversation_object,
+)
 
 
 def _user_texts_from_messages(messages: list[dict]) -> list[str]:
@@ -23,33 +29,72 @@ def _user_texts_from_messages(messages: list[dict]) -> list[str]:
     ]
 
 
+def _session_recorded_at(session_id: str) -> str | None:
+    conversation = load_conversation_object(session_id)
+    if conversation is None:
+        return None
+    created = timestamp_to_iso(conversation.create_time)
+    return created or None
+
+
+def _chat_metadata(session_id: str, *, recorded_at: str | None = None) -> dict:
+    meta: dict = {"source": "chat", "session_id": session_id}
+    recorded = recorded_at if recorded_at is not None else _session_recorded_at(session_id)
+    if recorded:
+        meta["recorded_at"] = recorded
+    return meta
+
+
+def _index_session_cold(session_id: str) -> int:
+    conversation = load_conversation_object(session_id)
+    if conversation is None or not conversation.messages:
+        return 0
+    path = conversation_file_for_fingerprint(session_id)
+    archive = str(path) if path else f"{session_id}.json"
+    return index_conversation_cold(
+        conversation,
+        origin="chat",
+        archive_path=archive,
+    )
+
+
 def extract_session_memories(
     session_id: str,
     *,
     interactive: bool | None = None,
 ) -> list[str]:
-    """Extract candidate memories from a session and save with optional confirmation."""
+    """Extract candidate memories from a session and save with optional confirmation.
+
+    Always upserts the transcript into Cold RAG first (when enabled).
+    """
+    cold_count = _index_session_cold(session_id)
+    recorded_at = _session_recorded_at(session_id)
+
     messages = load_conversation(session_id)
     user_texts = _user_texts_from_messages(messages)
     if not user_texts:
-        mark_chat_ingested(session_id, saved_count=0)
+        mark_chat_ingested(session_id, saved_count=0, cold_chunk_count=cold_count)
         return []
 
     ids: list[str] = []
 
-    # Warm session_summary only for durable substance; transcripts stay in persist/.
+    # Warm session_summary only for durable substance; transcripts stay in persist/ + Cold.
     if config.MEMORY_SESSION_SUMMARY:
-        from localagent.memory.backend import get_memory_backend
         from localagent.memory.summarize import build_session_summary_fact
 
-        summary_item = build_session_summary_fact(session_id, user_texts)
+        summary_item = build_session_summary_fact(
+            session_id,
+            user_texts,
+            recorded_at=recorded_at,
+        )
         if summary_item:
-            fact_id = get_memory_backend().retain(
-                str(summary_item["text"]),
+            summary_ids = confirm_save_facts(
+                [str(summary_item["text"])],
                 metadata=dict(summary_item.get("metadata") or {}),
+                title=f"会话摘要 {session_id}",
+                interactive=interactive,
             )
-            if fact_id:
-                ids.append(fact_id)
+            ids.extend(summary_ids)
 
     combined = "\n".join(user_texts[-5:])
     try:
@@ -59,13 +104,16 @@ def extract_session_memories(
 
     facts = filter_facts(facts)
     if facts:
-        meta = {"source": "chat", "session_id": session_id}
+        meta = _chat_metadata(session_id, recorded_at=recorded_at)
         use_interactive = interactive if interactive is not None else False
-        if (
+        # Immediate consolidate only when not gating Warm writes through pending.
+        can_consolidate = (
             config.MEMORY_CONSOLIDATE
             and config.MEMORY_CONSOLIDATE_ON_MEMORIZE
             and not use_interactive
-        ):
+            and (config.MEMORY_APPROVAL_AUTO or not config.MEMORY_APPROVAL_REQUIRED)
+        )
+        if can_consolidate:
             from localagent.memory.consolidate import consolidate_candidates
             from localagent.memory.profile_pin import pin_facts_to_profile
 
@@ -82,7 +130,7 @@ def extract_session_memories(
             )
             ids.extend(saved)
 
-    mark_chat_ingested(session_id, saved_count=len(ids))
+    mark_chat_ingested(session_id, saved_count=len(ids), cold_chunk_count=cold_count)
     return ids
 
 

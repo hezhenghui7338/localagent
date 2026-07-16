@@ -13,7 +13,7 @@ from localagent.ui.console import prepare_for_input
 ApprovalPolicy = Literal["always", "dangerous", "off"]
 RiskLevel = Literal["safe", "dangerous", "blocked"]
 
-APPROVAL_TOOLS = frozenset({"run_shell", "write_file"})
+APPROVAL_TOOLS = frozenset({"run_shell", "write_file", "edit_file"})
 
 # Hard-blocked: never execute, never ask.
 _BLOCKED_PATTERNS: list[tuple[re.Pattern[str], str]] = [
@@ -99,6 +99,23 @@ def classify_tool(name: str, arguments: dict[str, Any]) -> ToolRisk:
             reason=f"{action}本地文件",
             summary=f"{path} ({action}, {len(content)} 字符)\n预览: {preview}",
         )
+    if name == "edit_file":
+        path = str(arguments.get("path") or "").strip() or "(未指定路径)"
+        old = str(arguments.get("old_string") or "")
+        new = str(arguments.get("new_string") or "")
+        replace_all = bool(arguments.get("replace_all"))
+        old_preview = old if len(old) <= 60 else f"{old[:60]}…"
+        new_preview = new if len(new) <= 60 else f"{new[:60]}…"
+        scope = "全部替换" if replace_all else "单处替换"
+        return ToolRisk(
+            level="dangerous",
+            reason="精确编辑本地文件",
+            summary=(
+                f"{path} ({scope})\n"
+                f"- old: {old_preview}\n"
+                f"- new: {new_preview}"
+            ),
+        )
     return ToolRisk(level="safe", summary=name)
 
 
@@ -118,7 +135,12 @@ def needs_approval(name: str, risk: ToolRisk, *, policy: ApprovalPolicy | None =
 
 
 def format_approval_prompt(name: str, arguments: dict[str, Any], risk: ToolRisk) -> str:
-    label = "执行命令" if name == "run_shell" else "写入文件"
+    if name == "run_shell":
+        label = "执行命令"
+    elif name == "edit_file":
+        label = "编辑文件"
+    else:
+        label = "写入文件"
     lines = [f"⚠ Agent 请求{label}，需你确认后才会执行。"]
     if risk.level == "dangerous" and risk.reason:
         lines.append(f"风险: {risk.reason}")
@@ -128,7 +150,7 @@ def format_approval_prompt(name: str, arguments: dict[str, Any], risk: ToolRisk)
         cwd = arguments.get("cwd")
         if cwd:
             lines.append(f"目录: {cwd}")
-    elif name == "write_file":
+    elif name in {"write_file", "edit_file"}:
         lines.append(f"目标: {risk.summary}")
     return "\n".join(lines)
 

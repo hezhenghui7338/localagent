@@ -152,7 +152,14 @@ def enrich_heuristic(
         summary = text.strip()
     else:
         summary = _heuristic_summary(text)
-    entities = extract_entities(f"{clean_heading} {text}")
+    # Prefer spoken utterance over session wrappers / "X said, \"...\"".
+    try:
+        from localagent.memory.graph.extract import utterance_from_fact_text
+
+        ner_text = utterance_from_fact_text(text) or text
+    except Exception:
+        ner_text = text
+    entities = [e for e in extract_entities(f"{clean_heading} {ner_text}") if len(e) <= 40]
 
     return MemoryEnrichment(
         title=title,

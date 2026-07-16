@@ -1,4 +1,4 @@
-"""Expand recall seed hits via local memory graph hops."""
+"""Expand recall seed hits via SQLite and/or Neo4j graph hops."""
 
 from __future__ import annotations
 
@@ -19,8 +19,20 @@ def expand_hits_by_graph(
     hops: int | None = None,
     max_extras: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Append fact hits discovered by 1–N hop graph traversal from seed entities."""
-    if not graph_enabled() or not hits:
+    """Append fact hits discovered by 1–N hop graph traversal from seed entities.
+
+    Uses Neo4j when ``LA_NEO4J=1`` (preferred for precise-index experiments);
+    otherwise falls back to the optional SQLite overlay when ``LA_MEMORY_GRAPH=1``.
+    """
+    from localagent.memory.graph.neo4j_store import (
+        get_neo4j_store,
+        neo4j_available,
+        neo4j_enabled,
+    )
+
+    use_neo4j = neo4j_enabled() and neo4j_available()
+    use_sqlite = graph_enabled()
+    if (not use_neo4j and not use_sqlite) or not hits:
         return hits
 
     hop_n = config.MEMORY_GRAPH_HOPS if hops is None else hops
@@ -35,7 +47,19 @@ def expand_hits_by_graph(
     if extra_budget <= 0:
         return hits
 
-    graph = get_memory_graph()
+    graph: Any = None
+    source_label = "graph"
+    if use_neo4j:
+        neo = get_neo4j_store()
+        # Prefer Neo4j when populated; otherwise fall back to SQLite if enabled.
+        if neo.stats().get("entities", 0) > 0 or not use_sqlite:
+            graph = neo
+            source_label = "neo4j"
+    if graph is None and use_sqlite:
+        graph = get_memory_graph()
+        source_label = "graph"
+    if graph is None:
+        return hits
     store_facts = list(facts) if facts is not None else list(get_memory_store().all_facts())
     by_id = {str(fact.id): fact for fact in store_facts}
 
@@ -57,7 +81,6 @@ def expand_hits_by_graph(
                     seed_names.append(str(val))
 
     entity_ids = graph.resolve_entity_ids(seed_names)
-    # Also seed from mentions of seed facts (covers turn:* nodes).
     if seed_ids:
         for fact_id in list(seed_ids)[:24]:
             fact = by_id.get(fact_id)
@@ -68,7 +91,6 @@ def expand_hits_by_graph(
             if isinstance(ents, list):
                 entity_ids.extend(graph.resolve_entity_ids([str(e) for e in ents if e]))
 
-    # Deduplicate entity id list while preserving order.
     seen_e: set[str] = set()
     uniq_entities: list[str] = []
     for eid in entity_ids:
@@ -84,7 +106,6 @@ def expand_hits_by_graph(
     if not related_fact_ids:
         return hits
 
-    # Pool fillers only: keep scores low so hybrid/rerank cannot steal seed #1.
     extras: list[dict[str, Any]] = []
     seed_scores = [float(hit.get("score") or 0.0) for hit in hits]
     floor = (min(seed_scores) if seed_scores else 0.1) * 0.3
@@ -108,7 +129,7 @@ def expand_hits_by_graph(
                 "section_heading": fact.section_heading,
                 "created_at": effective_at,
                 "metadata": fact.metadata,
-                "source": "graph",
+                "source": source_label,
             }
         )
         if len(extras) >= extra_budget:
@@ -117,11 +138,12 @@ def expand_hits_by_graph(
     if not extras:
         return hits
 
-    paths = graph.paths_between_facts(seed_ids, {e["id"] for e in extras}, max_paths=6)
-    if paths:
-        for hit in hits:
-            hit.setdefault("graph_paths", paths)
-        for extra in extras:
-            extra["graph_paths"] = paths
+    if source_label == "graph" and hasattr(graph, "paths_between_facts"):
+        paths = graph.paths_between_facts(seed_ids, {e["id"] for e in extras}, max_paths=6)
+        if paths:
+            for hit in hits:
+                hit.setdefault("graph_paths", paths)
+            for extra in extras:
+                extra["graph_paths"] = paths
 
     return hits + extras

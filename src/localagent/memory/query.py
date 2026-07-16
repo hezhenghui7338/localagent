@@ -14,25 +14,15 @@ from localagent.memory.scoped_recall import (
     _storage_time,
 )
 from localagent.memory.store import MemoryFact, get_memory_store
-from localagent.memory.temporal import memory_effective_time
+from localagent.memory.temporal import memory_effective_time, memory_recorded_time, parse_timestamp
 from localagent.memory.temporal_intent import parse_temporal_intent
 
 SortOrder = Literal["newest", "oldest", "relevance"]
+TimeField = Literal["effective", "recorded"]
 
 
 def _parse_date(value: str) -> datetime | None:
-    value = value.strip()
-    if not value:
-        return None
-    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y/%m/%d"):
-        try:
-            return datetime.strptime(value, fmt)
-        except ValueError:
-            continue
-    try:
-        return datetime.fromisoformat(value)
-    except ValueError:
-        return None
+    return parse_timestamp(value)
 
 
 def _fact_tags(fact: MemoryFact) -> list[str]:
@@ -69,16 +59,23 @@ def _matches_tags(fact: MemoryFact, tags: list[str], *, mode: str) -> bool:
     return bool(wanted & fact_tags)
 
 
+def _fact_time(fact: MemoryFact, *, time_field: TimeField) -> str:
+    if time_field == "recorded":
+        return memory_recorded_time(metadata=fact.metadata, created_at=fact.created_at)
+    return memory_effective_time(metadata=fact.metadata, created_at=fact.created_at)
+
+
 def _in_time_range(
     fact: MemoryFact,
     *,
     since: datetime | None,
     until: datetime | None,
+    time_field: TimeField = "effective",
 ) -> bool:
     if not since and not until:
         return True
-    effective_at = memory_effective_time(metadata=fact.metadata, created_at=fact.created_at)
-    created = _parse_date(effective_at)
+    stamp = _fact_time(fact, time_field=time_field)
+    created = _parse_date(stamp)
     if created is None:
         return True
     if since and created < since:
@@ -122,6 +119,7 @@ def query_memories(
     until: str | None = None,
     sort: SortOrder = "newest",
     limit: int = 20,
+    time_field: TimeField = "effective",
 ) -> list[dict[str, Any]]:
     """Query memories with optional semantic match, tag/time filters, and sorting."""
     query = query.strip()
@@ -152,7 +150,12 @@ def query_memories(
         )
         if not _matches_tags(fact_like, tags or [], mode=tag_mode):
             continue
-        if not _in_time_range(fact_like, since=since_dt, until=until_dt):
+        if not _in_time_range(
+            fact_like,
+            since=since_dt,
+            until=until_dt,
+            time_field=time_field,
+        ):
             continue
 
         if query and sort != "relevance":
@@ -191,6 +194,11 @@ def query_memories(
                 hit["anchor"] = intent.to_dict()
         elif sort == "relevance" and query:
             hit = dict(hit)
+
+        # Surface recorded time for archive-style answers.
+        if time_field == "recorded":
+            hit = dict(hit)
+            hit["created_at"] = _fact_time(fact_like, time_field="recorded")
 
         hits.append(hit)
 

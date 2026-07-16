@@ -18,10 +18,13 @@ VENV_BIN = PROJECT_ROOT / ".venv" / "bin"
 
 
 def _zsh_interactive(script: str, *, timeout: int = 15) -> subprocess.CompletedProcess[str]:
+    """Run zsh interactively without sourcing the user's ~/.zshrc (avoids hangs)."""
     env = os.environ.copy()
     env["PATH"] = f"{VENV_BIN}:{env.get('PATH', '')}"
+    # -f: skip global/user RCS so slow/interactive .zshrc cannot stall e2e.
+    # -i: keep interactive mode so la-completion.zsh registers compdef.
     return subprocess.run(
-        ["zsh", "-ic", script],
+        ["zsh", "-fic", script],
         text=True,
         capture_output=True,
         env=env,

@@ -41,6 +41,7 @@ def test_extract_slots_to_relations():
 
 def test_sync_and_hop_expands_related_fact(isolated_data, monkeypatch):
     monkeypatch.setattr("localagent.config.MEMORY_GRAPH", True)
+    monkeypatch.setattr("localagent.config.NEO4J", False)
     monkeypatch.setattr("localagent.config.MEMORY_GRAPH_HOPS", 2)
     monkeypatch.setattr("localagent.config.MEMORY_GRAPH_MAX_EXTRAS", 8)
 
@@ -117,6 +118,7 @@ def test_sync_and_hop_expands_related_fact(isolated_data, monkeypatch):
 
 def test_json_backend_retain_syncs_when_graph_enabled(isolated_data, monkeypatch):
     monkeypatch.setattr("localagent.config.MEMORY_GRAPH", True)
+    monkeypatch.setattr("localagent.config.NEO4J", False)
     backend = JsonMemoryBackend()
     fact_id = backend.retain(
         "用户居住在深圳。",
@@ -137,6 +139,7 @@ def test_json_backend_retain_syncs_when_graph_enabled(isolated_data, monkeypatch
 
 def test_graph_disabled_skips_expand(isolated_data, monkeypatch):
     monkeypatch.setattr("localagent.config.MEMORY_GRAPH", False)
+    monkeypatch.setattr("localagent.config.NEO4J", False)
     hits = [{"id": "x", "text": "hello", "score": 1.0, "metadata": {}}]
     assert expand_hits_by_graph("hello", hits) is hits
 

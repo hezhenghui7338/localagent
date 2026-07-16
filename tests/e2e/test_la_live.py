@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from helpers import require_ollama_completion, run_la, seed_memory
+from helpers import require_ollama_completion, require_ollama_vl, run_la, seed_memory
 from localagent.persist.chatgpt import parse_conversation
 
 pytestmark = pytest.mark.e2e_live
@@ -68,19 +68,53 @@ def test_e2e_live_memory_search_semantic(la_env):
     assert "Mem0" in result.stdout
 
 
-def test_e2e_live_memory_reflect_multihop(la_env):
+def test_e2e_live_cross_session_chat_recall(la_env):
+    """Tour critical demo: seed Warm, then chat in a fresh session can recall it."""
+    require_ollama_completion()
+    seed_memory(la_env, "用户的名字叫李明，日常偏好用 Neovim 编辑代码。")
+    env = {**la_env, "OLLAMA_MODEL": "qwen3:4b"}
+    result = run_la(
+        ["chat", "--session-id", "s-e2e-cross-b", "-p", "ollama"],
+        env=env,
+        input_text="我叫什么名字？我偏好什么编辑器？\n:q\n",
+        timeout=300,
+    )
+    assert result.returncode == 0
+    assert "all model providers failed" not in result.stdout
+    out = result.stdout
+    assert "李明" in out or "Neovim" in out or "neovim" in out.lower()
+
+
+def test_e2e_live_reflect_multihop(la_env):
     require_ollama_completion()
     env = {**la_env, "LA_MEMORY_REFLECT_MAX_HOPS": "2"}
     seed_memory(env, FACT)
     seed_memory(env, "用户周末喜欢徒步，不喜欢嘈杂的商场。")
     result = run_la(
-        ["memory", "reflect", "记忆引擎选型，以及我周末偏好是什么？"],
+        ["reflect", "记忆引擎选型，以及我周末偏好是什么？"],
         env=env,
         timeout=300,
     )
     assert result.returncode == 0
-    assert "未能从记忆中推理出答案" not in result.stdout
+    assert "未能从记忆与知识库中推理出答案" not in result.stdout
     assert "Mem0" in result.stdout or "徒步" in result.stdout
+
+
+def test_e2e_live_reflect_with_evidence(la_env):
+    """Seeded facts should appear in reflect answers when a completion model is up."""
+    require_ollama_completion()
+    seed_memory(la_env, FACT)
+    seed_memory(la_env, "用户喜欢喝葡萄酒，尤其是赤霞珠。")
+    result = run_la(
+        ["reflect", "关于记忆引擎和葡萄酒的偏好分别是什么？"],
+        env=la_env,
+        timeout=300,
+    )
+    assert result.returncode == 0
+    out = result.stdout
+    assert "未能从记忆与知识库中推理出答案" not in out or "Mem0" in out or "葡萄酒" in out
+    if "未能从记忆与知识库中推理出答案" not in out:
+        assert "Mem0" in out or "葡萄酒" in out or "记忆" in out
 
 
 def test_e2e_live_rag_search_after_add(la_env, tmp_path: Path):
@@ -91,3 +125,38 @@ def test_e2e_live_rag_search_after_add(la_env, tmp_path: Path):
     result = run_la(["rag", "search", "Cold 检索用什么"], env=la_env, timeout=120)
     assert result.returncode == 0
     assert "Chroma" in result.stdout or "BM25" in result.stdout or "Cold" in result.stdout
+
+
+def test_e2e_live_rag_image_vl(la_env, tmp_path: Path):
+    """Image ingest via local Ollama VL → searchable Cold caption."""
+    import struct
+    import zlib
+
+    vl_model = require_ollama_vl()
+    env = {**la_env, "LA_VL_MODEL": vl_model, "LA_VL_ENABLED": "1"}
+
+    def png_1x1() -> bytes:
+        raw = b"\x00" + b"\xff\x00\x00"
+
+        def chunk(tag: bytes, data: bytes) -> bytes:
+            body = tag + data
+            return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+        ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+        return (
+            b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", ihdr)
+            + chunk(b"IDAT", zlib.compress(raw))
+            + chunk(b"IEND", b"")
+        )
+
+    img = tmp_path / "live_red.png"
+    img.write_bytes(png_1x1())
+    add = run_la(["rag", "add", str(img)], env=env, timeout=300)
+    assert add.returncode == 0, add.stdout + add.stderr
+    assert "失败" not in add.stdout
+
+    result = run_la(["rag", "search", "red"], env=env, timeout=120)
+    assert result.returncode == 0, result.stdout + result.stderr
+    out = result.stdout.lower()
+    assert "red" in out or "红" in result.stdout or "image" in out

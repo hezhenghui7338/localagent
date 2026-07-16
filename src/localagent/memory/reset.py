@@ -133,8 +133,14 @@ def reset_memory(
 
     if origin == "chat":
         reset_chat_ingest_index()
+        from localagent.ingest.conversation_cold import remove_conversations_by_origin
+
+        knowledge_removed = remove_conversations_by_origin("chat")
     elif origin == "chatgpt":
         reset_chatgpt_import_index()
+        from localagent.ingest.conversation_cold import remove_conversations_by_origin
+
+        knowledge_removed = remove_conversations_by_origin("chatgpt")
     elif origin == "file":
         sync_files_tracked, knowledge_removed = _clear_file_indexes(
             clear_knowledge=clear_knowledge,
@@ -148,7 +154,7 @@ def reset_memory(
         "memory_facts_removed": memory_removed,
         "sync_index_entries_removed": sync_files_tracked,
         "knowledge_chunks_removed": knowledge_removed,
-        "clear_knowledge": clear_knowledge if origin == "file" else False,
+        "clear_knowledge": clear_knowledge if origin == "file" else knowledge_removed > 0,
     }
 
 
@@ -183,11 +189,19 @@ def rebuild_knowledge(
     *,
     reporter: ProgressReporter | None = None,
 ) -> tuple[dict[str, int | bool | str], SyncSummary]:
-    """Clear Cold knowledge indexes then force re-index all kb/ documents."""
+    """Clear Cold knowledge indexes then force re-index kb/ + conversation archives."""
     reset_stats = reset_knowledge(clear_knowledge=True, reporter=reporter)
     if reporter is not None:
         reporter.update(ProgressEvent(phase="rebuild", message="重新索引 kb/ 文档…"))
     summary = sync_files(force=True, reporter=reporter)
+    if reporter is not None:
+        reporter.update(ProgressEvent(phase="rebuild", message="重新索引对话归档（Cold）…"))
+    from localagent.ingest.conversation_cold import reindex_conversation_archives
+
+    conv_stats = reindex_conversation_archives(force=True)
+    reset_stats["conversation_cold_chunks"] = conv_stats.get("chunks", 0)
+    reset_stats["conversation_cold_chat"] = conv_stats.get("chat", 0)
+    reset_stats["conversation_cold_chatgpt"] = conv_stats.get("chatgpt", 0)
     return reset_stats, summary
 
 
@@ -196,14 +210,17 @@ def reset_knowledge(
     clear_knowledge: bool = True,
     reporter: ProgressReporter | None = None,
 ) -> dict[str, int | bool | str]:
-    """Clear Cold RAG indexes (sync_index + knowledge). Does not touch Warm memory."""
+    """Clear Cold RAG indexes (sync_index + knowledge, including conversation chunks).
+
+    Does not touch Warm memory facts except legacy file ingest_summary sources.
+    """
     config.ensure_data_dirs()
 
     def _report(message: str) -> None:
         if reporter is not None:
             reporter.update(ProgressEvent(phase="reset", message=message))
 
-    _report("清空知识库索引…")
+    _report("清空知识库索引（含对话 Cold 块）…")
     sync_files_tracked, knowledge_removed = _clear_file_indexes(
         clear_knowledge=clear_knowledge,
         reporter=reporter,
@@ -218,39 +235,3 @@ def reset_knowledge(
         "knowledge_chunks_removed": knowledge_removed,
         "clear_knowledge": clear_knowledge,
     }
-
-
-def rebuild_memory(
-    *,
-    reporter: ProgressReporter | None = None,
-) -> tuple[dict[str, int | bool | str], SyncSummary]:
-    """Deprecated alias: reset Warm all then rebuild knowledge (prefer rag rebuild)."""
-    store = get_memory_store()
-    snapshot = [fact.to_dict() for fact in store.all_facts()]
-
-    reset_stats = reset_memory(clear_knowledge=True, source="all", reporter=reporter)
-    if reporter is not None:
-        reporter.update(ProgressEvent(phase="rebuild", message="重新索引 kb/ 文档…"))
-    summary = sync_files(force=True, reporter=reporter)
-
-    if snapshot:
-        if reporter is not None:
-            reporter.update(ProgressEvent(phase="rebuild", message="恢复非文档来源记忆…"))
-        backend = get_memory_backend()
-        existing_texts = {f.text.strip() for f in get_memory_store().all_facts()}
-        for item in snapshot:
-            text = str(item.get("text") or "").strip()
-            source_file = str(item.get("source_file") or "")
-            meta = dict(item.get("metadata") or {})
-            source = str(meta.get("source") or "")
-            if not text or text in existing_texts:
-                continue
-            if source == "ingest" or (source_file and (config.KB_DIR / source_file).exists()):
-                continue
-            meta["source_file"] = source_file
-            meta["section_heading"] = (
-                item.get("section_heading") or meta.get("section_heading") or "rebuild"
-            )
-            backend.retain(text, metadata=meta)
-
-    return reset_stats, summary

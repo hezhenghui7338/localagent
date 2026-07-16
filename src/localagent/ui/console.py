@@ -1,4 +1,4 @@
-"""Lightweight terminal feedback without extra dependencies."""
+"""Lightweight terminal feedback and REPL line input."""
 
 from __future__ import annotations
 
@@ -13,20 +13,39 @@ def emit(prefix: str, message: str, *, end: str = "\n") -> None:
 
 
 def prepare_for_input() -> None:
-    """Reset terminal attributes before readline/input()."""
+    """Reset terminal attributes before prompt_toolkit / input()."""
     if sys.stdout.isatty():
         sys.stdout.write("\x1b[0m")
         sys.stdout.flush()
 
 
-def read_repl_line(prompt: str = "> ") -> str:
-    """Read a REPL line with a protected prompt.
+def use_prompt_toolkit_repl() -> bool:
+    """True when chat REPL should use prompt_toolkit (interactive TTY)."""
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        return False
+    try:
+        import prompt_toolkit  # noqa: F401
+    except ImportError:
+        return False
+    return True
 
-    The prompt must be passed to ``input()`` (not written separately). Otherwise
-    readline/libedit redraws from column 0 on backspace and erases a manually
-    printed ``>``. Tab-completion ghost prompts on macOS libedit are mitigated
-    in ``completion.install_repl_readline_completer`` / slash completer instead.
+
+def read_repl_line(prompt: str = "> ") -> str:
+    """Read a REPL line with Unicode-safe editing on TTYs.
+
+    Interactive TTYs use prompt_toolkit (wcwidth, history, Tab completion).
+    Non-TTY / missing-toolkit fallbacks keep ``input()``; the prompt must still
+    be passed into ``input()`` so libedit cannot erase a separately printed ``>``.
     """
+    if use_prompt_toolkit_repl():
+        from localagent.ui.prompt_session import read_line_prompt_toolkit
+
+        try:
+            return read_line_prompt_toolkit(prompt)
+        except EOFError:
+            raise
+        except OSError:
+            pass
     return input(prompt)
 
 

@@ -52,6 +52,15 @@ def test_generate_report(isolated_data):
     assert "文件安全" in md
 
 
+def test_write_report_html(isolated_data, tmp_path: Path):
+    log_usage("ollama", "qwen3.5:4b", command="chat", prompt_tokens=10, completion_tokens=5)
+    out = write_report(tmp_path / "audit.html")
+    html = out.read_text(encoding="utf-8")
+    assert "<html" in html.lower()
+    assert "LocalAgent" in html
+    assert "Token" in html
+
+
 def test_log_event_and_behavior_in_cli(isolated_data, capsys):
     from localagent.audit.events import log_event
 

@@ -90,6 +90,7 @@ DATA_DIR = Path(_DATA_OVERRIDE) if _DATA_OVERRIDE else PROJECT_ROOT / "data"
 KB_DIR = DATA_DIR / "kb"
 SYNC_INDEX_FILE = DATA_DIR / "sync_index.json"
 MEMORY_STORE_FILE = DATA_DIR / "memory_store.json"
+MEMORY_PENDING_QUEUE_FILE = DATA_DIR / "pending_queue.json"
 MEMORY_GRAPH_FILE = DATA_DIR / "memory_graph.db"
 KNOWLEDGE_STORE_FILE = DATA_DIR / "knowledge_store.json"
 CORE_PROFILE_FILE = DATA_DIR / "core_profile.json"
@@ -108,8 +109,15 @@ EVENTS_LOG_FILE = AUDIT_DIR / "events.jsonl"
 LOGS_DIR = DATA_DIR / "logs"
 APP_LOG_FILE = LOGS_DIR / "localagent.log"
 
-SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt", ".xlsx"}
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt", ".xlsx"} | IMAGE_SUFFIXES
 DEFAULT_USER_ID = "default_user"
+
+# --- Vision (image → text for Cold RAG; separate from chat OLLAMA_MODEL) ---
+VL_ENABLED = _env_bool("LA_VL_ENABLED", "1")
+VL_MODEL = _env("LA_VL_MODEL", "qwen3-vl:4b") or "qwen3-vl:4b"
+VL_TIMEOUT = _env_float("LA_VL_TIMEOUT", "120")
+VL_NUM_PREDICT = _env_int("LA_VL_NUM_PREDICT", "1024")
 
 
 def memory_user_id() -> str:
@@ -146,8 +154,15 @@ LA_WORKSPACE = _env("LA_WORKSPACE")
 # --- Agent shell tool ---
 SHELL_TIMEOUT = _env_float("LA_SHELL_TIMEOUT", "30")
 SHELL_MAX_OUTPUT = _env_int("LA_SHELL_MAX_OUTPUT", "12000")
-# always = 每次 run_shell / write_file 都需确认；dangerous = 仅危险操作；off = 关闭
+# always = 每次 run_shell / write_file / edit_file 都需确认；dangerous = 仅危险操作；off = 关闭
 TOOL_APPROVAL = _env("LA_TOOL_APPROVAL", "always").lower()
+# Observe-phase heuristic compression (no extra LLM) for small local models.
+OBSERVE_BUDGET_CHARS = _env_int("LA_OBSERVE_BUDGET_CHARS", "1200")
+PREFETCH_BUDGET_CHARS = _env_int("LA_PREFETCH_BUDGET_CHARS", "1500")
+OBSERVE_KEEP_HITS = _env_int("LA_OBSERVE_KEEP_HITS", "6")
+# STM rolling window (hours). Session-recall loads conversations in this window.
+_STM_WINDOW_RAW = _env_float("LA_STM_WINDOW_HOURS", "24")
+STM_WINDOW_HOURS = _STM_WINDOW_RAW if _STM_WINDOW_RAW > 0 else 24.0
 
 # --- Model routing (LA_MODEL_SERVERS_FILE YAML or legacy env) ---
 DEFAULT_MODEL_PROVIDER = "auto"
@@ -314,6 +329,17 @@ MEMORY_GRAPH_MAX_EXTRAS = _env_int("LA_MEMORY_GRAPH_MAX_EXTRAS", "8")
 MEMORY_GRAPH_PROTECT_TOP = _env_int("LA_MEMORY_GRAPH_PROTECT_TOP", "1")
 # Force-insert up to N graph extras into slots after the protected prefix (Hit@5/8).
 MEMORY_GRAPH_FORCE_IN_TOP = _env_int("LA_MEMORY_GRAPH_FORCE_IN_TOP", "3")
+# Optional Neo4j precise graph queries (counts / aggregations / multi-hop).
+# Independent of LA_MEMORY_GRAPH (SQLite hop expand). Default off.
+NEO4J = _env_bool("LA_NEO4J", "0")
+NEO4J_URI = _env("LA_NEO4J_URI", "bolt://localhost:7687") or "bolt://localhost:7687"
+NEO4J_USER = _env("LA_NEO4J_USER", "neo4j") or "neo4j"
+NEO4J_PASSWORD = _env("LA_NEO4J_PASSWORD", "password") or "password"
+NEO4J_DATABASE = _env("LA_NEO4J_DATABASE", "neo4j") or "neo4j"
+# LLM Text2Cypher (Phase 2); MVP keeps templates only when 0.
+NEO4J_TEXT2CYPHER = _env_bool("LA_NEO4J_TEXT2CYPHER", "0")
+NEO4J_MAX_ROWS = _env_int("LA_NEO4J_MAX_ROWS", "50")
+NEO4J_MIN_CONFIDENCE = _env_float("LA_NEO4J_MIN_CONFIDENCE", "0.5")
 # Post-hybrid rerank over a larger candidate pool (cross-encoder / embed / llm).
 MEMORY_RERANK = _env_bool("LA_MEMORY_RERANK", "1")
 MEMORY_RERANK_BACKEND = _env("LA_MEMORY_RERANK_BACKEND", "auto").lower() or "auto"
@@ -340,6 +366,9 @@ INGEST_SUMMARY_MAX_SECTIONS = _env_int("LA_INGEST_SUMMARY_MAX_SECTIONS", "8")
 # Shared summarizer (documents + session memorize tasks).
 MEMORY_SUMMARY_MAX_CHARS = _env_int("LA_MEMORY_SUMMARY_MAX_CHARS", "600")
 MEMORY_SUMMARY_USE_LLM = _env_bool("LA_MEMORY_SUMMARY_USE_LLM", "0")
+# Conversation archives (LA chat + ChatGPT export) → Cold RAG.
+COLD_CONVERSATION = _env_bool("LA_COLD_CONVERSATION", "1")
+COLD_CONVERSATION_SUMMARY = _env_bool("LA_COLD_CONVERSATION_SUMMARY", "1")
 # Session exit extract: also write a session-level summary fact.
 MEMORY_SESSION_SUMMARY = _env_bool("LA_MEMORY_SESSION_SUMMARY", "1")
 # Reflect: limited multi-hop follow-up searches before synthesizing.
@@ -349,6 +378,10 @@ MEMORY_REFLECT_TOP_K = _env_int("LA_MEMORY_REFLECT_TOP_K", "8")
 MEMORY_CONSOLIDATE = _env_bool("LA_MEMORY_CONSOLIDATE", "1")
 MEMORY_CONSOLIDATE_ON_MEMORIZE = _env_bool("LA_MEMORY_CONSOLIDATE_ON_MEMORIZE", "1")
 MEMORY_CONSOLIDATE_RELATED_K = _env_int("LA_MEMORY_CONSOLIDATE_RELATED_K", "5")
+# Warm write gate: when required and not auto, non-interactive extracts enqueue to pending_queue.json.
+MEMORY_APPROVAL_REQUIRED = _env_bool("LA_MEMORY_APPROVAL_REQUIRED", "1")
+# Skip queue / prompts and retain immediately (CI, benchmarks, advanced users).
+MEMORY_APPROVAL_AUTO = _env_bool("LA_MEMORY_APPROVAL_AUTO", "0")
 
 # --- Memory enrichment ---
 MEMORY_ENRICH_USE_LLM = _env_bool("LA_MEMORY_ENRICH_LLM", "0")

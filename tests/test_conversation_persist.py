@@ -66,6 +66,8 @@ def test_migrate_legacy_jsonl(isolated_data):
 def test_is_narrative_memory_rejects_keyword_soup():
     assert not is_narrative_memory("总部；HUMAN；目标管理")
     assert not is_narrative_memory("计划plan；任务拆解；skill使用")
+    assert not is_narrative_memory("谢谢")
+    assert not is_narrative_memory("请帮我再搜索一下天气")
     assert is_narrative_memory("用户喜欢喝葡萄酒。")
     assert is_narrative_memory("用户于 2026-03-20 决定采用 Mem0 作为记忆引擎。")
 

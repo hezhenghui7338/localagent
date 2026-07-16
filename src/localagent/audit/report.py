@@ -204,13 +204,91 @@ def print_audit_summary(*, since: str | None = None, workspace_days: int = 7) ->
     ws_lines = format_workspace_summary(days=workspace_days).splitlines()[:8]
     lines.extend(f"  {line}" for line in ws_lines)
     lines.append("")
-    lines.append("→ LA audit --report report.md  导出完整报告")
+    lines.append("→ LA audit --report report.md  导出 Markdown；--report report.html 导出 HTML")
     return "\n".join(lines)
+
+
+def markdown_to_html(md: str) -> str:
+    """Minimal Markdown → HTML for audit reports (no extra dependency)."""
+    import html
+    import re
+
+    lines = md.splitlines()
+    out: list[str] = [
+        "<!DOCTYPE html>",
+        '<html lang="zh-CN"><head><meta charset="utf-8"/>',
+        "<title>LocalAgent 审计报告</title>",
+        "<style>",
+        "body{font-family:system-ui,-apple-system,sans-serif;max-width:900px;"
+        "margin:2rem auto;padding:0 1rem;line-height:1.5;color:#1a1a1a}",
+        "table{border-collapse:collapse;width:100%;margin:1rem 0}",
+        "th,td{border:1px solid #ccc;padding:0.4rem 0.6rem;text-align:left}",
+        "th{background:#f4f4f4}",
+        "code{background:#f0f0f0;padding:0.1rem 0.3rem;border-radius:3px}",
+        "pre{background:#f6f8fa;padding:0.8rem;overflow:auto}",
+        "h1,h2,h3{margin-top:1.4rem}",
+        "</style></head><body>",
+    ]
+    in_code = False
+    in_table = False
+    for raw in lines:
+        line = raw.rstrip()
+        if line.startswith("```"):
+            if in_code:
+                out.append("</pre>")
+                in_code = False
+            else:
+                out.append("<pre>")
+                in_code = True
+            continue
+        if in_code:
+            out.append(html.escape(line))
+            continue
+        if line.startswith("|") and "|" in line[1:]:
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if all(re.fullmatch(r":?-{3,}:?", c.replace(" ", "")) for c in cells):
+                continue
+            tag = "th" if not in_table else "td"
+            if not in_table:
+                out.append("<table>")
+                in_table = True
+            row = "".join(f"<{tag}>{html.escape(c)}</{tag}>" for c in cells)
+            out.append(f"<tr>{row}</tr>")
+            continue
+        if in_table:
+            out.append("</table>")
+            in_table = False
+        if line.startswith("# "):
+            out.append(f"<h1>{html.escape(line[2:])}</h1>")
+        elif line.startswith("## "):
+            out.append(f"<h2>{html.escape(line[3:])}</h2>")
+        elif line.startswith("### "):
+            out.append(f"<h3>{html.escape(line[4:])}</h3>")
+        elif line.startswith("- "):
+            out.append(f"<li>{html.escape(line[2:])}</li>")
+        elif line.strip() == "---":
+            out.append("<hr/>")
+        elif line.strip() == "":
+            out.append("<br/>")
+        else:
+            # light inline code
+            escaped = html.escape(line)
+            escaped = re.sub(r"`([^`]+)`", r"<code>\1</code>", escaped)
+            out.append(f"<p>{escaped}</p>")
+    if in_table:
+        out.append("</table>")
+    if in_code:
+        out.append("</pre>")
+    out.append("</body></html>")
+    return "\n".join(out)
 
 
 def write_report(path: Path, *, since: str | None = None, workspace_days: int = 7) -> Path:
     content = generate_report(since=since, workspace_days=workspace_days)
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    if path.suffix.lower() in {".html", ".htm"}:
+        path.write_text(markdown_to_html(content), encoding="utf-8")
+    else:
+        path.write_text(content, encoding="utf-8")
     return path

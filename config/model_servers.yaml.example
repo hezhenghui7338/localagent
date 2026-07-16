@@ -14,6 +14,9 @@
 #
 # ollama 专用: think, num_predict, num_ctx, keep_alive, chat_timeout, chat_stream
 # cursor 专用: cwd, max_retries
+#
+# 图片知识库 ingest 使用独立 VL 模型（LA_VL_MODEL，默认 qwen3-vl:4b），
+# 不要把下方 chat 的 model 改成 VL 模型。
 
 - provider: ollama
   base_url: http://localhost:11434

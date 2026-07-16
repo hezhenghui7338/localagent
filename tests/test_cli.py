@@ -55,6 +55,18 @@ def test_build_parser_exposes_version():
     assert "--version" in help_text
     assert "-V" in help_text
     assert "rag" in help_text
+    assert "websearch" in help_text
+    assert "reflect" in help_text
+
+
+def test_cli_websearch_calls_web_search(capsys):
+    with patch("localagent.cli.web_search", return_value="摘要: 深圳今日多云\n- [匹配] example.com") as search:
+        rc = main(["websearch", "今天深圳天气", "--top-k", "3"])
+    assert rc == 0
+    search.assert_called_once_with("今天深圳天气", max_results=3)
+    out = capsys.readouterr().out
+    assert "websearch" in out
+    assert "深圳今日多云" in out
 
 
 def test_cli_add_writes_memory_directly():
@@ -88,12 +100,6 @@ def test_cli_rag_add_and_ingest(tmp_path: Path, capsys):
     rc = main(["rag", "ingest"])
     assert rc == 0
     assert "skipped" in capsys.readouterr().out
-
-
-def test_cli_memory_add_file_moved(capsys):
-    rc = main(["memory", "add-file", "/tmp/x.md"])
-    assert rc == 2
-    assert "rag add" in capsys.readouterr().out
 
 
 def test_cli_search_memory_after_add():
@@ -188,17 +194,12 @@ def test_cli_rag_rebuild(tmp_path: Path, capsys):
     assert get_sync_index().get("rebuild.md") is not None
 
 
-def test_cli_deprecated_flat_commands(capsys):
+def test_cli_unknown_flat_memory_commands(capsys):
     rc = main(["add", "should fail"])
-    assert rc == 2
-    out = capsys.readouterr().out
-    assert "已废弃" in out
-    assert "memory add" in out
+    assert rc != 0
 
     rc = main(["sync-file"])
-    assert rc == 2
-    out = capsys.readouterr().out
-    assert "rag ingest" in out
+    assert rc != 0
 
 
 def test_cli_ingest_chat_skips_when_unchanged(isolated_data, capsys):

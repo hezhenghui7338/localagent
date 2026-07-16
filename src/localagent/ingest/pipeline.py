@@ -82,7 +82,16 @@ def ingest_file(
         )
 
     _report("load", f"加载文件 {filename}")
-    doc = load_file(path)
+    try:
+        doc = load_file(path)
+    except Exception as exc:
+        _report("fail", str(exc))
+        return IngestResult(
+            filename=filename,
+            path=str(path),
+            status=IngestStatus.FAILED,
+            error=str(exc),
+        )
     if doc is None:
         return IngestResult(
             filename=filename,

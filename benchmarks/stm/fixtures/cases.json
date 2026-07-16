@@ -1,0 +1,163 @@
+{
+  "routing": [
+    {"query": "今天的聊天记录", "expect": "session"},
+    {"query": "我今天问了啥?", "expect": "session"},
+    {"query": "刚才我们聊了什么", "expect": "session"},
+    {"query": "What did we talk about today?", "expect": "session"},
+    {"query": "我上次对话问了啥?", "expect": "session"},
+    {"query": "上一场聊了什么", "expect": "session"},
+    {"query": "What did I ask in the last conversation?", "expect": "session"},
+    {"query": "我问过关于关羽的什么问题吗?", "expect": "archive"},
+    {"query": "我以前聊过 Rust 吗", "expect": "archive"},
+    {"query": "我在2025年6月问过哪些问题?", "expect": "archive"},
+    {"query": "最近有什么新闻?", "expect": "neither"},
+    {"query": "我喜欢喝什么?", "expect": "neither"}
+  ],
+  "in_session": [
+    {
+      "id": "s1-zh-dog",
+      "history": [
+        {"role": "user", "content": "我的狗叫旺财"},
+        {"role": "assistant", "content": "好的，记下了旺财。"},
+        {"role": "user", "content": "它叫什么名字？"}
+      ],
+      "gold_answer": "旺财",
+      "gold_evidence": ["我的狗叫旺财"]
+    },
+    {
+      "id": "s1-en-city",
+      "history": [
+        {"role": "user", "content": "I live in Hangzhou now"},
+        {"role": "assistant", "content": "Got it — Hangzhou."},
+        {"role": "user", "content": "Where do I live?"}
+      ],
+      "gold_answer": "Hangzhou",
+      "gold_evidence": ["I live in Hangzhou now"]
+    },
+    {
+      "id": "s1-zh-correction",
+      "history": [
+        {"role": "user", "content": "我下周去北京"},
+        {"role": "assistant", "content": "祝旅途顺利。"},
+        {"role": "user", "content": "说错了，是上海不是北京"},
+        {"role": "assistant", "content": "已更正为上海。"},
+        {"role": "user", "content": "我下周去哪？"}
+      ],
+      "gold_answer": "上海",
+      "gold_evidence": ["是上海不是北京"]
+    }
+  ],
+  "same_day": [
+    {
+      "id": "s2-zh-today-vs-yesterday",
+      "sessions": [
+        {
+          "session_id": "s-today-hike",
+          "day_offset": 0,
+          "messages": [
+            {"role": "user", "content": "今天想去爬山"},
+            {"role": "assistant", "content": "记得带水，注意安全。"}
+          ]
+        },
+        {
+          "session_id": "s-yesterday-camera",
+          "day_offset": -1,
+          "messages": [
+            {"role": "user", "content": "昨天买了相机"},
+            {"role": "assistant", "content": "新相机用得开心。"}
+          ]
+        }
+      ],
+      "query": "我今天聊了啥",
+      "gold_must_include": ["爬山"],
+      "gold_must_exclude": ["相机"]
+    },
+    {
+      "id": "s2-en-multi-session",
+      "sessions": [
+        {
+          "session_id": "s-today-a",
+          "day_offset": 0,
+          "messages": [
+            {"role": "user", "content": "Remind me I booked a dentist at 3pm"},
+            {"role": "assistant", "content": "Dentist at 3pm noted."}
+          ]
+        },
+        {
+          "session_id": "s-today-b",
+          "day_offset": 0,
+          "messages": [
+            {"role": "user", "content": "Also buying milk later"},
+            {"role": "assistant", "content": "Milk is on the list."}
+          ]
+        }
+      ],
+      "query": "What did I talk about today?",
+      "gold_must_include": ["dentist", "milk"],
+      "gold_must_exclude": []
+    },
+    {
+      "id": "s2-zh-last-session",
+      "sessions": [
+        {
+          "session_id": "s-prev-wine",
+          "hour_offset": -2,
+          "messages": [
+            {"role": "user", "content": "借问酒家何处有"},
+            {"role": "assistant", "content": "附近有几家粤菜馆。"}
+          ]
+        },
+        {
+          "session_id": "s-old-bedroom",
+          "hour_offset": -72,
+          "messages": [
+            {"role": "user", "content": "卧室怎么摆家具"},
+            {"role": "assistant", "content": "利用垂直空间。"}
+          ]
+        }
+      ],
+      "query": "我上次对话问了啥?",
+      "gold_must_include": ["酒家"],
+      "gold_must_exclude": ["卧室"]
+    }
+  ],
+  "priority": [
+    {
+      "id": "s3-zh-tea",
+      "today_session_id": "s-today-tea",
+      "today_messages": [
+        {"role": "user", "content": "我改口了，现在喜欢喝绿茶"},
+        {"role": "assistant", "content": "好的，记下绿茶。"}
+      ],
+      "stale_warm_fact": "用户喜欢喝红茶",
+      "query": "我今天说喜欢喝什么",
+      "gold_correct": "绿茶",
+      "gold_stale": "红茶"
+    },
+    {
+      "id": "s3-en-city",
+      "today_session_id": "s-today-city",
+      "today_messages": [
+        {"role": "user", "content": "I moved — I live in Shanghai now"},
+        {"role": "assistant", "content": "Updated: Shanghai."}
+      ],
+      "stale_warm_fact": "User lives in Beijing",
+      "query": "我今天说住在什么城市",
+      "gold_correct": "Shanghai",
+      "gold_stale": "Beijing"
+    }
+  ],
+  "hot_profile": [
+    {
+      "id": "hot-name-pref",
+      "pins": {
+        "name": "测试用户",
+        "preferences": {"饮品": "绿茶", "居住地": "杭州"}
+      },
+      "expect": {
+        "name": "测试用户",
+        "preferences": {"饮品": "绿茶", "居住地": "杭州"}
+      }
+    }
+  ]
+}

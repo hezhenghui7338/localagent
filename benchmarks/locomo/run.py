@@ -70,7 +70,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="auto",
         help="LLM provider for recall_generate (e.g. cursor, ollama, openrouter, auto)",
     )
-    run.add_argument("--top-k", type=int, default=5)
+    run.add_argument("--top-k", type=int, default=8)
     run.add_argument("--skip-ingest", action="store_true", help="Reuse existing work-dir memories")
     run.add_argument("--quiet", action="store_true")
     return parser.parse_args(argv)
