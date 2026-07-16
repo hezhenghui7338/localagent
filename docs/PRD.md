@@ -5,7 +5,7 @@
 
 **一句话**：LocalAgent = **本机个人 AI 中枢** = **完全本地（零成本可玩）** + **易用少命令** + **智能多层次记忆（Mem0）** + **外部工具** + **RAG**。
 
-对外主叙事见 [README.zh-CN.md](../README.zh-CN.md) / [README.md](../README.md)；可跑通故事见 [examples/product-tour.zh-CN.md](../examples/product-tour.zh-CN.md)。
+对外主叙事见 [README.md](../README.md)（中文）/ [README.en.md](../README.en.md)（English）；可跑通故事见 [examples/product-tour.zh-CN.md](../examples/product-tour.zh-CN.md)。
 
 ---
 
