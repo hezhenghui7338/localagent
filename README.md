@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="./README.md">English</a> · <a href="./README.zh-CN.md">中文</a>
+  <b>English</b> · <a href="./README.zh-CN.md">中文</a>
 </p>
 
 # <img src="assets/logo-icon.png" alt="LA" width="36" valign="middle"> LocalAgent
@@ -75,7 +75,7 @@ la                              # asks before installing Ollama (you can skip)
 - **Mem0 + conversation memory**: ChatGPT history and LA chats → Warm facts **and** Cold searchable archives; docs via `LA rag` into Cold
 - **External tools + safety**: workspace + `run_shell` + write_file; approve before execute; hard-block dangerous commands; write-file hallucination detection
 - **Web search**: ddgs by default (no key); optional Tavily / SearXNG
-- **Document knowledge base (RAG)**: symlink personal files (incl. images textified via local Ollama VL); Chroma + BM25 hybrid search
+- **Document knowledge base (RAG)**: symlink personal files; Chroma + BM25 hybrid search
 - **Multi-model chat**: unified Ollama / OpenRouter / Cursor entry; `auto` mode falls back by priority
 - **Auditable**: tokens/cost, agent behavior, guardrail blocks, sensitive-file scan — exportable Markdown reports
 
@@ -486,7 +486,7 @@ Agent loop
 | --- | --- | --- | --- |
 | **Hot** | `core_profile.json` | Always-on identity / pinned facts | Profile pin / explicit core updates |
 | **Warm** | Mem0 (default) or JSON `memory_store` (+ optional SQLite relation graph) | Long-term conversational **facts** | ChatGPT / LA chat extract · `memory add` / `retain_memory` |
-| **Cold** | Chroma + BM25 (+ RRF) | Searchable source material (docs, images via VL caption, conversation archives) | `LA rag add` / `rag ingest` (kb/) · `memory ingest chat|chatgpt` / session exit (summary + body chunks) |
+| **Cold** | Chroma + BM25 (+ RRF) | Searchable source material (docs, conversation archives) | `LA rag add` / `rag ingest` (kb/) · `memory ingest chat|chatgpt` / session exit (summary + body chunks) |
 
 Warm holds durable facts about *you*. Cold holds **retrievable originals**: personal documents plus LA/ChatGPT transcripts (with a summary chunk for large chats). Warm extract failure no longer discards the transcript — Cold still indexes it. Use `LA rag search` / `search_knowledge` for archive text; `LA memory search` for facts.
 
