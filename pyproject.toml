@@ -89,7 +89,6 @@ packages = ["src/localagent"]
 include = [
     "/src",
     "/README.md",
-    "/README.en.md",
     "/LICENSE",
     "/pyproject.toml",
     "/.env.example",
