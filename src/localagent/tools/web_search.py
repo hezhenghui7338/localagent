@@ -24,14 +24,15 @@ _NEWS_MARKERS = ("新闻", "时事", "头条", "热点", "快讯", "news", "brea
 _TIME_MARKERS = ("几点", "当前时间", "现在时间", "今天几号", "今天日期", "what time", "current time")
 _WEATHER_MARKERS = ("天气", "气温", "降雨", "预报", "weather", "forecast", "temperature")
 
-# Common CN cities + XX市/区/县 — used to detect an explicit place in the query.
+# Common CN cities + X市/区/县/州/盟 — used to detect an explicit place in the query.
+# Suffix form uses {1,10} so 「赣州」「沧州」match (not only 「...州市」).
 _PLACE_IN_QUERY = re.compile(
     r"(?:"
     r"北京|上海|广州|深圳|杭州|南京|成都|重庆|武汉|西安|苏州|天津|长沙|郑州|"
     r"青岛|大连|厦门|福州|宁波|无锡|合肥|济南|昆明|贵阳|南宁|海口|三亚|"
-    r"哈尔滨|长春|沈阳|石家庄|太原|兰州|南昌|台北|香港|澳门|"
+    r"哈尔滨|长春|沈阳|石家庄|太原|兰州|南昌|赣州|台北|香港|澳门|"
     r"东莞|佛山|珠海|中山|惠州|温州|嘉兴|金华|绍兴|"
-    r"[\u4e00-\u9fff]{2,10}(?:市|区|县|州|盟)"
+    r"[\u4e00-\u9fff]{1,10}(?:市|区|县|州|盟)"
     r")"
 )
 _LOCAL_PLACE_MARKERS = ("本地", "当地", "这儿", "这里", "我们这", "这边")
@@ -247,8 +248,21 @@ def augment_web_query(query: str, *, today: date | None = None) -> str:
     return f"{q} {target.year}年{target.month:02d}月"
 
 
+_CJK = re.compile(r"[\u4e00-\u9fff]")
+
+
+def query_has_cjk(query: str) -> bool:
+    """True when the query contains Chinese (or other CJK) characters."""
+    return bool(_CJK.search(query or ""))
+
+
 def derive_search_params(query: str) -> dict[str, Any]:
-    """Derive recency/topic options from query text (Tavily-oriented; reused by others)."""
+    """Derive recency/topic options from query text (Tavily-oriented; reused by others).
+
+    CJK news queries intentionally avoid ``topic=news``: Tavily/Bing news corpora are
+    English-heavy and often ignore Chinese place names (e.g. 「赣州新闻」→ US headlines).
+    Use general search + time_range instead.
+    """
     opts: dict[str, Any] = {"search_depth": "basic", "include_answer": True}
 
     is_news = _has_any(query, _NEWS_MARKERS)
@@ -258,9 +272,12 @@ def derive_search_params(query: str) -> dict[str, Any]:
     is_time = _has_any(query, _TIME_MARKERS)
     is_weather = _has_any(query, _WEATHER_MARKERS)
 
-    if is_news:
+    if is_news and not query_has_cjk(query):
         opts["topic"] = "news"
         opts["days"] = 1 if (is_today or is_tomorrow) else 7
+    elif is_news:
+        # CJK: general index + recency (see docstring).
+        opts["time_range"] = "day" if (is_today or is_tomorrow) else "week"
     elif is_time or is_today or is_tomorrow or is_weather:
         opts["time_range"] = "day"
     elif is_recent:
@@ -381,6 +398,83 @@ def search_output_has_freshness_warning(text: str) -> bool:
     return "【时效警告】" in text or "【核对失败】" in text
 
 
+def extract_query_places(query: str) -> list[str]:
+    """Named places in the query that hits must mention (e.g. 深圳 / 赣州市)."""
+    if not query:
+        return []
+    return list(dict.fromkeys(_PLACE_IN_QUERY.findall(query)))
+
+
+# Common English spellings so provider summaries like "Shenzhen typhoon" still count.
+_PLACE_EN_ALIASES: dict[str, tuple[str, ...]] = {
+    "北京": ("beijing", "peking"),
+    "上海": ("shanghai",),
+    "广州": ("guangzhou", "canton"),
+    "深圳": ("shenzhen",),
+    "杭州": ("hangzhou",),
+    "南京": ("nanjing",),
+    "成都": ("chengdu",),
+    "重庆": ("chongqing",),
+    "武汉": ("wuhan",),
+    "西安": ("xi'an", "xian"),
+    "苏州": ("suzhou",),
+    "天津": ("tianjin",),
+    "长沙": ("changsha",),
+    "郑州": ("zhengzhou",),
+    "南昌": ("nanchang",),
+    "赣州": ("ganzhou",),
+    "香港": ("hong kong", "hongkong"),
+    "澳门": ("macau", "macao"),
+    "台北": ("taipei",),
+}
+
+
+def _place_match_variants(place: str) -> list[str]:
+    """Match stems / EN aliases so 「赣州市」hits「赣州」,「深圳」hits「Shenzhen」."""
+    raw = (place or "").strip()
+    if not raw:
+        return []
+    variants = [raw]
+    stem = re.sub(r"(?:市|区|县|州|盟)$", "", raw)
+    if stem and stem != raw:
+        variants.append(stem)
+    for key in (raw, stem):
+        if key in _PLACE_EN_ALIASES:
+            variants.extend(_PLACE_EN_ALIASES[key])
+    return list(dict.fromkeys(variants))
+
+
+def result_matches_places(item: dict[str, Any], places: list[str]) -> bool:
+    """True when the hit mentions at least one required place (title/body/url)."""
+    if not places:
+        return True
+    blob = " ".join(
+        str(item.get(key) or "") for key in ("title", "content", "url", "published_date")
+    )
+    if not blob.strip():
+        return False
+    blob_l = blob.lower()
+    for place in places:
+        for variant in _place_match_variants(place):
+            if variant.lower() in blob_l:
+                return True
+    return False
+
+
+def answer_matches_places(answer: str, places: list[str]) -> bool:
+    """True when a provider summary mentions the required place."""
+    if not places:
+        return True
+    if not (answer or "").strip():
+        return False
+    text = answer.lower()
+    return any(
+        variant.lower() in text
+        for place in places
+        for variant in _place_match_variants(place)
+    )
+
+
 def format_search_output(
     *,
     answer: str = "",
@@ -393,6 +487,7 @@ def format_search_output(
     # Freshness is judged against the day the user asked about (e.g. 明天 → tomorrow).
     target = query_target_date(query, today=as_of) if query else as_of
     mode = query_recency_mode(query) if query else None
+    places = extract_query_places(query) if query else []
     lines: list[str] = [
         f"【检索基准日】{today_label(target)}（{target.isoformat()}）",
     ]
@@ -404,6 +499,35 @@ def format_search_output(
         else:
             need = {"day": "今天/当日", "week": "近一周", "month": "近一月"}[mode]
         lines.append(f"【时效要求】用户问题需要匹配「{need}」的信息")
+    if places:
+        lines.append(f"【地点要求】结果须涉及：{' / '.join(places)}")
+
+    # Drop off-topic hits before freshness so the model never sees SpaceX-for-深圳 junk.
+    off_topic_n = 0
+    if places and results:
+        kept: list[dict[str, Any]] = []
+        for item in results:
+            if result_matches_places(item, places):
+                kept.append(item)
+            else:
+                off_topic_n += 1
+        results = kept
+        if off_topic_n:
+            lines.append(
+                f"【相关性】已丢弃 {off_topic_n} 条未提及上述地点的结果；"
+                "禁止用未展示条目或全球热点凑数。"
+            )
+        if not results:
+            lines.append(
+                "【核对失败】没有与用户所指地点相符的结果。"
+                "禁止把无关地区新闻当作该地新闻播报；应换查询重试或说明证据不足。"
+            )
+
+    # Drop off-topic provider summaries for place+news queries. Keep short weather
+    # blurbs like「今日多云」when on-topic hits remain (they often omit the city name).
+    if places and answer and not answer_matches_places(answer, places):
+        if _has_any(query, _NEWS_MARKERS) or not results:
+            answer = ""
 
     audited: list[tuple[Freshness, date | None, dict[str, Any]]] = []
     for item in results:
@@ -562,6 +686,9 @@ def _search_ddgs(query: str, *, max_results: int) -> str:
                 kwargs = {"max_results": max_results}
                 if timelimit:
                     kwargs["timelimit"] = timelimit
+                # Prefer CN results for Chinese queries (default locale skews US/EN).
+                if query_has_cjk(effective):
+                    kwargs["region"] = "cn-zh"
                 raw = list(ddgs.text(search_query, **kwargs))
     except Exception as exc:
         return f"联网搜索失败: {exc}"

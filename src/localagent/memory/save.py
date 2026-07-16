@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING, Any
 
+from localagent import config
 from localagent.memory.backend import get_memory_backend
 
 if TYPE_CHECKING:
@@ -21,9 +22,10 @@ def save_facts(
         return []
     backend = get_memory_backend()
     ids = backend.retain_batch(facts, metadata=metadata or {})
-    from localagent.memory.profile_pin import pin_facts_to_profile
+    if ids:
+        from localagent.memory.profile_pin import pin_facts_to_profile
 
-    pin_facts_to_profile(facts)
+        pin_facts_to_profile(facts)
     return ids
 
 
@@ -58,6 +60,15 @@ def _should_save_interactively(*, interactive: bool | None) -> bool:
     return sys.stdin.isatty()
 
 
+def _should_enqueue(*, interactive: bool | None) -> bool:
+    """Non-interactive Warm writes go to pending when approval is required."""
+    if config.MEMORY_APPROVAL_AUTO:
+        return False
+    if not config.MEMORY_APPROVAL_REQUIRED:
+        return False
+    return not _should_save_interactively(interactive=interactive)
+
+
 def confirm_save_facts(
     facts: list[str],
     *,
@@ -65,14 +76,25 @@ def confirm_save_facts(
     title: str | None = None,
     interactive: bool | None = None,
 ) -> list[str]:
-    """Prompt to save extracted facts. Default: save. Returns saved fact ids."""
+    """Prompt, enqueue, or save extracted facts. Returns Warm ids (empty if enqueued)."""
     if not facts:
+        return []
+
+    label = title or f"提取到 {len(facts)} 条记忆"
+
+    if _should_enqueue(interactive=interactive):
+        from localagent.pending import enqueue_facts
+
+        pending_ids = enqueue_facts(facts, metadata=metadata, title=label)
+        print(
+            f"[记忆] 已入队 {len(pending_ids)} 条待确认 "
+            f"（LA memory pending / approve / reject）"
+        )
         return []
 
     if not _should_save_interactively(interactive=interactive):
         return save_facts(facts, metadata=metadata)
 
-    label = title or f"提取到 {len(facts)} 条记忆"
     print(f"\n[记忆] {label}：")
     for index, fact in enumerate(facts, start=1):
         print(f"  {index}. {fact}")
@@ -99,13 +121,25 @@ def confirm_save_extracted(
     title: str | None = None,
     interactive: bool | None = None,
 ) -> list[str]:
-    """Prompt to save ExtractedMemory list (same UX as confirm_save_facts)."""
+    """Prompt, enqueue, or save ExtractedMemory list. Returns Warm ids (empty if enqueued)."""
     if not memories:
         return []
+
+    label = title or f"提取到 {len(memories)} 条记忆"
+
+    if _should_enqueue(interactive=interactive):
+        from localagent.pending import enqueue_extracted
+
+        pending_ids = enqueue_extracted(memories, metadata=metadata, title=label)
+        print(
+            f"[记忆] 已入队 {len(pending_ids)} 条待确认 "
+            f"（LA memory pending / approve / reject）"
+        )
+        return []
+
     if not _should_save_interactively(interactive=interactive):
         return save_extracted(memories, metadata=metadata)
 
-    label = title or f"提取到 {len(memories)} 条记忆"
     print(f"\n[记忆] {label}：")
     for index, mem in enumerate(memories, start=1):
         print(f"  {index}. {mem.text}")

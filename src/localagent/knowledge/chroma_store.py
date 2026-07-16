@@ -159,3 +159,11 @@ class ChromaStore:
             self._collection.delete(where={"source_file": source_file})
         except Exception:
             pass
+
+    def delete_by_origin(self, origin: str) -> None:
+        if not self._available or self._collection is None:
+            return
+        try:
+            self._collection.delete(where={"origin": origin})
+        except Exception:
+            pass

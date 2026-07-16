@@ -9,9 +9,11 @@ from localagent.tools import augment_web_query, derive_search_params, web_search
 from localagent.tools.web_search import (
     classify_result_freshness,
     extract_dates_from_text,
+    extract_query_places,
     format_search_output,
     query_recency_mode,
     resolve_web_search_provider,
+    result_matches_places,
     search_output_has_freshness_warning,
     today_label,
 )
@@ -94,16 +96,23 @@ def test_augment_web_query_keeps_explicit_year():
     assert augment_web_query("2024年科技新闻") == "2024年科技新闻"
 
 
-def test_derive_search_params_news_recent():
-    opts = derive_search_params("最近有什么新闻")
+def test_derive_search_params_cjk_news_uses_time_range_not_topic():
+    """CJK news must not use Tavily topic=news (EN corpus ignores 赣州 etc.)."""
+    opts = derive_search_params("赣州最近有什么新闻吗")
+    assert "topic" not in opts
+    assert opts["time_range"] == "week"
+
+
+def test_derive_search_params_cjk_news_today():
+    opts = derive_search_params("今天有什么新闻")
+    assert "topic" not in opts
+    assert opts["time_range"] == "day"
+
+
+def test_derive_search_params_english_news_uses_topic():
+    opts = derive_search_params("latest tech news")
     assert opts["topic"] == "news"
     assert opts["days"] == 7
-
-
-def test_derive_search_params_news_today():
-    opts = derive_search_params("今天有什么新闻")
-    assert opts["topic"] == "news"
-    assert opts["days"] == 1
 
 
 def test_derive_search_params_recent_non_news():
@@ -222,13 +231,13 @@ def test_format_search_output_keeps_fresh_and_filters_stale():
         answer="今日多云",
         results=[
             {
-                "title": "过期页",
+                "title": "深圳过期页",
                 "content": "2026年3月大雨",
                 "url": "https://example.com/old",
                 "published_date": "2026-03-01",
             },
             {
-                "title": "新页",
+                "title": "深圳新页",
                 "content": "2026年7月14日多云 30℃",
                 "url": "https://example.com/new",
                 "published_date": "2026-07-14",
@@ -238,10 +247,71 @@ def test_format_search_output_keeps_fresh_and_filters_stale():
         today=today,
     )
     assert "摘要: 今日多云" in text
-    assert "新页" in text
+    assert "深圳新页" in text
     assert "【时效警告】" in text
     assert "已过滤的过期结果" in text
-    assert "过期页" in text
+    assert "深圳过期页" in text
+
+
+def test_extract_query_places():
+    assert extract_query_places("深圳有什么新闻吗") == ["深圳"]
+    assert extract_query_places("赣州最近有什么新闻吗") == ["赣州"]
+    # Explicit city token wins over longer「…市」suffix form.
+    assert extract_query_places("赣州市最近新闻") == ["赣州"]
+    assert extract_query_places("安远县有什么新闻") == ["安远县"]
+
+
+def test_format_search_output_drops_off_topic_place_hits():
+    today = date(2026, 7, 16)
+    text = format_search_output(
+        answer="SpaceX launched from Florida. Luxshare IPO in Hong Kong.",
+        results=[
+            {
+                "title": "SpaceX Falcon 9 launch",
+                "content": "Cape Canaveral Starlink mission",
+                "url": "https://example.com/spacex",
+                "published_date": "2026-07-13",
+            },
+            {
+                "title": "深圳台风最新消息",
+                "content": "2026年7月深圳防御台风",
+                "url": "https://example.com/sz",
+                "published_date": "2026-07-15",
+            },
+        ],
+        query="深圳有什么新闻吗",
+        today=today,
+    )
+    assert "【地点要求】" in text and "深圳" in text
+    assert "【相关性】已丢弃 1 条" in text
+    assert "SpaceX" not in text
+    assert "深圳台风" in text
+    # Provider summary ignored the place → dropped
+    assert "Luxshare" not in text
+    assert "摘要:" not in text or "摘要: SpaceX" not in text
+
+
+def test_format_search_output_place_mismatch_all_fails():
+    text = format_search_output(
+        answer="Cubs win again",
+        results=[
+            {
+                "title": "Cubs 9, Orioles 7",
+                "content": "Chicago baseball",
+                "url": "https://example.com/cubs",
+                "published_date": "2026-07-14",
+            }
+        ],
+        query="赣州最近有什么新闻吗",
+        today=date(2026, 7, 16),
+    )
+    assert "【核对失败】" in text
+    assert "地点" in text
+    assert "Cubs" not in text
+    assert search_output_has_freshness_warning(text)
+    assert result_matches_places(
+        {"title": "赣州要闻", "content": "本地", "url": ""}, ["赣州"]
+    )
 
 
 def test_format_search_output():
@@ -316,8 +386,8 @@ def test_web_search_sends_recency_payload(monkeypatch):
         result = web_search("最近的新闻")
 
     payload = mock_client.post.call_args.kwargs["json"]
-    assert payload["topic"] == "news"
-    assert payload["days"] == 7
+    assert "topic" not in payload
+    assert payload["time_range"] == "week"
     assert payload["include_answer"] is True
     today = date.today()
     assert f"{today.year}年{today.month:02d}月" in payload["query"]
@@ -346,26 +416,48 @@ def test_web_search_ddgs_text(monkeypatch):
     assert kwargs.get("timelimit") == "w"
 
 
-def test_web_search_ddgs_news(monkeypatch):
+def test_web_search_ddgs_news_english(monkeypatch):
     monkeypatch.setattr("localagent.config.WEB_SEARCH_PROVIDER", "ddgs")
     mock_ddgs = MagicMock()
     mock_ddgs.__enter__.return_value = mock_ddgs
     mock_ddgs.news.return_value = [
         {
-            "title": "今日头条",
+            "title": "Top headline",
             "url": "https://example.com/news",
-            "body": "要闻内容",
+            "body": "breaking story",
             "date": "2026-07-13",
         },
     ]
 
     with patch("ddgs.DDGS", return_value=mock_ddgs):
-        result = web_search("最近有什么新闻")
+        result = web_search("latest news")
 
-    assert "今日头条" in result
+    assert "Top headline" in result
     assert "2026-07-13" in result
     mock_ddgs.news.assert_called_once()
     assert mock_ddgs.news.call_args.kwargs.get("timelimit") == "w"
+
+
+def test_web_search_ddgs_cjk_news_uses_text_region(monkeypatch):
+    monkeypatch.setattr("localagent.config.WEB_SEARCH_PROVIDER", "ddgs")
+    mock_ddgs = MagicMock()
+    mock_ddgs.__enter__.return_value = mock_ddgs
+    mock_ddgs.text.return_value = [
+        {
+            "title": "赣州要闻",
+            "href": "https://example.com/gz",
+            "body": "本地动态",
+        },
+    ]
+
+    with patch("ddgs.DDGS", return_value=mock_ddgs):
+        result = web_search("赣州最近有什么新闻吗")
+
+    assert "赣州要闻" in result
+    mock_ddgs.news.assert_not_called()
+    mock_ddgs.text.assert_called_once()
+    assert mock_ddgs.text.call_args.kwargs.get("region") == "cn-zh"
+    assert mock_ddgs.text.call_args.kwargs.get("timelimit") == "w"
 
 
 def test_web_search_searxng(monkeypatch):
@@ -400,7 +492,8 @@ def test_web_search_searxng(monkeypatch):
     assert call_kwargs.args[0] == "http://searx.local:8080/search"
     params = call_kwargs.kwargs["params"]
     assert params["format"] == "json"
-    assert params["categories"] == "news"
+    # CJK news: general search + day window (not EN-heavy news category).
+    assert "categories" not in params
     assert params["time_range"] == "day"
 
 

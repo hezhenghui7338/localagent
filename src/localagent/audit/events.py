@@ -143,6 +143,6 @@ def aggregate_behavior(events: list[dict[str, Any]]) -> dict[str, Any]:
         "blocked": blocked[:20],
         "denied": denied[:20],
         "shell_count": tool_counts.get("run_shell", 0),
-        "write_file_count": tool_counts.get("write_file", 0),
+        "write_file_count": tool_counts.get("write_file", 0) + tool_counts.get("edit_file", 0),
         "web_search_count": tool_counts.get("web_search", 0),
     }

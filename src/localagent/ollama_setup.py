@@ -141,10 +141,11 @@ def start_ollama_serve(*, log: Callable[[str], None] | None = None) -> None:
     emit = log or (lambda msg: print(f"[ollama] {msg}"))
     binary = ollama_bin()
     if not binary:
-        raise RuntimeError("Ollama 未安装")
-    if is_ollama_reachable():
+        raise RuntimeError("Ollama 未安装（which ollama 为空）。请安装: https://ollama.com/download")
+    base = default_ollama_base_url()
+    if is_ollama_reachable(base):
         return
-    emit("正在启动 ollama serve…")
+    emit(f"正在启动 ollama serve…（等待 API {base}）")
     subprocess.Popen(  # noqa: S603
         [binary, "serve"],
         stdout=subprocess.DEVNULL,
@@ -152,11 +153,19 @@ def start_ollama_serve(*, log: Callable[[str], None] | None = None) -> None:
         start_new_session=True,
     )
     deadline = time.time() + 30
+    last_emit = 0.0
     while time.time() < deadline:
-        if is_ollama_reachable():
+        if is_ollama_reachable(base):
+            emit("ollama API 已就绪")
             return
+        elapsed = time.time() - (deadline - 30)
+        if elapsed - last_emit >= 5:
+            emit(f"等待 ollama API… {int(elapsed)}s / 30s")
+            last_emit = elapsed
         time.sleep(0.5)
-    raise RuntimeError("ollama serve 启动超时，请手动运行: ollama serve")
+    raise RuntimeError(
+        f"ollama serve 启动超时（{base} 无响应）。请手动运行: ollama serve"
+    )
 
 
 def pull_model(model: str, *, log: Callable[[str], None] | None = None) -> None:
@@ -164,8 +173,28 @@ def pull_model(model: str, *, log: Callable[[str], None] | None = None) -> None:
     binary = ollama_bin()
     if not binary:
         raise RuntimeError("Ollama 未安装")
-    emit(f"正在拉取模型 {model}（首次约 2.5GB，请稍候）…")
-    _run([binary, "pull", model])
+    base = default_ollama_base_url()
+    emit(f"正在拉取模型 {model}（首次约 2.5GB；API {base}）…")
+    try:
+        _run([binary, "pull", model])
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            f"拉取模型失败（exit {exc.returncode}）。可重试: ollama pull {model}"
+        ) from exc
+
+
+def _diagnose_hint(*, base_url: str, target: str) -> str:
+    bits = [
+        f"platform={platform.system()}",
+        f"ollama_bin={ollama_bin() or 'missing'}",
+        f"base_url={base_url}",
+        f"api={'ok' if is_ollama_reachable(base_url) else 'down'}",
+        f"target={target}",
+    ]
+    names = list_local_model_names(base_url)[:5]
+    if names:
+        bits.append(f"local_models={','.join(names)}")
+    return " · ".join(bits)
 
 
 def ensure_ollama_ready(
@@ -189,13 +218,24 @@ def ensure_ollama_ready(
     target = (model or default_ollama_model()).strip() or DEFAULT_OLLAMA_MODEL
 
     if _env_skip():
+        base = default_ollama_base_url()
+        installed = is_ollama_installed()
+        served = is_ollama_reachable(base) if installed else False
+        ready = has_model(target, base_url=base) if served else False
+        next_steps = (
+            "下一步: 取消跳过则 la setup；或配置云端 Key 后 LA chat --provider openrouter|cursor"
+        )
         return OllamaSetupResult(
-            installed=is_ollama_installed(),
+            installed=installed,
             model=target,
-            model_ready=has_model(target) if is_ollama_installed() else False,
-            served=is_ollama_reachable(),
+            model_ready=ready,
+            served=served,
             skipped=True,
-            message="已跳过（LA_SKIP_OLLAMA_SETUP=1）",
+            message=(
+                f"已跳过 Ollama 安装引导（LA_SKIP_OLLAMA_SETUP=1）。"
+                f"{' 本机已有模型 '+target+'。' if ready else ' '}"
+                f"{next_steps}"
+            ),
         )
 
     installed_now = False
@@ -318,9 +358,15 @@ def ensure_ollama_ready(
     if model_ready:
         msg = f"已就绪（模型 {target}）"
     elif not served:
-        msg = "Ollama 未响应，请运行: ollama serve"
+        msg = (
+            "Ollama 未响应，请运行: ollama serve。诊断: "
+            + _diagnose_hint(base_url=default_ollama_base_url(), target=target)
+        )
     else:
-        msg = f"模型 {target} 尚未就绪"
+        msg = (
+            f"模型 {target} 尚未就绪。诊断: "
+            + _diagnose_hint(base_url=default_ollama_base_url(), target=target)
+        )
     return OllamaSetupResult(
         installed=True,
         installed_now=installed_now,

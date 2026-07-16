@@ -19,38 +19,19 @@ from localagent.memory.query import list_memory_tags, query_memories
 from localagent.memory.rememorize import ingest_chat
 from localagent.memory.reset import (
     rebuild_knowledge,
-    rebuild_memory,
     reindex_memory_engine,
     reset_knowledge,
     reset_memory,
 )
 from localagent.memory.store import get_memory_store
-from localagent.tools import query_memories_tool, reflect_memory, search_knowledge, search_memory
+from localagent.tools import (
+    query_memories_tool,
+    reflect_memory,
+    search_knowledge,
+    search_memory,
+    web_search,
+)
 from localagent.ui.console import emit
-
-# Old flat memory commands → replacement shown to users (no longer executed).
-_DEPRECATED_MEMORY_COMMANDS: dict[str, str] = {
-    "add": "memory add <text>",
-    "add-file": "rag add <path>",
-    "sync-file": "rag ingest [--force]",
-    "reset-memory": "memory reset [chat|chatgpt|all]",
-    "rebuild-memory": "rag rebuild",
-    "reindex-memory": "memory reindex",
-    "memory-status": "memory status",
-    "rememorize-chat": "memory ingest chat [--force]",
-    "import-chatgpt": "memory ingest chatgpt …",
-    "forget": "memory forget <id>",
-    "search": "memory search <query>（知识库请用 rag search）",
-    "memories": "memory query …",
-    "reflect": "memory reflect <query>",
-    "consolidate": "memory consolidate [--limit N] [-f]",
-}
-
-
-def _print_deprecated(old: str) -> int:
-    replacement = _DEPRECATED_MEMORY_COMMANDS[old]
-    print(f"[LA] `{old}` 已废弃，请改用: LA {replacement}")
-    return 2
 
 
 def _print_ingest_result(result) -> None:
@@ -132,6 +113,57 @@ def cmd_add(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_memory_pending(args: argparse.Namespace) -> int:
+    from localagent.pending import list_pending, pending_count
+
+    limit = getattr(args, "limit", None)
+    items = list_pending(limit=limit)
+    total = pending_count()
+    if not items:
+        print("[memory pending] 队列为空")
+        return 0
+    print(f"[memory pending] {len(items)}/{total} 条待确认：")
+    for item in items:
+        src = (item.metadata or {}).get("source", "")
+        src_hint = f" · {src}" if src else ""
+        print(f"  {item.id}  {item.text[:80]}{src_hint}")
+    if limit is not None and total > len(items):
+        print(f"  … 另有 {total - len(items)} 条，去掉 --limit 查看全部")
+    print("  批准: LA memory approve <id>|--all")
+    print("  拒绝: LA memory reject <id>|--all")
+    return 0
+
+
+def cmd_memory_approve(args: argparse.Namespace) -> int:
+    from localagent.pending import approve_all, approve_ids, pending_count
+
+    if getattr(args, "all", False):
+        warm_ids = approve_all()
+    else:
+        ids = list(getattr(args, "ids", None) or [])
+        if not ids:
+            print("[memory approve] 请指定 id 或 --all")
+            return 2
+        warm_ids = approve_ids(ids)
+    print(f"[memory approve] 已写入 Warm {len(warm_ids)} 条；剩余待确认 {pending_count()}")
+    return 0 if warm_ids or getattr(args, "all", False) else 1
+
+
+def cmd_memory_reject(args: argparse.Namespace) -> int:
+    from localagent.pending import pending_count, reject_all, reject_ids
+
+    if getattr(args, "all", False):
+        n = reject_all()
+    else:
+        ids = list(getattr(args, "ids", None) or [])
+        if not ids:
+            print("[memory reject] 请指定 id 或 --all")
+            return 2
+        n = reject_ids(ids)
+    print(f"[memory reject] 已丢弃 {n} 条；剩余待确认 {pending_count()}")
+    return 0
+
+
 def _format_file_size(path: str | Path) -> str:
     try:
         size = Path(path).stat().st_size
@@ -176,11 +208,6 @@ def cmd_add_file(args: argparse.Namespace) -> int:
     print(f"[{prefix}] done（仅知识库，不提取记忆）")
     return 0
 
-
-def cmd_memory_add_file_moved(args: argparse.Namespace) -> int:
-    print("[memory add-file] 已迁移 → LA rag add <path>")
-    print("  文档只写入 Cold 知识库，不再提取 Warm 记忆。")
-    return 2
 
 def _print_task_detail(task) -> None:
     print(f"[tasks] {task.id}")
@@ -347,12 +374,6 @@ def cmd_ingest_file(args: argparse.Namespace) -> int:
     return 1 if summary.failed_count else 0
 
 
-def cmd_memory_ingest_file_moved(_args: argparse.Namespace) -> int:
-    print("[memory ingest file] 已迁移 → LA rag ingest [--force]")
-    print("  文档只写入 Cold 知识库，不再提取 Warm 记忆。")
-    return 2
-
-
 def cmd_rag_search(args: argparse.Namespace) -> int:
     emit("rag search", f"检索知识库: {args.query}")
     print(search_knowledge(args.query, top_k=args.top_k))
@@ -361,16 +382,24 @@ def cmd_rag_search(args: argparse.Namespace) -> int:
 
 def cmd_rag_status(_args: argparse.Namespace) -> int:
     from localagent.audit.health import collect_memory_health
+    from localagent.ingest.conversation_cold import count_chunks_by_origin
     from localagent.ingest.sync_index import get_sync_index
     from localagent.knowledge.indexer import get_knowledge_indexer
 
     sync = get_sync_index()
     indexer = get_knowledge_indexer()
     files = sync.all_filenames()
+    by_origin = count_chunks_by_origin()
     print("[rag status] Cold 知识库")
     print(f"  kb 目录:     {config.KB_DIR}")
     print(f"  已索引文件:  {len(files)}")
     print(f"  知识块数:    {indexer.count()}")
+    print(
+        f"  来源分布:    kb={by_origin.get('kb', 0)}  "
+        f"chat={by_origin.get('chat', 0)}  "
+        f"chatgpt={by_origin.get('chatgpt', 0)}  "
+        f"other={by_origin.get('other', 0)}"
+    )
     print(f"  sync_index:  {config.SYNC_INDEX_FILE}")
 
     health = collect_memory_health()
@@ -383,8 +412,9 @@ def cmd_rag_status(_args: argparse.Namespace) -> int:
 
     print("\n下一步:")
     print("  LA rag add <path>     软链到 kb/ 并索引")
-    print("  LA rag search <q>     检索知识库")
+    print("  LA rag search <q>     检索知识库（含对话归档）")
     print("  LA rag ingest         增量扫描 data/kb/")
+    print("  LA rag rebuild        重建 kb/ + chat + chatgpt Cold")
     return 0
 
 
@@ -440,6 +470,7 @@ def cmd_rag_reset(args: argparse.Namespace) -> int:
     print(f"  sync_index entries removed: {stats['sync_index_entries_removed']}")
     if stats["clear_knowledge"]:
         print(f"  knowledge chunks removed: {stats['knowledge_chunks_removed']}")
+        print("  (includes conversation Cold chunks from chat / chatgpt)")
     print(f"  legacy ingest memories removed: {stats['memory_facts_removed']}")
     print("[rag reset] done (kb/ symlinks preserved)")
     return 0
@@ -452,6 +483,12 @@ def cmd_rag_rebuild(_args: argparse.Namespace) -> int:
     print(f"  sync_index entries removed: {reset_stats['sync_index_entries_removed']}")
     print(f"  knowledge chunks removed: {reset_stats['knowledge_chunks_removed']}")
     print(f"  legacy ingest memories removed: {reset_stats['memory_facts_removed']}")
+    print(
+        "[rag rebuild] conversation Cold: "
+        f"chat={reset_stats.get('conversation_cold_chat', 0)} "
+        f"chatgpt={reset_stats.get('conversation_cold_chatgpt', 0)} "
+        f"chunks={reset_stats.get('conversation_cold_chunks', 0)}"
+    )
     for result in summary.results:
         _print_ingest_result(result)
     print(f"[rag rebuild] {summary.format_summary()}")
@@ -460,10 +497,6 @@ def cmd_rag_rebuild(_args: argparse.Namespace) -> int:
 
 def cmd_reset_memory(args: argparse.Namespace) -> int:
     source = getattr(args, "source", "all") or "all"
-    if source == "file":
-        print("[memory reset file] 已迁移 → LA rag reset")
-        print("  若只需删除旧文档记忆碎片，rag reset 会一并清理 source=ingest。")
-        return 2
     reporter = ConsoleProgressReporter(prefix="memory reset")
     try:
         stats = reset_memory(
@@ -480,13 +513,6 @@ def cmd_reset_memory(args: argparse.Namespace) -> int:
         print(f"  sync_index entries removed: {stats['sync_index_entries_removed']}")
     print("[memory reset] done（知识库请用 LA rag reset；对话档案保留）")
     return 0
-
-
-def cmd_rebuild_memory(_args: argparse.Namespace) -> int:
-    print("[memory rebuild] 已拆分：")
-    print("  Warm 重建向量 → LA memory reindex")
-    print("  Cold 知识库重建 → LA rag rebuild")
-    return 2
 
 
 def cmd_reindex_memory(_args: argparse.Namespace) -> int:
@@ -508,10 +534,18 @@ def cmd_ingest_chat(args: argparse.Namespace) -> int:
         reporter=reporter,
         interactive=interactive,
     )
+    cold_chunks = 0
+    try:
+        raw = json.loads(config.CHAT_INGEST_INDEX_FILE.read_text(encoding="utf-8"))
+        for entry in (raw.get("processed") or {}).values():
+            if isinstance(entry, dict):
+                cold_chunks += int(entry.get("cold_chunk_count") or 0)
+    except Exception:
+        pass
     if not ids:
-        print("[memory ingest chat] 未提取到新记忆")
+        print(f"[memory ingest chat] 未提取到新记忆（cold_chunks≈{cold_chunks}）")
         return 0
-    print(f"[memory ingest chat] 已保存 {len(ids)} 条记忆")
+    print(f"[memory ingest chat] 已保存 {len(ids)} 条记忆（cold_chunks≈{cold_chunks}）")
     return 0
 
 
@@ -568,6 +602,8 @@ def cmd_ingest_chatgpt(args: argparse.Namespace) -> int:
     print(f"[memory ingest chatgpt] {summary.format_summary()}")
     if summary.saved_count:
         print(f"→ 已写入 {summary.saved_count} 条记忆")
+    elif summary.cold_chunks and summary.imported == 0 and not summary.errors:
+        print(f"[memory ingest chatgpt] 未提取到新记忆，已写入 Cold {summary.cold_chunks} chunks")
     elif summary.imported == 0 and not summary.errors:
         print("[memory ingest chatgpt] 未提取到新的记忆")
     return 1 if summary.errors and summary.files_processed == 0 else 0
@@ -575,8 +611,6 @@ def cmd_ingest_chatgpt(args: argparse.Namespace) -> int:
 
 def cmd_memory_ingest(args: argparse.Namespace) -> int:
     source = (args.source or "").strip().lower()
-    if source == "file":
-        return cmd_memory_ingest_file_moved(args)
     if source == "chat":
         return cmd_ingest_chat(args)
     if source == "chatgpt":
@@ -631,9 +665,6 @@ def cmd_forget(args: argparse.Namespace) -> int:
 
 
 def cmd_search(args: argparse.Namespace) -> int:
-    if getattr(args, "knowledge", False):
-        print("[memory search --knowledge] 已迁移 → LA rag search <query>")
-        return 2
     emit("memory search", f"检索记忆: {args.query}")
     backend = get_memory_backend()
     hits = backend.recall(args.query, max_results=args.top_k)
@@ -651,11 +682,73 @@ def cmd_search(args: argparse.Namespace) -> int:
 
 
 def cmd_memory_graph(args: argparse.Namespace) -> int:
-    """Inspect or rebuild the local Warm memory relation graph."""
+    """Inspect or rebuild SQLite / Neo4j memory graphs; run precise queries."""
     from localagent import config
-    from localagent.memory.graph import get_memory_graph, rebuild_memory_graph
+    from localagent.memory.graph import (
+        format_precise_result,
+        get_memory_graph,
+        get_neo4j_store,
+        neo4j_available,
+        neo4j_enabled,
+        precise_graph_query,
+        rebuild_memory_graph,
+        rebuild_neo4j_graph,
+    )
 
     action = getattr(args, "graph_action", None) or "stats"
+    graph_arg = getattr(args, "graph_arg", None)
+
+    if action == "query":
+        query = (graph_arg or "").strip()
+        if not query:
+            print("[memory graph query] 请提供问题，例如: LA memory graph query \"提到过几次 Caroline？\"")
+            return 2
+        if not neo4j_enabled():
+            print("[memory graph query] Neo4j 未启用（LA_NEO4J=1）")
+            return 1
+        emit("memory graph query", query)
+        result = precise_graph_query(query, fallback_hybrid=True)
+        print(format_precise_result(result, verbose=True))
+        return 0 if result.ok else 1
+
+    if action == "neo4j":
+        sub = (graph_arg or "stats").strip().lower()
+        if sub == "rebuild":
+            emit("memory graph neo4j rebuild", "从 memory_store.json 重建 Neo4j…")
+            try:
+                stats = rebuild_neo4j_graph()
+            except Exception as exc:
+                print(f"[memory graph neo4j] 重建失败: {exc}")
+                return 1
+            print(
+                "[memory graph neo4j] 已重建: "
+                f"entities={stats['entities']} relations={stats['relations']} "
+                f"mentions={stats['mentions']} facts={stats['facts']}"
+            )
+            print(f"  URI: {config.NEO4J_URI}")
+            return 0
+
+        print("[memory graph neo4j] 精确图查询状态")
+        print(f"  启用:       {'是' if neo4j_enabled() else '否'} (LA_NEO4J)")
+        print(f"  URI:        {config.NEO4J_URI}")
+        print(f"  可用:       {'是' if neo4j_available() else '否'}")
+        print(f"  Text2Cypher:{'开' if config.NEO4J_TEXT2CYPHER else '关'} (默认关，用模板)")
+        if neo4j_enabled() and neo4j_available():
+            try:
+                stats = get_neo4j_store().stats()
+                print(f"  entities:   {stats['entities']}")
+                print(f"  relations:  {stats['relations']}")
+                print(f"  mentions:   {stats['mentions']}")
+                print(f"  facts:      {stats['facts']}")
+            except Exception as exc:
+                print(f"  统计失败:   {exc}")
+        else:
+            print("\n提示: 精确计数/聚合需 LA_NEO4J=1，并 pip install 'la-localagent[neo4j]'")
+            print("      无 Docker 时可设 LA_NEO4J_URI=memory:// 做本地内存图实验")
+            print("      重建: LA memory graph neo4j rebuild")
+            print("      查询: LA memory graph query \"提到过几次 X？\"")
+        return 0
+
     if action == "rebuild":
         emit("memory graph rebuild", "从 memory_store.json 重建关系图…")
         stats = rebuild_memory_graph()
@@ -665,6 +758,8 @@ def cmd_memory_graph(args: argparse.Namespace) -> int:
             f"mentions={stats['mentions']} facts={stats['facts']}"
         )
         print(f"  文件: {config.MEMORY_GRAPH_FILE}")
+        if neo4j_enabled():
+            print("  Neo4j: 已同步重建（见 LA memory graph neo4j stats）")
         return 0
 
     stats = get_memory_graph().stats()
@@ -677,9 +772,11 @@ def cmd_memory_graph(args: argparse.Namespace) -> int:
     print(f"  mentions:   {stats['mentions']}")
     print(f"  facts:      {stats['facts']}")
     print(f"  文件:       {config.MEMORY_GRAPH_FILE}")
+    print(f"  Neo4j:      {'开' if neo4j_enabled() else '关'} (LA_NEO4J；精确计数/聚合)")
     if not config.MEMORY_GRAPH:
         print("\n提示: 关系图默认关闭（日常靠 hybrid + cross-encoder）。")
         print("      实验多跳时可设 LA_MEMORY_GRAPH=1，再执行: LA memory graph rebuild")
+        print("      精确问（多少次/列出所有）用 Neo4j: LA_NEO4J=1 + neo4j rebuild/query")
         print("      说明见 README「可选 Warm 关系图」；开图会增加召回延迟。")
     return 0
 
@@ -724,6 +821,16 @@ def cmd_memory_status(_args: argparse.Namespace) -> int:
     chatgpt_imported = _ingest_index_count(config.CHATGPT_IMPORT_INDEX_FILE)
     print(f"  LA 对话档案:  {chat_sessions} 个会话（已记忆化索引 {chat_ingested}）")
     print(f"  ChatGPT 导入: 已处理 {chatgpt_imported} 条")
+    try:
+        from localagent.ingest.conversation_cold import count_chunks_by_origin
+
+        cold = count_chunks_by_origin()
+        print(
+            f"  Cold 对话块:  chat={cold.get('chat', 0)}  chatgpt={cold.get('chatgpt', 0)}  "
+            f"(LA rag search 可召回)"
+        )
+    except Exception:
+        pass
     print(f"  Hot 画像:     {'已配置' if _core_profile_configured() else '未配置'} ({config.CORE_PROFILE_FILE})")
     print(
         f"  关系图:       {'开启' if config.MEMORY_GRAPH else '关闭'} "
@@ -748,8 +855,14 @@ def cmd_memory_status(_args: argparse.Namespace) -> int:
 
 
 def cmd_reflect(args: argparse.Namespace) -> int:
-    emit("memory reflect", f"推理记忆: {args.query}")
+    emit("reflect", f"综合推理: {args.query}")
     print(reflect_memory(args.query))
+    return 0
+
+
+def cmd_websearch(args: argparse.Namespace) -> int:
+    emit("websearch", f"联网搜索: {args.query}")
+    print(web_search(args.query, max_results=args.top_k))
     return 0
 
 
@@ -1195,11 +1308,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(
         prog="LA",
-        description="LocalAgent — 本地 AI 个人助手",
+        description=(
+            "LocalAgent — 本机个人 AI 中枢\n\n"
+            "主路径（少即是多）：\n"
+            "  la / la chat     对话\n"
+            "  la setup [-y]    安装/拉取本地 Ollama 模型\n"
+            "  la config …      纯本地或自有 API 配置\n\n"
+            "日常能力见 memory / rag / audit；运维与实验见 tasks / logs / graph 等。"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "直接运行 LA（无子命令）等价于 LA chat，进入对话模式。\n"
-            "进入对话后可用 /<command> 执行相同命令（输入 /help；: 为兼容别名）。\n"
+            "示例：\n"
+            "  la                  # 进入对话（等同 la chat）\n"
+            "  la setup -y         # 一键装好本地模型\n"
+            "  la config list      # 查看配置\n"
+            "  la memory pending   # 确认待写入记忆\n"
+            "  la rag add notes.md # 文档进知识库\n"
+            "\n"
+            "进入对话后可用 /<command>（输入 /help；: 为兼容别名）。\n"
             "使用 LA <command> -h 查看某个命令的完整说明。"
         ),
     )
@@ -1220,13 +1346,16 @@ def build_parser() -> argparse.ArgumentParser:
         required=False,
         metavar="<command>",
         title="命令",
-        description="主要参数与选项（括号内为可选）；省略时默认 chat：",
+        description=(
+            "主路径：chat · setup · config；其余为高级能力（memory / rag / audit …）。"
+            "省略子命令时默认 chat："
+        ),
     )
 
     p_chat = sub.add_parser(
         "chat",
-        help=f"[--session-id ID] [-p auto|{'|'.join(config.VALID_PROVIDERS)}]  交互式对话",
-        description="启动交互式对话 REPL",
+        help=f"[--session-id ID] [-p auto|{'|'.join(config.VALID_PROVIDERS)}]  【主路径】交互式对话",
+        description="启动交互式对话 REPL（主路径）",
     )
     p_chat.add_argument("--session-id", help="恢复指定对话档案 id")
     p_chat.add_argument(
@@ -1244,11 +1373,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_tasks = sub.add_parser(
         "tasks",
         help=(
-            "[--limit N] [--tail N] "
+            "[高级] [--limit N] [--tail N] "
             "[list | <task_id> | delete|pause|resume|restart|logs <task_id>]  "
-            "查看/管理后台索引任务"
+            "后台索引任务"
         ),
-        description="查看和管理后台索引任务",
+        description="[高级] 查看和管理后台索引任务",
     )
     p_tasks.add_argument(
         "positional",
@@ -1268,8 +1397,9 @@ def build_parser() -> argparse.ArgumentParser:
             "  LA memory\n"
             "  LA memory add \"…\"\n"
             "  LA memory ingest chat|chatgpt|all [--force]\n"
-            "  LA memory query / search / reflect / consolidate / forget / status / reset / reindex\n"
-            "  LA memory graph stats|rebuild\n"
+            "  LA memory query / search / consolidate / forget / status / reset / reindex\n"
+            "  LA memory reflect <query>（亦可用一级命令 LA reflect）\n"
+            "  LA memory graph stats|rebuild|neo4j|query\n"
             "文档知识库请用: LA rag …"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1286,14 +1416,28 @@ def build_parser() -> argparse.ArgumentParser:
     p_mem_add.add_argument("text", help="记忆文本")
     p_mem_add.set_defaults(func=cmd_add)
 
-    p_mem_add_file = mem_sub.add_parser(
-        "add-file",
-        help="(已迁移) 请改用 LA rag add",
-        description="已迁移到 LA rag add — 文档只进知识库，不提取记忆",
+    p_mem_pending = mem_sub.add_parser(
+        "pending",
+        help="[--limit N]  列出待确认的 Warm 记忆候选",
     )
-    p_mem_add_file.add_argument("path", nargs="?", default="")
-    p_mem_add_file.add_argument("--background", "-b", action="store_true")
-    p_mem_add_file.set_defaults(func=cmd_memory_add_file_moved)
+    p_mem_pending.add_argument("--limit", type=int, default=None, help="最多显示条数")
+    p_mem_pending.set_defaults(func=cmd_memory_pending)
+
+    p_mem_approve = mem_sub.add_parser(
+        "approve",
+        help="<id…> | --all  批准待确认记忆并写入 Warm",
+    )
+    p_mem_approve.add_argument("ids", nargs="*", help="pending id（可多个）")
+    p_mem_approve.add_argument("--all", action="store_true", help="批准全部")
+    p_mem_approve.set_defaults(func=cmd_memory_approve)
+
+    p_mem_reject = mem_sub.add_parser(
+        "reject",
+        help="<id…> | --all  拒绝待确认记忆（不写入 Warm）",
+    )
+    p_mem_reject.add_argument("ids", nargs="*", help="pending id（可多个）")
+    p_mem_reject.add_argument("--all", action="store_true", help="拒绝全部")
+    p_mem_reject.set_defaults(func=cmd_memory_reject)
 
     p_mem_forget = mem_sub.add_parser(
         "forget",
@@ -1314,8 +1458,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_mem_ingest.add_argument(
         "source",
-        choices=("chat", "chatgpt", "all", "file"),
-        help="材料来源：chat / chatgpt / all（file 已迁移到 rag ingest）",
+        choices=("chat", "chatgpt", "all"),
+        help="材料来源：chat / chatgpt / all",
     )
     p_mem_ingest.add_argument("--force", action="store_true", help="强制重新消费已处理内容")
     p_mem_ingest.add_argument("--session", help="仅处理指定对话 session id（source=chat）")
@@ -1357,13 +1501,8 @@ def build_parser() -> argparse.ArgumentParser:
         "source",
         nargs="?",
         default="all",
-        choices=("chat", "chatgpt", "all", "file"),
-        help="清空范围（默认 all；file 已迁移到 rag reset）",
-    )
-    p_mem_reset.add_argument(
-        "--keep-knowledge",
-        action="store_true",
-        help="(兼容保留，已忽略；知识库与 memory 解耦)",
+        choices=("chat", "chatgpt", "all"),
+        help="清空范围（默认 all）",
     )
     p_mem_reset.set_defaults(func=cmd_reset_memory)
 
@@ -1374,11 +1513,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_mem_status.set_defaults(func=cmd_memory_status)
 
     mem_sub.add_parser(
-        "rebuild",
-        help="(已拆分) 见 LA memory reindex / LA rag rebuild",
-    ).set_defaults(func=cmd_rebuild_memory)
-
-    mem_sub.add_parser(
         "reindex",
         help="从 memory_store.json 重建 Mem0 向量索引（不删事实）",
         description="保留 JSON 注册表，清空并重建 Mem0 Warm 引擎索引",
@@ -1386,18 +1520,25 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_mem_graph = mem_sub.add_parser(
         "graph",
-        help="[stats|rebuild]  本地记忆关系图",
+        help="[stats|rebuild|neo4j|query]  记忆关系图 / 精确图查询",
         description=(
-            "查看或重建 Warm 层 SQLite 关系图（实体/槽位边 + 对话邻接）。"
-            "默认关闭；召回 hop 需 LA_MEMORY_GRAPH=1（见 README「可选 Warm 关系图」）。"
+            "SQLite 召回 hop 图（LA_MEMORY_GRAPH）与 Neo4j 精确查询（LA_NEO4J）。"
+            "stats/rebuild 管本地图；neo4j stats|rebuild 管 Neo4j；"
+            "query 对计数/聚合/多跳跑 Cypher 模板。"
         ),
     )
     p_mem_graph.add_argument(
         "graph_action",
         nargs="?",
         default="stats",
-        choices=("stats", "rebuild"),
-        help="stats 查看统计；rebuild 从注册表重建（默认 stats）",
+        choices=("stats", "rebuild", "neo4j", "query"),
+        help="stats|rebuild|neo4j|query（默认 stats）",
+    )
+    p_mem_graph.add_argument(
+        "graph_arg",
+        nargs="?",
+        default=None,
+        help="neo4j 时为 stats|rebuild；query 时为问题文本",
     )
     p_mem_graph.set_defaults(func=cmd_memory_graph)
 
@@ -1406,22 +1547,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="<query> [--top-k N] [--verbose]  语义搜索 Warm 记忆",
     )
     p_mem_search.add_argument("query", help="搜索关键词")
-    p_mem_search.add_argument(
-        "--knowledge",
-        action="store_true",
-        help="(已迁移) 请改用 LA rag search",
-    )
     p_mem_search.add_argument("--top-k", type=int, default=5, help="返回条数（默认 5）")
     p_mem_search.add_argument("--verbose", action="store_true", help="显示记忆锚点等详情")
     p_mem_search.set_defaults(func=cmd_search)
-
-    p_mem_reflect = mem_sub.add_parser(
-        "reflect",
-        help="<query>  跨记忆多跳推理",
-        description="对多条记忆进行推理综合；缺证据时最多自动补充检索 2 轮",
-    )
-    p_mem_reflect.add_argument("query", help="需要推理的问题")
-    p_mem_reflect.set_defaults(func=cmd_reflect)
 
     p_mem_consolidate = mem_sub.add_parser(
         "consolidate",
@@ -1473,11 +1601,53 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_mem_query.set_defaults(func=cmd_memories)
 
+    p_mem_reflect = mem_sub.add_parser(
+        "reflect",
+        help="[高级] <query>  综合推理（记忆 → 知识库 → 归纳）",
+        description=(
+            "[高级] 先多跳召回长期记忆，再检索知识库，最后综合推理。\n"
+            "  LA memory reflect \"我最近状态怎么样？\""
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_mem_reflect.add_argument("query", help="需要推理的问题")
+    p_mem_reflect.set_defaults(func=cmd_reflect)
+
+    p_reflect = sub.add_parser(
+        "reflect",
+        help="[高级] <query>  综合推理（兼容别名；推荐 LA memory reflect）",
+        description=(
+            "[高级] 先多跳召回长期记忆，再检索知识库，最后综合推理给出答案。\n"
+            "  LA reflect \"我最近状态怎么样？\"\n"
+            "  等价：LA memory reflect \"…\""
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_reflect.add_argument("query", help="需要推理的问题")
+    p_reflect.set_defaults(func=cmd_reflect)
+
+    p_websearch = sub.add_parser(
+        "websearch",
+        help="[高级] <query> [--top-k N]  联网搜索（亦可用会话内自动联网）",
+        description=(
+            "[高级] 直接联网检索并输出结果摘要与来源链接。\n"
+            "默认后端 ddgs（免费）；可用 LA_WEB_SEARCH_PROVIDER / Tavily / SearXNG。\n"
+            "多步深度研究请用会话内 /deepsearch。\n"
+            "  LA websearch \"今天深圳天气\"\n"
+            "  LA websearch \"最新 AI 进展\" --top-k 8"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_websearch.add_argument("query", help="联网搜索关键词")
+    p_websearch.add_argument("--top-k", type=int, default=5, help="返回条数（默认 5）")
+    p_websearch.set_defaults(func=cmd_websearch)
+
     p_rag = sub.add_parser(
         "rag",
         help="[status]|add|ingest|search|reset|rebuild  无参显示概览；文档知识库（Cold）",
         description=(
-            "Cold 知识库：个人文档仅用于 RAG 检索，不写入 Warm 记忆。"
+            "Cold 知识库：个人文档与图片（VL 文本化）仅用于 RAG 检索，不写入 Warm 记忆。"
+            "支持 .md/.txt/.xlsx/.png/.jpg/.jpeg/.webp/.gif。\n"
             "无子命令时显示 status 概览。\n"
             "  LA rag\n"
             "  LA rag add [-b] <path>\n"
@@ -1535,8 +1705,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_workspace = sub.add_parser(
         "workspace",
-        help="[--days N] [--cwd PATH] [--todos-only]  工作区/git/待办快照",
-        description="查看工作区最近变更、Git 状态与待办项",
+        help="[高级] [--days N] [--cwd PATH] [--todos-only]  工作区/git/待办快照",
+        description="[高级] 查看工作区最近变更、Git 状态与待办项",
     )
     p_workspace.add_argument("--days", type=int, default=7, help="最近 N 天内的文件变更（默认 7）")
     p_workspace.add_argument("--cwd", help="工作区根目录")
@@ -1546,20 +1716,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_audit = sub.add_parser(
         "audit",
-        help="[--since 7d] [--report PATH] [--cwd PATH]  审计摘要与报告",
-        description="Token/费用、文件安全、记忆健康审计",
+        help="[高级] [--since 7d] [--report PATH] [--cwd PATH]  审计摘要与报告",
+        description="[高级] Token/费用、文件安全、记忆健康审计",
     )
     p_audit.add_argument("--since", help="统计起始，如 7d、24h、30m")
-    p_audit.add_argument("--report", help="导出 Markdown 报告到指定路径")
+    p_audit.add_argument(
+        "--report",
+        help="导出报告路径（.md Markdown；.html HTML）",
+    )
     p_audit.add_argument("--days", type=int, default=7, help="报告中工作区快照天数（默认 7）")
     p_audit.add_argument("--cwd", help="工作区根目录")
     p_audit.set_defaults(func=cmd_audit)
 
     p_logs = sub.add_parser(
         "logs",
-        help="[--tail N] [--level LEVEL] [--path]  查看诊断日志",
+        help="[高级] [--tail N] [--level LEVEL] [--path]  查看诊断日志",
         description=(
-            "查看本地诊断日志（data/logs/localagent.log）。\n"
+            "[高级] 查看本地诊断日志（data/logs/localagent.log）。\n"
             "与 LA audit（用量/护栏问责）不同：logs 用于排查运行时决策与降级。\n"
             "开发时可 LA --debug <command> 或设置 LA_LOG_LEVEL=DEBUG 盯 stderr。"
         ),
@@ -1584,9 +1757,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_config = sub.add_parser(
         "config",
-        help="[--provider …] | <file.json> | init|list|add|remove|set-key  快速配置 / 管理模型",
+        help="[--provider …] | <file.json> | init|list|…  【主路径】快速配置 / 管理模型",
         description=(
-            "快速写入模型与 API Key。\n"
+            "【主路径】快速写入模型与 API Key。\n"
             "  la config --provider ollama --base_url http://localhost:11434 --model qwen3.5:4b\n"
             "  la config --TAVILY_API_KEY tvly-...\n"
             "  la config my.json\n"
@@ -1708,9 +1881,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_setup = sub.add_parser(
         "setup",
-        help="[--yes]  询问后安装 Ollama 并拉取 qwen3.5:4b（可跳过）",
+        help="[--yes]  【主路径】安装 Ollama 并拉取 qwen3.5:4b（可跳过）",
         description=(
-            "检查本机 Ollama；未安装时询问是否本地安装，"
+            "【主路径】检查本机 Ollama；未安装时询问是否本地安装，"
             "缺少默认模型时询问是否拉取。加 -y 跳过确认。"
         ),
     )

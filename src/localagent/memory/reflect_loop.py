@@ -1,4 +1,4 @@
-"""Multi-hop reflect: recall → decide follow-ups → synthesize."""
+"""Multi-hop reflect: memory recall → knowledge retrieve → synthesize."""
 
 from __future__ import annotations
 
@@ -22,13 +22,20 @@ def _hit_id(hit: dict[str, Any]) -> str:
     return str(hit.get("id") or "") or f"text:{hash(str(hit.get('text') or ''))}"
 
 
+def _source_label(hit: dict[str, Any]) -> str:
+    source = str(hit.get("source") or "memory").strip().lower()
+    if source in {"knowledge", "rag", "kb"}:
+        return "知识库"
+    return "记忆"
+
+
 def _format_evidence(hits: list[dict[str, Any]], *, limit: int = 12) -> str:
     lines: list[str] = []
     for hit in hits[:limit]:
         text = str(hit.get("text") or "").strip()
         if not text:
             continue
-        lines.append(f"- ({_hit_id(hit)[:8]}) {text}")
+        lines.append(f"- [{_source_label(hit)}|{_hit_id(hit)[:8]}] {text}")
     return "\n".join(lines)
 
 
@@ -71,7 +78,8 @@ def _parse_hop_decision(reply: str) -> tuple[bool, list[str]]:
     return True, []
 
 
-def _decide_followups(query: str, hits: list[dict[str, Any]]) -> tuple[bool, list[str]]:
+def decide_followups(query: str, hits: list[dict[str, Any]]) -> tuple[bool, list[str]]:
+    """Return (ready_to_answer, followup_queries) for multi-hop re-recall."""
     if not hits:
         # No evidence yet — try decomposing once via a forced follow-up from the query itself.
         from localagent.memory.decompose import decompose_recall_query
@@ -108,6 +116,50 @@ def _decide_followups(query: str, hits: list[dict[str, Any]]) -> tuple[bool, lis
     return _parse_hop_decision(reply)
 
 
+# Back-compat alias used inside this module.
+_decide_followups = decide_followups
+
+
+def _recall_knowledge(query: str, *, top_k: int) -> list[dict[str, Any]]:
+    """Retrieve knowledge-base hits as reflect evidence."""
+    try:
+        from localagent.knowledge.hybrid import get_hybrid_retriever
+
+        raw = get_hybrid_retriever().retrieve(query, top_k=top_k)
+    except Exception as exc:
+        logger.debug("reflect knowledge retrieve failed: %s", exc)
+        return []
+
+    hits: list[dict[str, Any]] = []
+    for item in raw:
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        meta = item.get("metadata") or {}
+        heading = str(meta.get("heading") or "").strip()
+        source_file = str(meta.get("source_file") or "").strip()
+        origin = str(meta.get("origin") or "").strip()
+        kind = str(meta.get("chunk_kind") or "").strip()
+        chunk_id = str(meta.get("chunk_id") or meta.get("id") or "").strip()
+        tags = []
+        if origin:
+            tags.append(origin)
+        if kind == "summary":
+            tags.append("摘要")
+        tag = f"[{'/'.join(tags)}] " if tags else ""
+        where = " / ".join(part for part in (heading, source_file) if part)
+        prefixed = f"{tag}{where}: {text}" if where else f"{tag}{text}"
+        hits.append(
+            {
+                "id": chunk_id or f"rag:{hash(text)}",
+                "text": prefixed,
+                "source": "knowledge",
+                "score": item.get("score_rrf"),
+            }
+        )
+    return hits
+
+
 def _synthesize(query: str, hits: list[dict[str, Any]]) -> str | None:
     if not hits:
         return None
@@ -119,9 +171,10 @@ def _synthesize(query: str, hits: list[dict[str, Any]]) -> str | None:
     except Exception:
         return None
     prompt = (
-        "你是 LocalAgent 的记忆推理模块。根据下列已召回的长期记忆，"
-        "回答用户问题。只依据记忆内容归纳，不要编造；若仍不足请明确说明缺什么。\n\n"
-        f"问题：{query}\n\n记忆：\n{evidence}\n\n请用简洁中文回答："
+        "你是 LocalAgent 的综合推理模块。根据下列已召回的长期记忆与知识库资料，"
+        "回答用户问题。优先依据记忆中的个人事实，知识库作补充；只依据证据归纳，不要编造；"
+        "若仍不足请明确说明缺什么。\n\n"
+        f"问题：{query}\n\n证据：\n{evidence}\n\n请用简洁中文回答："
     )
     try:
         answer = get_model_router().chat(
@@ -143,7 +196,7 @@ def reflect_with_hops(
     max_hops: int | None = None,
     top_k: int | None = None,
 ) -> str | None:
-    """Recall with up to N follow-up searches, then synthesize an answer."""
+    """Recall memory (multi-hop) → query knowledge → synthesize an answer."""
     hops = config.MEMORY_REFLECT_MAX_HOPS if max_hops is None else max_hops
     hops = max(0, int(hops))
     k = config.MEMORY_REFLECT_TOP_K if top_k is None else top_k
@@ -166,6 +219,7 @@ def reflect_with_hops(
                     continue
                 seen.add(hid)
                 enriched = dict(hit)
+                enriched.setdefault("source", "memory")
                 enriched["reflect_hop"] = hop
                 merged.append(enriched)
 
@@ -178,5 +232,13 @@ def reflect_with_hops(
         pending = [q for q in followups if q.strip().lower() != query.strip().lower()]
         if not pending:
             break
+
+    # After memory recall: always query the knowledge base once.
+    for hit in _recall_knowledge(query, top_k=k):
+        hid = _hit_id(hit)
+        if hid in seen:
+            continue
+        seen.add(hid)
+        merged.append(hit)
 
     return _synthesize(query, merged)

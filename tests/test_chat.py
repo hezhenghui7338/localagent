@@ -13,7 +13,7 @@ from localagent.persist.conversations import append_message, load_conversation
 
 def test_chat_shows_response_provider(capsys, monkeypatch):
     inputs = iter(["你好", ":q"])
-    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("localagent.chat_repl.read_repl_line", lambda _p="> ": next(inputs))
     monkeypatch.setattr(
         "localagent.chat_repl.schedule_session_memory_extract",
         lambda _session_id: None,
@@ -33,7 +33,7 @@ def test_chat_shows_response_provider(capsys, monkeypatch):
 
 def test_chat_shows_error_for_empty_response(capsys, monkeypatch):
     inputs = iter(["你好", ":q"])
-    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("localagent.chat_repl.read_repl_line", lambda _p="> ": next(inputs))
     monkeypatch.setattr(
         "localagent.chat_repl.schedule_session_memory_extract",
         lambda _session_id: None,
@@ -55,7 +55,7 @@ def test_chat_shows_error_for_empty_response(capsys, monkeypatch):
 def test_chat_persists_conversation_to_jsonl(monkeypatch):
     """PRD §4: chat 对话持久化到 data/conversations/*.jsonl."""
     inputs = iter(["你好", ":q"])
-    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("localagent.chat_repl.read_repl_line", lambda _p="> ": next(inputs))
     monkeypatch.setattr(
         "localagent.chat_repl.schedule_session_memory_extract",
         lambda _session_id: None,
@@ -81,7 +81,7 @@ def test_chat_exit_schedules_background_extract(isolated_data, monkeypatch):
     ]
 
     inputs = iter(["我决定用 Hindsight", ":q"])
-    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("localagent.chat_repl.read_repl_line", lambda _p="> ": next(inputs))
 
     def sync_extract(session_id: str) -> None:
         extract_session_memories(session_id, interactive=False)
@@ -106,7 +106,7 @@ def test_chat_exit_schedules_background_extract(isolated_data, monkeypatch):
 def test_chat_exit_extract_runs_in_background(monkeypatch):
     """退出时不等待记忆提取完成."""
     inputs = iter([":q"])
-    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("localagent.chat_repl.read_repl_line", lambda _p="> ": next(inputs))
 
     scheduled: list[str] = []
 
@@ -124,7 +124,7 @@ def test_chat_exit_extract_runs_in_background(monkeypatch):
 
 def test_chat_skips_extraction_for_empty_session(monkeypatch):
     inputs = iter([":q"])
-    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("localagent.chat_repl.read_repl_line", lambda _p="> ": next(inputs))
 
     before = get_memory_store().count()
     ChatREPL(session_id="s-empty").run()
@@ -133,7 +133,7 @@ def test_chat_skips_extraction_for_empty_session(monkeypatch):
 
 def test_chat_deepsearch_persisted(monkeypatch):
     inputs = iter([":deepsearch Hindsight 记忆引擎", ":q"])
-    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("localagent.chat_repl.read_repl_line", lambda _p="> ": next(inputs))
     monkeypatch.setattr(
         "localagent.chat_repl.schedule_session_memory_extract",
         lambda _session_id: None,
@@ -151,7 +151,7 @@ def test_chat_deepsearch_persisted(monkeypatch):
 
 def test_chat_slash_help_and_quit(monkeypatch, capsys):
     inputs = iter(["/help", "/q"])
-    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("localagent.chat_repl.read_repl_line", lambda _p="> ": next(inputs))
     monkeypatch.setattr(
         "localagent.chat_repl.schedule_session_memory_extract",
         lambda _session_id: None,
@@ -169,7 +169,7 @@ def test_chat_slash_help_and_quit(monkeypatch, capsys):
 
 def test_chat_provider_switch_passes_to_agent(monkeypatch):
     inputs = iter([":provider ollama", "你好", ":q"])
-    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("localagent.chat_repl.read_repl_line", lambda _p="> ": next(inputs))
     monkeypatch.setattr(
         "localagent.chat_repl.schedule_session_memory_extract",
         lambda _session_id: None,
@@ -194,7 +194,7 @@ def test_chat_single_ctrl_c_does_not_exit(monkeypatch):
             raise KeyboardInterrupt
         return next(inputs)
 
-    monkeypatch.setattr("builtins.input", fake_input)
+    monkeypatch.setattr("localagent.chat_repl.read_repl_line", fake_input)
     monkeypatch.setattr(
         "localagent.chat_repl.schedule_session_memory_extract",
         lambda _session_id: None,
@@ -212,7 +212,7 @@ def test_chat_single_ctrl_c_does_not_exit(monkeypatch):
 
 def test_chat_ctrl_c_during_inference_keeps_repl(monkeypatch):
     inputs = iter(["hello", ":q"])
-    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("localagent.chat_repl.read_repl_line", lambda _p="> ": next(inputs))
     monkeypatch.setattr(
         "localagent.chat_repl.schedule_session_memory_extract",
         lambda _session_id: None,

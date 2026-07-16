@@ -778,10 +778,16 @@ class ModelRouter:
             '"confidence":0.0}]}\n'
             "字段说明：\n"
             "- name: 用户姓名\n"
-            "- preference: 写入 preferences；key 用 居住地/职业/家庭/喜欢/偏好 等短键\n"
-            "- current_status: 当前身份或状态一句话\n"
+            "- preference: 写入 preferences；key 只用 居住地/职业/家庭/喜欢/偏好 短键\n"
+            "- current_status: 仅限稳定身份/角色（如职业、长期角色），一句话\n"
             "- life_anchor: 有明确时间段的人生阶段（需 label+start）\n"
-            "规则：只 pin 稳定身份/偏好/家庭/职业/居住地；跳过一次性琐事；无更新时 "
+            "规则：\n"
+            "- 只 pin 稳定身份/偏好/家庭/职业/居住地；跳过一次性琐事\n"
+            "- 禁止把临时计划/找房/租房/看房/搜索意图写入 current_status\n"
+            "- 临时居住需求（租金、户型、房源、看房条件）留在 Warm 记忆，不要 pin 到 Hot；"
+            "居住相关 preference 只允许稳定短键「居住地」（城市/区域名），禁止「居住/偏好」等复合键\n"
+            "- 来自旧导入或过时事实时更保守：不确定则跳过，confidence 提高门槛\n"
+            "- 无更新时 "
             '{"updates":[]}。confidence 为 0~1。\n'
         )
         if current_profile.strip():

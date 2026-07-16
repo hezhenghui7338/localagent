@@ -33,6 +33,15 @@ def test_normalize_session_argv_aliases_and_quotes():
     assert normalize_session_argv("/h") == ["help"]
     assert normalize_session_argv("/model qwen3.5:4b") == ["model", "qwen3.5:4b"]
     assert normalize_session_argv("/memory query foo") == ["memory", "query", "foo"]
+    assert normalize_session_argv('/reflect "我最近状态怎么样?"') == [
+        "memory",
+        "reflect",
+        "我最近状态怎么样?",
+    ]
+    assert normalize_session_argv('/websearch "今天深圳天气"') == [
+        "websearch",
+        "今天深圳天气",
+    ]
     assert normalize_session_argv("/deepsearch 主题 A") == ["deepsearch", "主题", "A"]
 
 
@@ -73,6 +82,7 @@ def test_dispatch_session_help(capsys):
     assert "/mem" not in out.replace("/memory", "")
     assert "/memories" not in out
     assert "/deepsearch" in out
+    assert "/websearch" in out
     assert "/m [" not in out and "/model, /m" not in out
 
 
@@ -196,6 +206,17 @@ def test_dispatch_session_rejects_ambiguous_m(capsys):
     assert "/mem" not in out.replace("/memory", "")
 
 
+def test_dispatch_session_websearch(monkeypatch, capsys):
+    ctx = SessionCommandContext(session_id="s-web", provider="auto")
+    with patch("localagent.cli.web_search", return_value="摘要: 最新 AI 进展\n- [匹配] news.example") as search:
+        result = dispatch_session_line('/websearch "最新 AI 进展"', ctx)
+    assert result.exit_code == 0
+    search.assert_called_once()
+    out = capsys.readouterr().out
+    assert "websearch" in out
+    assert "最新 AI 进展" in out
+
+
 def test_dispatch_session_exit():
     ctx = SessionCommandContext(session_id="s-exit", provider="auto")
     assert dispatch_session_line("/q", ctx).should_exit
@@ -205,7 +226,7 @@ def test_dispatch_session_exit():
 
 def test_chat_slash_search_does_not_call_agent(monkeypatch, isolated_data, capsys):
     inputs = iter(['/search "不存在的查询词xyz"', "/q"])
-    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("localagent.chat_repl.read_repl_line", lambda _p="> ": next(inputs))
     monkeypatch.setattr(
         "localagent.chat_repl.schedule_session_memory_extract",
         lambda _session_id: None,
@@ -222,7 +243,7 @@ def test_chat_slash_search_does_not_call_agent(monkeypatch, isolated_data, capsy
 
 def test_chat_slash_add_does_not_call_agent(monkeypatch, isolated_data):
     inputs = iter(['/add "slash 写入一条测试记忆"', "/q"])
-    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("localagent.chat_repl.read_repl_line", lambda _p="> ": next(inputs))
     monkeypatch.setattr(
         "localagent.chat_repl.schedule_session_memory_extract",
         lambda _session_id: None,
@@ -242,7 +263,7 @@ def test_chat_slash_add_does_not_call_agent(monkeypatch, isolated_data):
 
 def test_chat_slash_provider_and_quit(monkeypatch):
     inputs = iter(["/provider ollama", "你好", "/q"])
-    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("localagent.chat_repl.read_repl_line", lambda _p="> ": next(inputs))
     monkeypatch.setattr(
         "localagent.chat_repl.schedule_session_memory_extract",
         lambda _session_id: None,
@@ -258,7 +279,7 @@ def test_chat_slash_provider_and_quit(monkeypatch):
 
 def test_chat_slash_deepsearch(monkeypatch):
     inputs = iter(["/deepsearch Hindsight", "/q"])
-    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("localagent.chat_repl.read_repl_line", lambda _p="> ": next(inputs))
     monkeypatch.setattr(
         "localagent.chat_repl.schedule_session_memory_extract",
         lambda _session_id: None,
@@ -276,7 +297,7 @@ def test_chat_slash_deepsearch(monkeypatch):
 def test_chat_colon_deepsearch_still_works(monkeypatch):
     """Legacy :deepsearch remains a compatible alias."""
     inputs = iter([":deepsearch Hindsight 记忆引擎", ":q"])
-    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("localagent.chat_repl.read_repl_line", lambda _p="> ": next(inputs))
     monkeypatch.setattr(
         "localagent.chat_repl.schedule_session_memory_extract",
         lambda _session_id: None,

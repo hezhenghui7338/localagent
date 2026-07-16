@@ -1,26 +1,27 @@
 # LocalAgent Product Tour
 
-> **Goal**: In about **30 minutes**, walk through LocalAgent’s eight strengths via one coherent (fictional) user story.  
+> **Goal**: In about **30 minutes**, walk through LocalAgent’s core **user stories** (see [PRD §2](../docs/PRD.md)) via one coherent fictional narrative.  
 > Every step includes **full input** and **expected output** (all sample data is fictional and safe to reproduce).  
-> CLI entrypoint: `la` / `LA` (equivalent).  
+> CLI entrypoint: `la` / `LA` (equivalent). Shorter 6-scene starter: [walkthrough.md](walkthrough.md).  
 > [中文版](product-tour.zh-CN.md)
 
 ---
 
 ## What you will experience
 
-| # | Strength | Section |
-|---|----------|---------|
-| 1 | Minimal install: install → example config → Hello World | [§1](#1-minimal-install--hello-world) |
-| 2 | Remembers you across sessions: Hot profile / Warm long-term / Cold doc search | [§2](#2-cross-session-memory--hot--warm--cold) |
-| 3 | Web search: even a small model can use the network appropriately | [§3](#3-web-search--small-models-can-use-the-network) |
-| 4 | Real local filesystem ops + danger warnings + confirm every time | [§4](#4-local-filesystem--safety-review--approval) |
-| 5 | Auditable: tokens, cost estimates, sensitive-file scan | [§5](#5-auditable--tokens-cost-sensitive-scan) |
-| 6 | Write-file hallucination check: clear path → approve → real write | [§6](#6-write-file-hallucination-detection) |
-| 7 | Conversation memory & knowledge: chat auto / `add` / `rag add` / `rag ingest` / `import-chatgpt` | [§7](#7-multi-source-memory-ingest) |
-| 8 | Time-aware recall priority + LLM synthesis | [§8](#8-time-aware-recall--synthesis) |
+| # | User story | Section |
+|---|------------|---------|
+| 1 | One-command install and chat (user / developer) | [§1](#1-one-command-install--hello-user--developer) |
+| 2 | Pure-local zero cost, or run with your own API keys | [§2](#2-local-only-vs-bring-your-own-api) |
+| 3 | Profiled and remembered across sessions | [§3](#3-cross-session-memory--hot--warm--cold) |
+| 4 | Import ChatGPT so LA knows you faster | [§4](#4-chatgpt-import--know-you-faster) |
+| 5 | Local docs into KB with deep recall | [§5](#5-local-document-rag--deep-recall) |
+| 6 | Web search | [§6](#6-web-search--small-models-can-use-the-network) |
+| 7 | Local tools + dangerous-command blocking | [§7](#7-local-tools--dangerous-command-blocking) |
+| 8 | Audit spend (tokens / cost) | [§8](#8-auditable--tokens--cost) |
+| 9 | Advanced: write-file hallucination + time-aware recall | [§9](#9-advanced-write-file-hallucination--time-aware-recall) |
 
-**Persona (fictional)**: You are “Alex Lin”, using LocalAgent on a Mac; prefer Americano; in May 2026 held a Shenzhen roadmap meeting; in July 2026 chose Mem0 as the memory engine.
+**Persona (fictional)**: You are “Alex Lin”, using LocalAgent on your machine; prefer Americano; in May 2026 held a Shenzhen roadmap meeting; in July 2026 chose Mem0 as the memory engine.
 
 **Tip**: Use an isolated data dir so you don’t touch daily data:
 
@@ -32,26 +33,43 @@ Anywhere below that says `data/` means `$LA_DATA_DIR/` when isolation is on.
 
 ---
 
-## 1. Minimal install → Hello World
+## 1. One-command install & Hello (user / developer)
 
-### 1.1 Install
+### 1.1 User install (one command)
 
 **Input:**
 
 ```bash
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.3.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
 la --version
 ```
 
 **Expected output:**
 
 ```text
-la-localagent 0.3.0
+la-localagent 0.4.0
 ```
 
-> For source development: `pip install -e ".[dev]"` — same outcome.
+### 1.2 Developer install
 
-### 1.2 Configure from the example
+```bash
+git clone git@github.com:hezhenghui7338/localagent.git
+cd LocalAgent
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+# or: uv sync --extra dev
+la --version
+```
+
+In a source checkout, config/data live in the repo (`.env`, `data/`); they do not mix with `~/.localagent/` from a user install. Config and Hello are in the next section.
+
+---
+
+## 2. Local-only vs bring-your-own API
+
+Pure local (zero bill) needs only Ollama. To use your own OpenRouter / Cursor / Tavily keys, write them into config — **identity and memory still stay on-device**.
+
+### 2.1 Configure from the example
 
 **Option A (recommended, JSON template):**
 
@@ -93,14 +111,14 @@ base_url: http://localhost:11434
 model: qwen3.5:4b
 ```
 
-### 1.3 Prepare the local model (first time)
+### 2.2 Prepare the local model (first time)
 
 ```bash
 la setup -y
 # or: ollama pull qwen3.5:4b
 ```
 
-### 1.4 Hello World
+### 2.3 Hello World
 
 **Input:**
 
@@ -117,7 +135,7 @@ you> In one sentence, introduce yourself and say where your data lives.
 **Expected output (illustrative):**
 
 ```text
-LocalAgent v0.3.0 …
+LocalAgent v0.4.0 …
 │ qwen3.5:4b · ollama …
 > In one sentence, introduce yourself and say where your data lives.
 [chat] thinking…
@@ -133,23 +151,23 @@ Type `/q` to quit. If you see the welcome screen and a reply, **install is done*
 
 ---
 
-## 2. Cross-session memory → Hot / Warm / Cold
+## 3. Cross-session memory → Hot / Warm / Cold
 
 Core promise: **new session or new model — same “who I am”**. Three layers:
 
 | Layer | Stores | Typical location / command |
 |-------|--------|----------------------------|
 | **Hot** | Core profile & state (name, preferences, long-term goals) | `data/core_profile.json` |
-| **Warm** | Structured long-term facts (Mem0 / JSON) | `la add` / chat extract / `la search` |
-| **Cold** | Document passages (semantic + BM25) | `la rag add` → `la search --knowledge` |
+| **Warm** | Structured long-term facts (Mem0 / JSON) | `LA memory add` / chat extract / `LA memory search` |
+| **Cold** | Document passages (semantic + BM25) | `LA rag add` → `LA rag search` |
 
-### 2.1 Write Warm: one manual fact
+### 3.1 Write Warm: one manual fact
 
 **Input:**
 
 ```bash
-la add "My name is Alex Lin. I prefer Americano and dislike latte."
-la add "In May 2026 I held a product roadmap meeting in Shenzhen; we decided to prioritize a local personal assistant."
+LA memory add "My name is Alex Lin. I prefer Americano and dislike latte."
+LA memory add "In May 2026 I held a product roadmap meeting in Shenzhen; we decided to prioritize a personal AI hub on your machine."
 ```
 
 **Expected output (illustrative):**
@@ -161,13 +179,13 @@ la add "In May 2026 I held a product roadmap meeting in Shenzhen; we decided to 
   id: e5f6g7h8 · title: Shenzhen roadmap meeting · tags: #decision/product
 ```
 
-### 2.2 Write Cold: import a document
+### 3.2 Write Cold: import a document
 
 **Input:**
 
 ```bash
-la rag add examples/sample-project-notes.md
-la search "three-layer memory" --knowledge
+LA rag add examples/sample-project-notes.md
+LA rag search "three-layer memory"
 ```
 
 **Expected output (rag add):**
@@ -193,12 +211,12 @@ LocalAgent uses a Hot / Warm / Cold memory stack:
 
 > The sample note is bilingual-friendly; if you search in Chinese (`三层记忆架构`) you will also hit the same file.
 
-### 2.3 Warm recall
+### 3.3 Warm recall
 
 **Input:**
 
 ```bash
-la search "what do I like to drink"
+LA memory search "what do I like to drink"
 ```
 
 **Expected output (illustrative):**
@@ -216,7 +234,7 @@ source: LA memory add · id: a1b2c3d4
 → LA memory forget <id>  to delete a memory
 ```
 
-### 2.4 Cross-session check (the key demo)
+### 3.4 Cross-session check (the key demo)
 
 **Session A — add context, then quit:**
 
@@ -246,28 +264,142 @@ you> What’s my name? What do I like to drink? What meeting did I have in Shenz
 [chat] thinking…
 [chat] calling search_memory…
 You’re Alex Lin; you prefer Americano (dislike latte).
-In May 2026 you held a Shenzhen product roadmap meeting and decided to prioritize a local personal assistant.
+In May 2026 you held a Shenzhen product roadmap meeting and decided to prioritize a personal AI hub on your machine.
 [via ollama/qwen3.5:4b]
 ```
 
 > **Contrast**: A typical chat client “forgets” across sessions. LocalAgent recalls from Warm/Hot — **not from the current session transcript**.
 
-### 2.5 See all three layers at a glance
+### 3.5 See all three layers at a glance
 
 ```bash
 # Hot
 cat "${LA_DATA_DIR:-data}/core_profile.json" 2>/dev/null || echo "(profile enriches over chat/import)"
 
 # Warm
-la search "Alex Lin" --top-k 3
+LA memory search "Alex Lin" --top-k 3
 
 # Cold
-la search "qwen3.5:4b" --knowledge --top-k 2
+LA rag search "qwen3.5:4b" --top-k 2
 ```
 
 ---
 
-## 3. Web search → small models can use the network
+## 4. ChatGPT import — know you faster
+
+Export from ChatGPT **Settings → Data Controls → Export**, then ingest so Cold archives + Warm facts land together and LA knows you sooner.
+
+With default `LA_MEMORY_APPROVAL_REQUIRED=1`, non-interactive imports enqueue candidates in `pending_queue.json`:
+
+```bash
+LA memory pending
+LA memory approve --all   # or reject
+```
+
+For demos that need immediate Warm writes: `export LA_MEMORY_APPROVAL_AUTO=1`.
+
+### 4.1 ChatGPT-format import
+
+Use an OpenAI data-export `conversations.json`, or this minimal sample:
+
+```bash
+cat > /tmp/chatgpt-sample.json <<'EOF'
+[
+  {
+    "conversation_id": "demo-1",
+    "title": "Preferences",
+    "create_time": 1757058223.0,
+    "update_time": 1757058263.0,
+    "current_node": "a",
+    "mapping": {
+      "r": {"id": "r", "parent": null, "message": null},
+      "u": {
+        "id": "u", "parent": "r",
+        "message": {
+          "author": {"role": "user"},
+          "content": {"content_type": "text", "parts": ["I usually use Python for data analysis and prefer VS Code as my editor."]},
+          "create_time": 1757058223.1
+        }
+      },
+      "a": {
+        "id": "a", "parent": "u",
+        "message": {
+          "author": {"role": "assistant"},
+          "content": {"content_type": "text", "parts": ["Got it."]},
+          "create_time": 1757058223.2
+        }
+      }
+    }
+  }
+]
+EOF
+
+LA memory ingest chatgpt /tmp/chatgpt-sample.json
+LA memory search "VS Code"
+```
+
+**Expected output (illustrative):**
+
+```text
+[import-chatgpt] parsing 1 conversation …
+[import-chatgpt] extracting candidate memories …
+[import-chatgpt] done · conversations=1 · memories+=1
+…
+[search] memory: VS Code
+### 1. …
+I usually use Python for data analysis and prefer VS Code as my editor.
+source: import-chatgpt · …
+```
+
+### 4.2 Auto-detect from chat
+
+```bash
+la chat --session-id tour-auto --provider ollama
+```
+
+```text
+you> By the way, my long-term goal is to make LocalAgent a local assistant that truly knows me.
+assistant> … (normal reply)
+you> /q
+```
+
+Then:
+
+```bash
+LA memory search "long-term goal"
+```
+
+You should recall related facts (wording depends on the extract pipeline; use `LA memory ingest chat --session tour-auto` to re-extract if needed).
+
+---
+
+## 5. Local document RAG — deep recall
+
+Personal docs go to the Cold knowledge base (**no** Warm fact extraction). In chat, use `rag search` / `search_knowledge` for deep recall.
+
+### 5.1 Document knowledge index
+
+```bash
+LA rag add examples/sample-project-notes.md
+# If multiple notes are already symlinked under kb/:
+LA rag ingest
+```
+
+**Expected output (rag ingest, illustrative):**
+
+```text
+[rag ingest] scanning data/kb/ …
+  ✓ sample-project-notes.md: chunks=5 (unchanged, skip)
+[rag ingest] done · indexed=0 · skipped=1
+```
+
+Use `--force` to rebuild indexes.
+
+> §3 already demoed `rag add` + `rag search`; here you can batch `rag ingest` over `data/kb/`.
+
+---
+
+## 6. Web search → small models can use the network
 
 Default: **no API key** (`ddgs`). The small model decides *when* to search and *how* to summarize; the network supplies facts.
 
@@ -306,11 +438,11 @@ Optional upgrade: set `TAVILY_API_KEY` in config; `auto` prefers Tavily.
 
 ---
 
-## 4. Local filesystem → safety review & approval
+## 7. Local tools → dangerous-command blocking
 
 The agent can run real local commands / write files. **Approval is required by default**; dangerous commands get an extra warning; extreme commands are hard-blocked.
 
-### 4.1 Safe read-only command (still needs approval)
+### 7.1 Safe read-only command (still needs approval)
 
 **Input:**
 
@@ -338,7 +470,7 @@ About N lines of Python in the current project.
 
 Answer `n` and the agent will **not** run the command.
 
-### 4.2 Dangerous command: extra warning
+### 7.2 Dangerous command: extra warning
 
 **Input:**
 
@@ -357,7 +489,7 @@ Command: rm -rf ./tmp-demo
 ⚠ This looks dangerous. Proceed anyway? [y/N]
 ```
 
-### 4.3 Hard block (never executes)
+### 7.3 Hard block (never executes)
 
 Attempts like deleting `/` are **blocked** immediately:
 
@@ -365,7 +497,7 @@ Attempts like deleting `/` are **blocked** immediately:
 Error: deleting the filesystem root is forbidden.
 ```
 
-### 4.4 File writes also need approval
+### 7.4 File writes also need approval
 
 **Input (once intent is clear):**
 
@@ -395,15 +527,15 @@ Policy (`LA_TOOL_APPROVAL`, default `always`):
 
 ---
 
-## 5. Auditable → tokens / cost / sensitive scan
+## 8. Auditable → tokens / cost
 
 Model calls from earlier steps land in local `data/audit/usage.jsonl`.
 
 **Input:**
 
 ```bash
-la audit --since 7d
-la audit --since 7d --report /tmp/la-tour-audit.md
+LA audit --since 7d
+LA audit --since 7d --report /tmp/la-tour-audit.md
 ```
 
 **Expected output (interactive summary, illustrative):**
@@ -439,11 +571,13 @@ facts=12 · knowledge_chunks=38 · bm25=ready · chroma=ready
 
 ---
 
-## 6. Write-file hallucination detection
+## 9. Advanced: write-file hallucination + time-aware recall
+
+### 9.1 Write-file hallucination detection
 
 Principle: with a clear path and content, go straight to the agent; writes need approval; if the model claims a write without calling the tool, it retries or errors.
 
-### 6.1 Clear request → approve then write
+### 9.1.1 Clear request → approve then write
 
 **Input:**
 
@@ -466,7 +600,7 @@ Allow? / Proceed anyway? [y/N] y
 Successfully appended to tour-note.txt.
 ```
 
-### 6.2 Memory questions → recall directly
+### 9.1.2 Memory questions → recall directly
 
 ```text
 you> what do I like to drink?
@@ -481,133 +615,24 @@ You prefer Americano and dislike latte.
 
 ---
 
-## 7. Conversation memory & knowledge ingest
-
-| Source | Command / when | Notes |
-|--------|----------------|-------|
-| Chat auto-detect | during / after `la chat` | Facts from natural conversation |
-| Manual one-liner | `la add "…"` | Precise write |
-| Document RAG index | `la rag add <path>` | Symlink + Cold full text only |
-| Directory sync | `la rag ingest` | Index everything under `data/kb/` |
-| ChatGPT export | `la import-chatgpt <json>` | Personal memories from history |
-
-### 7.1 Manual add (also covered in §2)
-
-```bash
-la add "In July 2026 we finalized Mem0 as the Warm-layer memory engine."
-```
-
-### 7.2 Document auto-extract
-
-```bash
-la rag add examples/sample-project-notes.md
-# If multiple notes are already symlinked under kb/:
-la rag ingest
-```
-
-**Expected output (rag ingest, illustrative):**
-
-```text
-[rag ingest] scanning data/kb/ …
-  ✓ sample-project-notes.md: chunks=5 (unchanged, skip)
-[rag ingest] done · indexed=0 · skipped=1
-```
-
-Use `--force` to rebuild indexes.
-
-### 7.3 ChatGPT-format import
-
-Use an OpenAI data-export `conversations.json`, or this minimal sample:
-
-```bash
-cat > /tmp/chatgpt-sample.json <<'EOF'
-[
-  {
-    "conversation_id": "demo-1",
-    "title": "Preferences",
-    "create_time": 1757058223.0,
-    "update_time": 1757058263.0,
-    "current_node": "a",
-    "mapping": {
-      "r": {"id": "r", "parent": null, "message": null},
-      "u": {
-        "id": "u", "parent": "r",
-        "message": {
-          "author": {"role": "user"},
-          "content": {"content_type": "text", "parts": ["I usually use Python for data analysis and prefer VS Code as my editor."]},
-          "create_time": 1757058223.1
-        }
-      },
-      "a": {
-        "id": "a", "parent": "u",
-        "message": {
-          "author": {"role": "assistant"},
-          "content": {"content_type": "text", "parts": ["Got it."]},
-          "create_time": 1757058223.2
-        }
-      }
-    }
-  }
-]
-EOF
-
-la import-chatgpt /tmp/chatgpt-sample.json
-la search "VS Code"
-```
-
-**Expected output (illustrative):**
-
-```text
-[import-chatgpt] parsing 1 conversation …
-[import-chatgpt] extracting candidate memories …
-[import-chatgpt] done · conversations=1 · memories+=1
-…
-[search] memory: VS Code
-### 1. …
-I usually use Python for data analysis and prefer VS Code as my editor.
-source: import-chatgpt · …
-```
-
-### 7.4 Auto-detect from chat
-
-```bash
-la chat --session-id tour-auto --provider ollama
-```
-
-```text
-you> By the way, my long-term goal is to make LocalAgent a local assistant that truly knows me.
-assistant> … (normal reply)
-you> /q
-```
-
-Then:
-
-```bash
-la search "long-term goal"
-```
-
-You should recall related facts (wording depends on the extract pipeline; use `la rememorize-chat --session tour-auto` to re-extract if needed).
-
----
-
-## 8. Time-aware recall → synthesis
+### 9.2 Time-aware recall → synthesis
 
 Memories carry an **event time**. If the question implies a time window (“May 2023”, “last week”, “now”), recall **raises temporal weight**, prefers that window, then the LLM synthesizes the answer.
 
-### 8.1 Same topic, different times
+### 9.2.1 Same topic, different times
 
 ```bash
-la add "In May 2026, after an architecture review we tried a lightweight approach and had not yet chosen Mem0."
-la add "In July 2026 we finalized Mem0: lighter and faster; reflect is search + a local LLM."
+LA memory add "In May 2026, after an architecture review we tried a lightweight approach and had not yet chosen Mem0."
+LA memory add "In July 2026 we finalized Mem0: lighter and faster; reflect is search + a local LLM."
 ```
 
-### 8.2 Time-scoped Warm search
+### 9.2.2 Time-scoped Warm search
 
 **Input:**
 
 ```bash
-la search "May 2026 memory engine choice" --verbose
-la search "July 2026 memory engine choice" --verbose
+LA memory search "May 2026 memory engine choice" --verbose
+LA memory search "July 2026 memory engine choice" --verbose
 ```
 
 **Expected behavior:**
@@ -624,12 +649,12 @@ relevance 0.91 · temporal alignment 0.95 · 2026-05-…
 In May 2026, after an architecture review we tried a lightweight approach and had not yet chosen Mem0.
 ```
 
-### 8.3 Cross-memory reasoning (Reflect)
+### 9.2.3 Cross-memory reasoning (Reflect)
 
 **Input:**
 
 ```bash
-la reflect "How did the memory-engine choice evolve?"
+LA memory reflect "How did the memory-engine choice evolve?"
 ```
 
 **Expected output (illustrative):**
@@ -643,7 +668,7 @@ by July 2026 you chose Mem0 for being lighter/faster, with reflect via search + 
 Overall: exploration → decision.
 ```
 
-### 8.4 Ask time questions in chat
+### 9.2.4 Ask time questions in chat
 
 ```bash
 la chat --provider ollama
@@ -674,40 +699,39 @@ export LA_DATA_DIR=/tmp/la-product-tour
 rm -rf "$LA_DATA_DIR"
 mkdir -p "$LA_DATA_DIR"
 
-la add "My name is Alex Lin. I prefer Americano and dislike latte."
-la add "In May 2026 I held a product roadmap meeting in Shenzhen; we decided to prioritize a local personal assistant."
-la add "In May 2026, after an architecture review we tried a lightweight approach and had not yet chosen Mem0."
-la add "In July 2026 we finalized Mem0: lighter and faster."
+LA memory add "My name is Alex Lin. I prefer Americano and dislike latte."
+LA memory add "In May 2026 I held a product roadmap meeting in Shenzhen; we decided to prioritize a personal AI hub on your machine."
+LA memory add "In May 2026, after an architecture review we tried a lightweight approach and had not yet chosen Mem0."
+LA memory add "In July 2026 we finalized Mem0: lighter and faster."
 
-la rag add examples/sample-project-notes.md
-la search "what do I like to drink"
-la search "three-layer memory" --knowledge
-la search "May 2026 memory engine" --verbose
-la search "July 2026 memory engine" --verbose
-la reflect "How did the memory-engine choice evolve?"
-la workspace --cwd .
-la audit --since 7d
+LA rag add examples/sample-project-notes.md
+LA memory search "what do I like to drink"
+LA rag search "three-layer memory"
+LA memory search "May 2026 memory engine" --verbose
+LA memory search "July 2026 memory engine" --verbose
+LA memory reflect "How did the memory-engine choice evolve?"
+LA workspace --cwd .
+LA audit --since 7d
 
 echo "Demo data: $LA_DATA_DIR"
 ```
 
-Interactive bits (web search, shell approval, file write) still need §3 / §4 / §6 by hand.
+Interactive bits (web search, shell approval, file write) still need §6 / §7 / §9 by hand.
 
 ---
 
 ## Acceptance checklist
 
-After the tour you should be able to check:
+Map to [PRD §6](../docs/PRD.md) acceptance — you should be able to check:
 
-- [ ] Install + example config → `la chat` Hello World works  
-- [ ] New `--session-id` still answers name / drink / May meeting  
-- [ ] `search` vs `search --knowledge` shows Warm vs Cold  
-- [ ] Small-model chat auto-calls `web_search` with grounded answers  
-- [ ] Shell / write prompts for approval; dangerous ops show a risk warning  
-- [ ] `la audit` shows tokens & cost (Ollama = $0)  
-- [ ] Clear-path file writes prompt for approval and actually write  
-- [ ] At least one success each: `add` / `rag add` / `rag ingest` / `import-chatgpt`  
-- [ ] May vs July queries rank different memories; `reflect` explains the arc  
+- [ ] **Stories 1–3**: User or developer install + local-only / BYO API config → `la chat` Hello World  
+- [ ] **Story 4**: New `--session-id` still answers name / drink / May meeting (Hot / Warm)  
+- [ ] **Stories 5–6**: ChatGPT import works; `memory search` vs `rag search` shows Warm vs Cold  
+- [ ] **Memory approval gate**: after background extract, `LA memory pending` lists candidates; `approve` / `reject` (or `LA_MEMORY_APPROVAL_AUTO=1`)  
+- [ ] **Story 7**: Small-model chat auto-calls `web_search` (ddgs by default) with grounded answers  
+- [ ] **Stories 8–9**: Shell / write prompts for approval; dangerous ops warn or hard-block  
+- [ ] **Story 10**: `LA audit` shows tokens & cost; `--report out.html` exports HTML  
+- [ ] **Advanced**: Clear-path writes approve and write; May vs July + `reflect` explains the arc  
 
 ---
 
@@ -719,7 +743,7 @@ After the tour you should be able to check:
 | [walkthrough.md](walkthrough.md) | Shorter 6-scenario intro |
 | [mem0-demo.md](mem0-demo.md) | Mem0 Retain / Recall / Reflect deep dive |
 | [audit-report-sample.md](audit-report-sample.md) | Full audit report sample |
-| [../docs/PRD.md](../docs/PRD.md) · [../docs/TDD.md](../docs/TDD.md) | Product & technical design |
+| [../docs/PRD.md](../docs/PRD.md) · [../docs/TDD.md](../docs/TDD.md) | Product design / stories / constitution · technical design |
 | [../benchmarks/locomo/README.md](../benchmarks/locomo/README.md) | LoCoMo long-term memory benchmark |
 
 Open an Issue if something fails; when you’re happy, drop `LA_DATA_DIR` and start importing your own notes and ChatGPT history.

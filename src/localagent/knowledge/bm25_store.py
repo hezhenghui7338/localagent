@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import pickle
 import re
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from rank_bm25 import BM25Okapi
 
@@ -75,30 +77,135 @@ class BM25Store:
         self.metas = data.get("metas", [])
         return True
 
-    def query(self, query: str, top_k: int) -> list[dict]:
+    def _candidate_indices(
+        self,
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        origins: frozenset[str] | None = None,
+    ) -> list[int]:
+        from localagent.knowledge.time_filter import meta_in_range
+
+        indices: list[int] = []
+        for i, meta in enumerate(self.metas):
+            if origins is not None:
+                origin = str(meta.get("origin") or "").strip()
+                if origin not in origins:
+                    continue
+            if since or until:
+                if not meta_in_range(meta, since=since, until=until):
+                    continue
+            indices.append(i)
+        return indices
+
+    def query(
+        self,
+        query: str,
+        top_k: int,
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        origins: frozenset[str] | None = None,
+    ) -> list[dict]:
         if self.bm25 is None or not self.chunk_ids:
             return []
         import numpy as np
 
-        scores = self.bm25.get_scores(tokenize(query))
-        scores_arr = np.asarray(scores)
-        if top_k >= len(scores_arr):
-            top_idx = np.argsort(-scores_arr)
-        else:
-            top_idx = np.argpartition(-scores_arr, top_k)[:top_k]
-            top_idx = top_idx[np.argsort(-scores_arr[top_idx])]
+        scores = np.asarray(self.bm25.get_scores(tokenize(query)), dtype=float)
+        if since or until or origins is not None:
+            allowed = self._candidate_indices(since=since, until=until, origins=origins)
+            if not allowed:
+                return []
+            masked = np.full(len(scores), -np.inf)
+            for i in allowed:
+                masked[i] = scores[i]
+            scores = masked
+
+        finite = np.isfinite(scores)
+        if not finite.any():
+            return []
+        # Rank only finite scores.
+        order = np.argsort(-scores)
         hits = []
-        for idx in top_idx:
+        for idx in order:
             i = int(idx)
+            if not np.isfinite(scores[i]):
+                continue
             hits.append({
                 "chunk_id": self.chunk_ids[i],
                 "text": self.texts_raw[i],
                 "metadata": self.metas[i],
-                "score_sparse": float(scores_arr[i]),
+                "score_sparse": float(scores[i]),
             })
             if len(hits) >= top_k:
                 break
         return hits
+
+    def list_in_range(
+        self,
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        origins: frozenset[str] | None = None,
+        prefer_summary: bool = True,
+        limit: int = 40,
+    ) -> list[dict[str, Any]]:
+        """List chunks in a date window (no semantic scoring), newest first."""
+        from localagent.knowledge.time_filter import chunk_recorded_at
+
+        indices = self._candidate_indices(since=since, until=until, origins=origins)
+        rows: list[tuple[str, dict[str, Any]]] = []
+        for i in indices:
+            meta = self.metas[i]
+            if prefer_summary and str(meta.get("chunk_kind") or "") not in ("", "summary"):
+                continue
+            rows.append(
+                (
+                    chunk_recorded_at(meta),
+                    {
+                        "chunk_id": self.chunk_ids[i],
+                        "text": self.texts_raw[i],
+                        "metadata": meta,
+                        "score_sparse": 1.0,
+                        "score_rrf": 1.0,
+                    },
+                )
+            )
+        if prefer_summary and len(rows) < limit:
+            seen_ids = {r[1]["chunk_id"] for r in rows}
+            seen_convs = {
+                str((r[1]["metadata"] or {}).get("conversation_id") or "")
+                for r in rows
+            }
+            for i in indices:
+                meta = self.metas[i]
+                cid = self.chunk_ids[i]
+                if cid in seen_ids:
+                    continue
+                conv = str(meta.get("conversation_id") or "")
+                if conv and conv in seen_convs:
+                    continue
+                if str(meta.get("chunk_kind") or "") == "summary":
+                    continue
+                rows.append(
+                    (
+                        chunk_recorded_at(meta),
+                        {
+                            "chunk_id": cid,
+                            "text": self.texts_raw[i],
+                            "metadata": meta,
+                            "score_sparse": 0.5,
+                            "score_rrf": 0.5,
+                        },
+                    )
+                )
+                if conv:
+                    seen_convs.add(conv)
+                if len(rows) >= limit:
+                    break
+
+        rows.sort(key=lambda item: item[0], reverse=True)
+        return [row for _, row in rows[:limit]]
 
     def count(self) -> int:
         return len(self.chunk_ids)
@@ -115,6 +222,19 @@ class BM25Store:
         keep_ids, keep_texts, keep_metas = [], [], []
         for cid, text, meta in zip(self.chunk_ids, self.texts_raw, self.metas):
             if meta.get("source_file") == source_file:
+                continue
+            keep_ids.append(cid)
+            keep_texts.append(text)
+            keep_metas.append(meta)
+        if keep_ids:
+            self.build(keep_ids, keep_texts, keep_metas)
+        else:
+            self.reset()
+
+    def remove_by_origin(self, origin: str) -> None:
+        keep_ids, keep_texts, keep_metas = [], [], []
+        for cid, text, meta in zip(self.chunk_ids, self.texts_raw, self.metas):
+            if str(meta.get("origin") or "") == origin:
                 continue
             keep_ids.append(cid)
             keep_texts.append(text)

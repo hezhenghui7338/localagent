@@ -63,11 +63,12 @@ def configure_data_dir(data_dir: Path | str) -> Path:
     ):
         Path(dirname).mkdir(parents=True, exist_ok=True)
 
-    from localagent.memory.graph import reset_memory_graph_singleton
+    from localagent.memory.graph import reset_memory_graph_singleton, reset_neo4j_store_singleton
 
     reset_sync_index_singleton()
     reset_memory_store_singleton()
     reset_memory_graph_singleton()
+    reset_neo4j_store_singleton()
     reset_knowledge_store_singleton()
     reset_knowledge_indexer()
     reset_hybrid_retriever()

@@ -206,3 +206,70 @@ def test_resolve_home_location_from_memory(isolated_data):
     assert home_location() == ""
     assert resolve_home_location() == "深圳"
     assert home_location() == "深圳"
+
+
+def test_reject_transient_housing_status_and_rental_prefs(isolated_data):
+    """Temporary housing search must not become always-on Hot profile fields."""
+    from localagent.memory.core_profile import CoreProfile, save_core_profile
+
+    save_core_profile(CoreProfile(preferences={"居住地": "深圳"}, current_status="LocalAgent 用户"))
+
+    applied = apply_profile_updates(
+        [
+            {
+                "field": "current_status",
+                "value": "正在深圳寻找符合特定条件的租房房源",
+                "confidence": 0.95,
+            },
+            {
+                "field": "preference",
+                "key": "居住/偏好",
+                "value": "深圳碧海湾附近三室一厅空房租赁（租金≤6500 元/月）",
+                "confidence": 0.95,
+            },
+            {
+                "field": "preference",
+                "key": "居住地",
+                "value": "深圳碧海湾地铁附近寻找三室一厅空房",
+                "confidence": 0.9,
+            },
+        ]
+    )
+    assert applied is False
+    profile = load_core_profile()
+    assert profile.current_status == "LocalAgent 用户"
+    assert profile.preferences.get("居住地") == "深圳"
+    assert "居住/偏好" not in profile.preferences
+    assert not any("碧海湾" in str(v) for v in profile.preferences.values())
+
+
+def test_llm_housing_facts_do_not_pin_transient_status(isolated_data, monkeypatch):
+    monkeypatch.setattr("localagent.config.PROFILE_PIN_LLM", True)
+    monkeypatch.setattr("localagent.config.PROFILE_PIN_REGEX_FALLBACK", False)
+    isolated_data["router"].extract_profile_updates.return_value = [
+        {
+            "field": "current_status",
+            "value": "正在深圳寻找符合特定条件的租房房源",
+            "confidence": 0.9,
+        },
+        {
+            "field": "preference",
+            "key": "居住/偏好",
+            "value": "深圳碧海湾附近三室一厅空房租赁",
+            "confidence": 0.9,
+        },
+        {"field": "preference", "key": "居住地", "value": "深圳", "confidence": 0.95},
+    ]
+
+    pin_facts_to_profile(
+        [
+            "用户正在深圳碧海湾地铁附近寻找一套三室一厅的空房。",
+            "用户对租金水平为每月 6500 元的房源感兴趣。",
+        ]
+    )
+
+    profile = load_core_profile()
+    assert profile.preferences.get("居住地") == "深圳"
+    assert profile.current_status in {"", "LocalAgent 用户"} or "租房" not in profile.current_status
+    assert "碧海湾" not in profile.format_for_prompt()
+    assert "居住/偏好" not in profile.preferences

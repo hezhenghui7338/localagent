@@ -45,6 +45,7 @@ def _format_memory_hits(
 
 def search_documents(query: str, *, top_k: int = 5, context_chars: int = 300) -> str:
     """Direct keyword search in kb/ files when RAG index misses."""
+    from localagent import config
     from localagent.ingest.loader import load_file
     from localagent.ingest.sync_file import list_kb_files
 
@@ -54,6 +55,9 @@ def search_documents(query: str, *, top_k: int = 5, context_chars: int = 300) ->
 
     hits: list[tuple[int, str]] = []
     for path in list_kb_files():
+        # Images are textified at ingest time into Cold RAG; do not re-run VL here.
+        if path.suffix.lower() in config.IMAGE_SUFFIXES:
+            continue
         doc = load_file(path)
         if not doc:
             continue
@@ -108,6 +112,7 @@ def query_memories_tool(
     limit: int = 20,
     show_ids: bool = True,
     verbose: bool = False,
+    time_field: str = "effective",
 ) -> str:
     """Query memories with tag/time filters, sorting, and optional semantic match."""
     total = get_memory_backend().count()
@@ -115,6 +120,7 @@ def query_memories_tool(
         return "记忆库为空，尚未保存任何记忆。"
 
     sort_order = sort if sort in ("newest", "oldest", "relevance") else "newest"
+    field = time_field if time_field in ("effective", "recorded") else "effective"
     hits = query_memories(
         query=query,
         tags=tags,
@@ -122,6 +128,7 @@ def query_memories_tool(
         until=until,
         sort=sort_order,  # type: ignore[arg-type]
         limit=limit,
+        time_field=field,  # type: ignore[arg-type]
     )
 
     filters: list[str] = []
@@ -218,15 +225,49 @@ def search_memory(
     return _ALL_MISS
 
 
-def search_knowledge(query: str, *, top_k: int = 5, fallback: bool = True) -> str:
-    hits = get_hybrid_retriever().retrieve(query, top_k=top_k)
+def search_knowledge(
+    query: str,
+    *,
+    top_k: int = 5,
+    fallback: bool = True,
+    since: str | None = None,
+    until: str | None = None,
+    conversation_only: bool = False,
+) -> str:
+    hits = get_hybrid_retriever().retrieve(
+        query,
+        top_k=top_k,
+        since=since,
+        until=until,
+        conversation_only=conversation_only,
+    )
     if hits:
+        from localagent.knowledge.time_filter import format_recorded_label
+
         lines = []
         for h in hits:
-            meta = h.get("metadata", {})
+            meta = h.get("metadata", {}) or {}
             heading = meta.get("heading", "")
             source = meta.get("source_file", "")
-            lines.append(f"- [{h['score_rrf']:.3f}] {heading} ({source})\n  {h['text'][:300]}")
+            origin = str(meta.get("origin") or "").strip()
+            kind = str(meta.get("chunk_kind") or "").strip()
+            title = str(meta.get("title") or "").strip()
+            date_label = format_recorded_label(meta)
+            label_parts: list[str] = []
+            if origin:
+                label_parts.append(origin)
+            if kind == "summary":
+                label_parts.append("摘要")
+            if date_label:
+                label_parts.append(date_label)
+            prefix = f"[{'/'.join(label_parts)}] " if label_parts else ""
+            display_source = title or source
+            if title and source and title not in source:
+                display_source = f"{title} ({source})"
+            lines.append(
+                f"- [{h['score_rrf']:.3f}] {prefix}{heading} ({display_source})\n"
+                f"  {h['text'][:300]}"
+            )
         return "\n".join(lines)
 
     if not fallback:
@@ -234,12 +275,88 @@ def search_knowledge(query: str, *, top_k: int = 5, fallback: bool = True) -> st
 
     from localagent import config as la_config
 
-    if la_config.DOC_KEYWORD_FALLBACK:
+    if la_config.DOC_KEYWORD_FALLBACK and not (since or until or conversation_only):
         documents = search_documents(query, top_k=top_k)
         if documents:
             return f"（知识库索引未命中，以下为文档原文关键词补充检索）\n{documents}"
 
     return _KNOWLEDGE_MISS
+
+
+def _empty_archive_window_message(
+    *,
+    since: str | None,
+    until: str | None,
+) -> str:
+    window = " · ".join(
+        part
+        for part in (
+            f"自 {since}" if since else "",
+            f"至 {until}" if until else "",
+        )
+        if part
+    )
+    hint = f"（{window}）" if window else ""
+    return f"该时段无对话归档{hint}。"
+
+
+def list_knowledge_in_range(
+    *,
+    since: str | None = None,
+    until: str | None = None,
+    limit: int = 40,
+) -> str:
+    """List Cold conversation archives in a recorded_at window (browse by time)."""
+    hits = get_hybrid_retriever().list_conversations_in_range(
+        since=since,
+        until=until,
+        limit=limit,
+    )
+    if not hits:
+        return _empty_archive_window_message(since=since, until=until)
+
+    from localagent.knowledge.time_filter import format_recorded_label
+
+    lines = []
+    for h in hits:
+        meta = h.get("metadata", {}) or {}
+        origin = str(meta.get("origin") or "").strip()
+        kind = str(meta.get("chunk_kind") or "").strip()
+        title = str(meta.get("title") or meta.get("source_file") or "").strip()
+        date_label = format_recorded_label(meta)
+        label_parts = [p for p in (origin, "摘要" if kind == "summary" else "", date_label) if p]
+        prefix = f"[{'/'.join(label_parts)}] " if label_parts else ""
+        lines.append(f"- {prefix}{title}\n  {h['text'][:400]}")
+    return "\n".join(lines)
+
+
+def list_user_questions_in_range(
+    *,
+    since: str | None = None,
+    until: str | None = None,
+    limit: int = 40,
+) -> str:
+    """List user questions from Cold conversation body chunks in a date window."""
+    hits = get_hybrid_retriever().list_user_questions_in_range(
+        since=since,
+        until=until,
+        limit=limit,
+    )
+    if not hits:
+        return _empty_archive_window_message(since=since, until=until)
+
+    from localagent.knowledge.time_filter import format_recorded_label
+
+    lines = []
+    for h in hits:
+        meta = h.get("metadata", {}) or {}
+        origin = str(meta.get("origin") or "").strip()
+        date_label = format_recorded_label(meta)
+        label_parts = [p for p in (origin, date_label) if p]
+        prefix = f"[{'/'.join(label_parts)}] " if label_parts else ""
+        question = " ".join(str(h.get("text") or "").split())
+        lines.append(f"- {prefix}{question[:240]}")
+    return "\n".join(lines)
 
 
 def deep_search(
@@ -272,12 +389,27 @@ def deep_search(
 
 
 def reflect_memory(query: str) -> str:
-    """Reason over memories with optional multi-hop follow-up recall."""
+    """Reason over memories + knowledge: recall → RAG → synthesize."""
     backend = get_memory_backend()
     answer = backend.reflect(query)
     if answer:
         return answer
-    return "未能从记忆中推理出答案。"
+    return "未能从记忆与知识库中推理出答案。"
+
+
+def query_memory_graph(query: str, *, verbose: bool = False) -> str:
+    """Precise graph query: counts / aggregations / multi-hop via Neo4j Cypher."""
+    from localagent.memory.graph import format_precise_result, precise_graph_query
+    from localagent.memory.graph.neo4j_store import neo4j_enabled
+
+    if not neo4j_enabled():
+        return (
+            "Neo4j 精确图查询未启用（设 LA_NEO4J=1，"
+            "并 pip install 'la-localagent[neo4j]' 或 LA_NEO4J_URI=memory://）。"
+            "计数/聚合类问题请勿用 search_memory 估算数字。"
+        )
+    result = precise_graph_query(query, fallback_hybrid=True)
+    return format_precise_result(result, verbose=verbose)
 
 
 def workspace_context_tool(*, days: int = 7) -> str:
@@ -307,6 +439,76 @@ def write_file(
     return write_file_tool(path, content, mode=mode, cwd=cwd)
 
 
+def read_file(
+    path: str,
+    *,
+    offset: int | None = None,
+    limit: int | None = None,
+    cwd: str | None = None,
+) -> str:
+    """Agent tool: read a workspace file with optional line window."""
+    from localagent.tools.files import read_file_tool
+
+    return read_file_tool(path, offset=offset, limit=limit, cwd=cwd)
+
+
+def edit_file(
+    path: str,
+    old_string: str,
+    new_string: str,
+    *,
+    replace_all: bool = False,
+    cwd: str | None = None,
+) -> str:
+    """Agent tool: exact string replace in a workspace file."""
+    from localagent.tools.files import edit_file_tool
+
+    return edit_file_tool(
+        path,
+        old_string,
+        new_string,
+        replace_all=replace_all,
+        cwd=cwd,
+    )
+
+
+def glob_files(
+    pattern: str,
+    *,
+    path: str | None = None,
+    cwd: str | None = None,
+    max_results: int = 100,
+) -> str:
+    """Agent tool: find files by glob pattern."""
+    from localagent.tools.search import glob_tool
+
+    return glob_tool(pattern, path=path, cwd=cwd, max_results=max_results)
+
+
+def grep_files(
+    pattern: str,
+    *,
+    path: str | None = None,
+    glob: str | None = None,
+    output_mode: str = "content",
+    head_limit: int = 50,
+    case_insensitive: bool = False,
+    cwd: str | None = None,
+) -> str:
+    """Agent tool: search file contents with regex."""
+    from localagent.tools.search import grep_tool
+
+    return grep_tool(
+        pattern,
+        path=path,
+        glob=glob,
+        output_mode=output_mode,
+        head_limit=head_limit,
+        case_insensitive=case_insensitive,
+        cwd=cwd,
+    )
+
+
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "retain_memory",
@@ -323,8 +525,15 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "search_knowledge",
-        "description": "搜索知识库文档；未命中时自动回退到文档原文关键词检索",
-        "parameters": {"query": "搜索关键词"},
+        "description": (
+            "搜索知识库文档与对话归档；未命中时自动回退到文档原文关键词检索。"
+            "按某年某月浏览「问过什么」时请传 since/until（YYYY-MM-DD）"
+        ),
+        "parameters": {
+            "query": "搜索关键词",
+            "since": "可选，起始日期 YYYY-MM-DD（对话发生时间）",
+            "until": "可选，结束日期 YYYY-MM-DD",
+        },
     },
     {
         "name": "web_search",
@@ -338,10 +547,19 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "reflect_memory",
         "description": (
-            "对记忆进行多跳推理综合：缺证据时自动补充检索（最多 2 轮），"
-            "再归纳回答跨多条记忆的问题"
+            "综合推理：先多跳召回长期记忆，再检索知识库，最后归纳回答；"
+            "适用于需要结合个人记忆与文档证据的跨条问题"
         ),
         "parameters": {"query": "需要推理的问题"},
+    },
+    {
+        "name": "query_memory_graph",
+        "description": (
+            "精确图查询（Neo4j/Cypher）：用于「多少次/几个/一共/列出所有/同时提到」等"
+            "计数、聚合与可形式化多跳；返回计算结果而非文本采样。"
+            "禁止用 search_memory 估算数字；开放语义问仍用 search_memory"
+        ),
+        "parameters": {"query": "精确问题（含实体名）"},
     },
     {
         "name": "workspace_context",
@@ -352,7 +570,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "name": "query_memories",
         "description": (
             "浏览或查询本地记忆库：支持按标签、时间范围过滤，按时间或相关度排序，"
-            "以及内容语义匹配；用于「记忆里有什么、按标签查看、某段时间的记忆」类问题"
+            "以及内容语义匹配；用于「记忆里有什么、按标签查看、某段时间的记忆」类问题。"
+            "「某月问过/聊过什么」请传 since/until；对话发生时间过滤用 recorded"
         ),
         "parameters": {
             "query": "可选，语义搜索关键词",
@@ -361,13 +580,69 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "until": "可选，结束日期 YYYY-MM-DD",
             "sort": "可选，newest（默认）/ oldest / relevance",
             "limit": "可选，返回条数，默认 20",
+            "time_field": "可选，effective（默认）或 recorded（对话发生时间）",
+        },
+    },
+    {
+        "name": "read_file",
+        "description": (
+            "读取工作区内的文本文件（带行号）；支持 offset/limit 分页。"
+            "查看文件内容时优先用本工具，不要用 run_shell 的 cat/head"
+        ),
+        "parameters": {
+            "path": "文件路径（相对工作区或绝对路径）",
+            "offset": "可选，起始行号（从 1 开始）",
+            "limit": "可选，最多读取行数",
+            "cwd": "可选，工作目录（默认 LA_WORKSPACE 或当前目录）",
+        },
+    },
+    {
+        "name": "glob",
+        "description": (
+            "按文件名/路径 glob 模式查找工作区文件（按修改时间排序）。"
+            "找文件时优先用本工具，不要用 run_shell 的 find"
+        ),
+        "parameters": {
+            "pattern": "glob 模式，如 **/*.py 或 src/**/*.ts",
+            "path": "可选，限制在工作区内的子目录",
+            "cwd": "可选，工作目录（默认 LA_WORKSPACE 或当前目录）",
+        },
+    },
+    {
+        "name": "grep",
+        "description": (
+            "在工作区文件内容中用正则搜索（返回 path:line:内容）。"
+            "搜代码/符号时优先用本工具，不要用 run_shell 的 grep/rg"
+        ),
+        "parameters": {
+            "pattern": "正则表达式",
+            "path": "可选，限制文件或子目录",
+            "glob": "可选，文件名过滤，如 *.py",
+            "output_mode": "可选，content（默认）/ files_with_matches / count",
+            "head_limit": "可选，最多返回条数，默认 50",
+            "case_insensitive": "可选，是否忽略大小写，默认 false",
+            "cwd": "可选，工作目录（默认 LA_WORKSPACE 或当前目录）",
+        },
+    },
+    {
+        "name": "edit_file",
+        "description": (
+            "精确字符串替换编辑工作区已有文件（old_string 须唯一匹配，除非 replace_all）。"
+            "修改已有文件时优先用本工具；新建或整文件覆盖用 write_file；不要用 run_shell 的 sed"
+        ),
+        "parameters": {
+            "path": "文件路径（相对工作区或绝对路径）",
+            "old_string": "要替换的原文（须与文件完全一致）",
+            "new_string": "替换后的新文本",
+            "replace_all": "可选，true 时替换所有匹配，默认 false",
+            "cwd": "可选，工作目录（默认 LA_WORKSPACE 或当前目录）",
         },
     },
     {
         "name": "write_file",
         "description": (
-            "在工作区创建或写入文件（覆盖或追加）；"
-            "用于创建、修改、更新文件内容，优先于 run_shell"
+            "在工作区创建或整文件覆盖/追加写入；"
+            "新建文件或需要重写整文件时使用；局部修改优先 edit_file"
         ),
         "parameters": {
             "path": "文件路径（相对工作区或绝对路径）",
@@ -380,10 +655,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "name": "run_shell",
         "description": (
             "在工作区目录执行 shell 命令并返回输出；"
-            "用于统计代码行数、列目录、运行测试/构建、查看 git log 等需要终端的操作"
+            "用于运行测试/构建、包管理、git 等。"
+            "读文件用 read_file，找文件用 glob，搜内容用 grep，改文件用 edit_file/write_file，不要用本工具替代它们"
         ),
         "parameters": {
-            "command": "要执行的 shell 命令，如 find . -name '*.py' | wc -l",
+            "command": "要执行的 shell 命令，如 pytest tests/ -q",
             "cwd": "可选，工作目录（默认 LA_WORKSPACE 或当前目录）",
         },
     },
@@ -403,11 +679,18 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> str:
     if name == "search_memory":
         return search_memory(arguments.get("query", ""))
     if name == "search_knowledge":
-        return search_knowledge(arguments.get("query", ""))
+        sk_kwargs: dict[str, Any] = {}
+        if arguments.get("since"):
+            sk_kwargs["since"] = arguments.get("since")
+        if arguments.get("until"):
+            sk_kwargs["until"] = arguments.get("until")
+        return search_knowledge(arguments.get("query", ""), **sk_kwargs)
     if name == "web_search":
         return web_search(arguments.get("query", ""))
     if name == "reflect_memory":
         return reflect_memory(arguments.get("query", ""))
+    if name == "query_memory_graph":
+        return query_memory_graph(arguments.get("query", ""))
     if name == "workspace_context":
         days_raw = arguments.get("days", 7)
         try:
@@ -435,6 +718,7 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> str:
             sort=str(arguments.get("sort") or "newest"),
             limit=limit,
             show_ids=True,
+            time_field=str(arguments.get("time_field") or "effective"),
         )
     if name == "write_file":
         path = str(arguments.get("path") or "").strip()
@@ -443,6 +727,78 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> str:
         cwd = arguments.get("cwd")
         cwd_str = str(cwd).strip() if cwd else None
         return write_file(path, content, mode=mode, cwd=cwd_str)
+    if name == "read_file":
+        path = str(arguments.get("path") or "").strip()
+        cwd = arguments.get("cwd")
+        cwd_str = str(cwd).strip() if cwd else None
+        offset = arguments.get("offset")
+        limit = arguments.get("limit")
+        offset_val: int | None = None
+        limit_val: int | None = None
+        if offset is not None and str(offset).strip() != "":
+            try:
+                offset_val = int(offset)
+            except (TypeError, ValueError):
+                return "错误: offset 必须是整数。"
+        if limit is not None and str(limit).strip() != "":
+            try:
+                limit_val = int(limit)
+            except (TypeError, ValueError):
+                return "错误: limit 必须是整数。"
+        return read_file(path, offset=offset_val, limit=limit_val, cwd=cwd_str)
+    if name == "edit_file":
+        path = str(arguments.get("path") or "").strip()
+        old_string = str(arguments.get("old_string") or "")
+        new_string = str(arguments.get("new_string") if "new_string" in arguments else "")
+        replace_all = bool(arguments.get("replace_all"))
+        cwd = arguments.get("cwd")
+        cwd_str = str(cwd).strip() if cwd else None
+        return edit_file(
+            path,
+            old_string,
+            new_string,
+            replace_all=replace_all,
+            cwd=cwd_str,
+        )
+    if name == "glob":
+        pattern = str(arguments.get("pattern") or arguments.get("query") or "").strip()
+        path = arguments.get("path")
+        path_str = str(path).strip() if path else None
+        cwd = arguments.get("cwd")
+        cwd_str = str(cwd).strip() if cwd else None
+        max_raw = arguments.get("max_results", 100)
+        try:
+            max_results = int(max_raw)
+        except (TypeError, ValueError):
+            max_results = 100
+        return glob_files(pattern, path=path_str, cwd=cwd_str, max_results=max_results)
+    if name == "grep":
+        pattern = str(arguments.get("pattern") or arguments.get("query") or "").strip()
+        path = arguments.get("path")
+        path_str = str(path).strip() if path else None
+        glob_filter = arguments.get("glob")
+        glob_str = str(glob_filter).strip() if glob_filter else None
+        cwd = arguments.get("cwd")
+        cwd_str = str(cwd).strip() if cwd else None
+        head_raw = arguments.get("head_limit", 50)
+        try:
+            head_limit = int(head_raw)
+        except (TypeError, ValueError):
+            head_limit = 50
+        case_raw = arguments.get("case_insensitive", False)
+        if isinstance(case_raw, str):
+            case_insensitive = case_raw.strip().lower() in {"1", "true", "yes", "on"}
+        else:
+            case_insensitive = bool(case_raw)
+        return grep_files(
+            pattern,
+            path=path_str,
+            glob=glob_str,
+            output_mode=str(arguments.get("output_mode") or "content"),
+            head_limit=head_limit,
+            case_insensitive=case_insensitive,
+            cwd=cwd_str,
+        )
     if name == "run_shell":
         command = str(arguments.get("command") or "").strip()
         cwd = arguments.get("cwd")

@@ -279,6 +279,21 @@ def test_resolve_mem0_embedder_uses_ollama_embed_model(isolated_data, monkeypatc
     assert settings["embedding_dims"] == 1024
 
 
+def test_resolve_mem0_embedder_hash_provider(isolated_data, monkeypatch):
+    monkeypatch.setattr("localagent.config.MEM0_EMBEDDER_PROVIDER", "hash")
+    monkeypatch.setattr("localagent.config.MEM0_EMBEDDER_MODEL", "")
+    monkeypatch.setattr("localagent.config.MEM0_EMBEDDER_DIMS", 32)
+    settings = resolve_mem0_embedder_settings()
+    assert settings["provider"] == "hash"
+    assert settings["source_provider"] == "hash"
+    assert settings["embedding_dims"] == 32
+    from localagent.memory.embeddings import cosine_similarity, embed_texts
+
+    vectors = embed_texts(["Mem0 引擎", "Mem0", "无关"], settings=settings)
+    assert len(vectors) == 3
+    assert cosine_similarity(vectors[0], vectors[1]) > cosine_similarity(vectors[0], vectors[2])
+
+
 def test_mem0_telemetry_disabled_by_default(monkeypatch):
     monkeypatch.delenv("MEM0_TELEMETRY", raising=False)
     ensure_mem0_telemetry_disabled()

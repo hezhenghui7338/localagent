@@ -347,7 +347,11 @@ def _hybrid_weights(
 ) -> tuple[float, float, float, float, float, float, float]:
     """RRF / base / jaccard / temporal / entity / graph / class weights for finalize_hybrid_rank."""
     entity_w = 0.15 if config.MEMORY_RECALL_ENTITY_BOOST else 0.0
-    graph_w = float(config.MEMORY_GRAPH_BOOST) if config.MEMORY_GRAPH else 0.0
+    graph_w = (
+        float(config.MEMORY_GRAPH_BOOST)
+        if (config.MEMORY_GRAPH or getattr(config, "NEO4J", False))
+        else 0.0
+    )
     class_w = float(config.MEMORY_CLASS_WEIGHT) if class_boost else 0.0
     if intent.raises_temporal_weight:
         return (0.48, 0.12, 0.08, 0.17, entity_w, graph_w, class_w)

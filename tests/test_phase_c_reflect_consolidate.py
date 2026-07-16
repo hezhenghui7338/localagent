@@ -53,6 +53,10 @@ def test_reflect_with_hops_followup(monkeypatch):
         fake_decide,
     )
     monkeypatch.setattr(
+        "localagent.memory.reflect_loop._recall_knowledge",
+        lambda query, top_k: [],
+    )
+    monkeypatch.setattr(
         "localagent.memory.reflect_loop._synthesize",
         lambda query, hits: f"answer:{len(hits)}",
     )
@@ -60,6 +64,36 @@ def test_reflect_with_hops_followup(monkeypatch):
     out = reflect_with_hops(backend, "What about Caroline and Melanie?")
     assert out == "answer:2"
     assert backend.recall.call_count == 2
+
+
+def test_reflect_with_hops_queries_knowledge(monkeypatch):
+    monkeypatch.setattr("localagent.config.MEMORY_REFLECT_MAX_HOPS", 0)
+    monkeypatch.setattr("localagent.config.MEMORY_REFLECT_TOP_K", 3)
+
+    backend = MagicMock()
+    backend.recall.return_value = [{"id": "m1", "text": "memory fact"}]
+
+    monkeypatch.setattr(
+        "localagent.memory.reflect_loop._recall_knowledge",
+        lambda query, top_k: [{"id": "k1", "text": "kb fact", "source": "knowledge"}],
+    )
+
+    captured: list[dict] = []
+
+    def fake_synthesize(query, hits):
+        captured.extend(hits)
+        return "ok"
+
+    monkeypatch.setattr(
+        "localagent.memory.reflect_loop._synthesize",
+        fake_synthesize,
+    )
+
+    out = reflect_with_hops(backend, "status?")
+    assert out == "ok"
+    assert any(h.get("id") == "m1" for h in captured)
+    assert any(h.get("id") == "k1" for h in captured)
+    assert backend.recall.call_count == 1
 
 
 def test_parse_consolidation_action():

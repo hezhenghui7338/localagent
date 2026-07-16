@@ -69,6 +69,7 @@ _PREFERENCE_FACT = re.compile(
 _PREF_FIELD_ALIASES = {
     "location": "居住地",
     "居住地": "居住地",
+    "居住": "居住地",
     "occupation": "职业",
     "职业": "职业",
     "工作": "职业",
@@ -79,14 +80,76 @@ _PREF_FIELD_ALIASES = {
     "喜欢": "喜欢",
 }
 
+# Preference keys allowed into Hot layer (after alias normalization).
+_ALLOWED_PREF_KEYS = frozenset({"居住地", "职业", "家庭", "喜欢", "偏好"})
+
+# Temporary plans / housing search must not become always-on current_status.
+_TRANSIENT_STATUS_MARKERS = (
+    "租房",
+    "找房",
+    "看房",
+    "房源",
+    "租赁",
+    "空房",
+    "正在寻找",
+    "正在找",
+    "寻租",
+)
+
+_RENTAL_LISTING_MARKERS = (
+    "租房",
+    "租赁",
+    "房源",
+    "空房",
+    "三室",
+    "两室",
+    "一室",
+    "租金",
+    "㎡",
+    "平米",
+    "看房",
+    "寻租",
+)
+
 
 def _looks_like_role(text: str) -> bool:
     return any(word in text for word in _ROLE_WORDS)
 
 
+def _is_transient_status(value: str) -> bool:
+    """True when value looks like a temporary plan (housing search, etc.)."""
+    text = (value or "").strip()
+    if not text:
+        return False
+    return any(marker in text for marker in _TRANSIENT_STATUS_MARKERS)
+
+
+def _is_rental_listing_value(value: str) -> bool:
+    text = (value or "").strip()
+    if not text:
+        return False
+    hits = sum(1 for marker in _RENTAL_LISTING_MARKERS if marker in text)
+    return hits >= 1 and (hits >= 2 or len(text) > 12)
+
+
+def _normalize_pref_key(key_raw: str) -> str | None:
+    """Map alias → canonical Hot preference key; reject free-form composites."""
+    raw = (key_raw or "").strip() or "偏好"
+    if raw in {"居住/偏好", "居住偏好"}:
+        return None  # rental detail composites must not enter Hot
+    if raw in {"喜欢/偏好"}:
+        raw = "喜欢"
+    key = _PREF_FIELD_ALIASES.get(raw, raw)
+    if key not in _ALLOWED_PREF_KEYS:
+        return None
+    return key
+
+
 def _set_pref(profile: CoreProfile, key: str, value: str) -> bool:
     value = value.strip(" 。，,的了")
     if not value:
+        return False
+    if _is_rental_listing_value(value):
         return False
     if profile.preferences.get(key) == value:
         return False
@@ -126,6 +189,9 @@ def apply_profile_updates(updates: list[dict[str, Any]], *, profile: CoreProfile
             continue
 
         if field in {"current_status", "status"}:
+            if _is_transient_status(value):
+                logger.info("skip transient current_status pin: %s", value[:80])
+                continue
             if value and profile.current_status != value:
                 profile.current_status = value
                 changed = True
@@ -133,7 +199,10 @@ def apply_profile_updates(updates: list[dict[str, Any]], *, profile: CoreProfile
 
         if field in {"preference", "preferences", "pref"}:
             key_raw = str(item.get("key") or "偏好").strip() or "偏好"
-            key = _PREF_FIELD_ALIASES.get(key_raw, key_raw)
+            key = _normalize_pref_key(key_raw)
+            if not key:
+                logger.info("skip non-Hot preference key: %s", key_raw)
+                continue
             if _set_pref(profile, key, value):
                 changed = True
                 if key == "职业" and (
@@ -143,8 +212,10 @@ def apply_profile_updates(updates: list[dict[str, Any]], *, profile: CoreProfile
             continue
 
         # Convenience: allow field to be a known preference key directly.
-        if field in _PREF_FIELD_ALIASES or field in {"居住地", "职业", "家庭", "喜欢", "偏好"}:
-            key = _PREF_FIELD_ALIASES.get(field, field)
+        if field in _PREF_FIELD_ALIASES or field in _ALLOWED_PREF_KEYS:
+            key = _normalize_pref_key(field)
+            if not key:
+                continue
             if _set_pref(profile, key, value):
                 changed = True
                 if key == "职业" and (

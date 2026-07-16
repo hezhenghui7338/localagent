@@ -151,6 +151,8 @@ def build_document_summary_facts(
 def build_session_summary_fact(
     session_id: str,
     user_texts: list[str],
+    *,
+    recorded_at: str | None = None,
 ) -> dict[str, Any] | None:
     """Build one session-level summary fact from recent user turns.
 
@@ -167,13 +169,16 @@ def build_session_summary_fact(
     summary = summarize_text(combined, context=f"session={session_id}")
     if not summary:
         return None
+    metadata: dict[str, Any] = {
+        "source": "chat_summary",
+        "session_id": session_id,
+        "section_heading": "session_summary",
+        "memory_kind": "summary",
+        "summary_of": session_id,
+    }
+    if recorded_at:
+        metadata["recorded_at"] = recorded_at
     return {
         "text": f"[会话摘要:{session_id}] {summary}",
-        "metadata": {
-            "source": "chat_summary",
-            "session_id": session_id,
-            "section_heading": "session_summary",
-            "memory_kind": "summary",
-            "summary_of": session_id,
-        },
+        "metadata": metadata,
     }

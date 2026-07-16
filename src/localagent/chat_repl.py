@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from localagent import config
 from localagent.agent.runtime import run_agent_turn
-from localagent.completion import install_repl_readline_completer
 from localagent.memory.core_profile import default_core_profile
 from localagent.memory.exit_extract import schedule_session_memory_extract
 from localagent.memory.backend import shutdown_memory_backend
@@ -18,7 +17,12 @@ from localagent.session_commands import (
 )
 from localagent.tools.approval import ToolRisk, prompt_tool_approval
 from localagent.ui.banner import print_welcome
-from localagent.ui.console import ActivityIndicator, prepare_for_input, read_repl_line
+from localagent.ui.console import (
+    ActivityIndicator,
+    prepare_for_input,
+    read_repl_line,
+    use_prompt_toolkit_repl,
+)
 
 
 class ChatREPL:
@@ -32,7 +36,11 @@ class ChatREPL:
     def run(self) -> int:
         import logging
 
-        install_repl_readline_completer()
+        # readline Tab only for non-TTY / input() fallback; TTY uses prompt_toolkit.
+        if not use_prompt_toolkit_repl():
+            from localagent.completion import install_repl_readline_completer
+
+            install_repl_readline_completer()
         print_welcome(provider=self.provider, session_id=self.session_id)
         logging.getLogger(__name__).info(
             "chat session start session=%s provider=%s",

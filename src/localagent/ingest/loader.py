@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from localagent.config import SUPPORTED_SUFFIXES
+from localagent import config
+from localagent.config import IMAGE_SUFFIXES, SUPPORTED_SUFFIXES
 
 
 @dataclass
@@ -49,6 +50,12 @@ def load_file(path: Path) -> LoadedDoc | None:
         text = _load_txt(path)
     elif suffix == ".xlsx":
         text = _load_xlsx(path)
+    elif suffix in IMAGE_SUFFIXES:
+        if not config.VL_ENABLED:
+            return None
+        from localagent.ingest.vision import caption_image
+
+        text = caption_image(path)
     else:
         return None
 

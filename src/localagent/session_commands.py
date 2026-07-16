@@ -36,10 +36,9 @@ _ALIASES: dict[str, str] = {
     "deepsearch": "deepsearch",
 }
 
-# 会话内快捷入口 → 顶层/子命令（外层 LA add 等已废弃）
+# 会话内快捷入口 → 顶层/子命令（reflect 已是一级命令，不在此列）
 _SESSION_MEMORY_SHORTCUTS: dict[str, tuple[str, ...]] = {
     "add": ("memory", "add"),
-    "add-file": ("rag", "add"),
     "search": ("memory", "search"),
     "forget": ("memory", "forget"),
     "reflect": ("memory", "reflect"),
@@ -148,9 +147,9 @@ def list_slash_command_names() -> list[str]:
     Includes outer CLI subcommands (except ``chat``) plus session-only
     names and aliases (``help``, ``h``, ``provider``, ``q``, …).
 
-    Memory/RAG shortcuts (``add``, ``add-file``, ``forget``, …) are **not**
+    Memory/RAG shortcuts (``add``, ``forget``, …) are **not**
     listed here — they remain typeable, but Tab completion surfaces them
-    only under ``/memory`` / ``/rag``.
+    only under ``/memory`` / ``/rag``. Top-level ``reflect`` / ``websearch`` are listed.
     """
     from localagent.cli import build_parser
     from localagent.completion import subparser_names
@@ -198,10 +197,13 @@ def print_session_help() -> None:
     print("                          翻页: next|prev|page N；序号为本页 1–10")
     print("  /memory [action]       记忆概览；无参显示 status（与外层 LA memory 相同）")
     print("  /rag [action]          知识库概览；无参显示 status（与外层 LA rag 相同）")
+    print("  /reflect <问题>        综合推理：记忆召回 → 知识库 → 归纳")
+    print("  /websearch <关键词>    联网搜索（专注互联网）")
     print("  /deepsearch <主题>     多步联网深度研究")
     print("  /q, /quit, /exit       退出对话")
     print()
     print("外层 LA <command> 与会话内 /<command> 等价（/chat 除外）。")
+    print("会话快捷方式：/add → /memory add，/search → /memory search，/forget → /memory forget。")
 
 
 def dispatch_cli_argv(argv: list[str], *, allow_chat: bool = True) -> int:
@@ -210,7 +212,7 @@ def dispatch_cli_argv(argv: list[str], *, allow_chat: bool = True) -> int:
     When ``allow_chat`` is False (session use), ``chat`` is rejected to avoid
     nested REPLs.
     """
-    from localagent.cli import _DEPRECATED_MEMORY_COMMANDS, _normalize_config_argv, _print_deprecated, build_parser
+    from localagent.cli import _normalize_config_argv, build_parser
 
     if not argv:
         if allow_chat:
@@ -220,9 +222,6 @@ def dispatch_cli_argv(argv: list[str], *, allow_chat: bool = True) -> int:
             return 1
 
     argv = _normalize_config_argv(argv)
-
-    if argv and argv[0] in _DEPRECATED_MEMORY_COMMANDS:
-        return _print_deprecated(argv[0])
 
     if not allow_chat and argv[0] == "chat":
         print("[LA] 已在对话中，无需 /chat。输入问题开始聊天，或 /help 查看命令。")

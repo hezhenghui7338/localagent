@@ -60,7 +60,7 @@ def protect_seed_prefix(
         graph_pool = [
             dict(hit)
             for hit in ranked_hits
-            if str(hit.get("source") or "") == "graph"
+            if str(hit.get("source") or "") in {"graph", "neo4j"}
             and str(hit.get("id") or "") not in seen
         ]
         forced: list[dict[str, Any]] = []

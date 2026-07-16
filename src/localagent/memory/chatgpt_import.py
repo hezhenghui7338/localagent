@@ -92,9 +92,11 @@ class ImportSummary:
     skipped_empty: int = 0
     skipped_disabled: int = 0
     skipped_duplicate: int = 0
+    cold_backfill: int = 0
     failed: int = 0
     imported: int = 0
     saved_count: int = 0
+    cold_chunks: int = 0
     errors: list[str] = field(default_factory=list)
 
     def format_summary(self) -> str:
@@ -104,12 +106,14 @@ class ImportSummary:
             f"memories={self.memories_total}",
             f"imported={self.imported}",
             f"saved={self.saved_count}",
+            f"cold_chunks={self.cold_chunks}",
             (
                 "skipped("
                 f"dnr={self.skipped_do_not_remember}, "
                 f"empty={self.skipped_empty}, "
                 f"disabled={self.skipped_disabled}, "
                 f"dup={self.skipped_duplicate}, "
+                f"cold_bf={self.cold_backfill}, "
                 f"failed={self.failed})"
             ),
         ]
@@ -142,14 +146,19 @@ def _mark_processed(
     *,
     source_file: str,
     saved_count: int,
+    cold_chunk_count: int = 0,
     persist: bool = True,
 ) -> None:
+    from localagent.ingest.conversation_cold import cold_indexed_at_now
+
     processed[conversation.conversation_id] = {
         "conversation_id": conversation.conversation_id,
         "title": conversation.title,
         "source_file": source_file,
         "imported_at": datetime.now().isoformat(timespec="seconds"),
         "saved_count": saved_count,
+        "cold_chunk_count": cold_chunk_count,
+        "cold_indexed_at": cold_indexed_at_now() if cold_chunk_count or config.COLD_CONVERSATION else "",
     }
     if persist:
         _save_index(processed)
@@ -163,49 +172,103 @@ def import_conversation(
     processed: dict[str, dict] | None = None,
     interactive: bool = False,
     reporter: ProgressReporter | None = None,
-) -> tuple[int, str | None]:
+) -> tuple[int, str | None, int]:
     """
-    Import one conversation and save extracted memories.
+    Import one conversation: Cold index first, then Warm fact extract.
 
-    Returns (saved_count, skip_reason).
-    skip_reason is one of: do_not_remember, empty, duplicate, no_facts, failed.
+    Returns (saved_count, skip_reason, cold_chunk_count).
+    skip_reason is one of: do_not_remember, empty, duplicate, cold_backfill,
+    no_facts, failed:...  or None on success.
     """
+    from localagent.ingest.conversation_cold import (
+        index_conversation_cold,
+        needs_cold_backfill,
+    )
+
     if processed is None:
         processed = _load_index()
 
     if conversation.is_do_not_remember:
         _report_skip(reporter, skip_reason="do_not_remember", interactive=interactive)
-        return 0, "do_not_remember"
+        return 0, "do_not_remember", 0
 
     if not conversation.conversation_id:
         _report_skip(reporter, skip_reason="empty", interactive=interactive)
-        return 0, "empty"
+        return 0, "empty", 0
 
-    if not force and conversation.conversation_id in processed:
+    entry = processed.get(conversation.conversation_id)
+    if not force and entry is not None:
+        if needs_cold_backfill(entry) and conversation.messages:
+            cold_count = index_conversation_cold(
+                conversation,
+                origin="chatgpt",
+                archive_path=source_file,
+            )
+            _mark_processed(
+                processed,
+                conversation,
+                source_file=source_file,
+                saved_count=int(entry.get("saved_count") or 0),
+                cold_chunk_count=cold_count,
+            )
+            if reporter is not None and not interactive:
+                reporter.update(
+                    ProgressEvent(
+                        phase="cold",
+                        message=f"→ Cold 补索引 {cold_count} chunks",
+                    )
+                )
+            return 0, "cold_backfill", cold_count
         _report_skip(reporter, skip_reason="duplicate", interactive=interactive)
-        return 0, "duplicate"
+        return 0, "duplicate", 0
 
     if not conversation.messages:
         _report_skip(reporter, skip_reason="empty", interactive=interactive)
-        return 0, "empty"
+        return 0, "empty", 0
+
+    cold_count = index_conversation_cold(
+        conversation,
+        origin="chatgpt",
+        archive_path=source_file,
+    )
+    if reporter is not None and not interactive and cold_count:
+        reporter.update(
+            ProgressEvent(phase="cold", message=f"→ Cold 索引 {cold_count} chunks")
+        )
 
     text = format_conversation_text(conversation)
-    router = get_model_router()
-    try:
-        memories = router.extract_memories(
-            text,
-            context=(
-                f"chatgpt import title={conversation.title!r} "
-                f"conversation_id={conversation.conversation_id}"
-            ),
-        )
-    except RuntimeError as exc:
-        _report_skip(reporter, skip_reason=f"failed:{exc}", interactive=interactive)
-        return 0, f"failed:{exc}"
+    if not config.INGEST_USE_LLM:
+        memories = []
+    else:
+        router = get_model_router()
+        try:
+            memories = router.extract_memories(
+                text,
+                context=(
+                    f"chatgpt import title={conversation.title!r} "
+                    f"conversation_id={conversation.conversation_id}"
+                ),
+            )
+        except RuntimeError as exc:
+            _mark_processed(
+                processed,
+                conversation,
+                source_file=source_file,
+                saved_count=0,
+                cold_chunk_count=cold_count,
+            )
+            _report_skip(reporter, skip_reason=f"failed:{exc}", interactive=interactive)
+            return 0, f"failed:{exc}", cold_count
     if not memories:
-        _mark_processed(processed, conversation, source_file=source_file, saved_count=0)
+        _mark_processed(
+            processed,
+            conversation,
+            source_file=source_file,
+            saved_count=0,
+            cold_chunk_count=cold_count,
+        )
         _report_skip(reporter, skip_reason="no_facts", interactive=interactive)
-        return 0, "no_facts"
+        return 0, "no_facts", cold_count
 
     facts = [m.text for m in memories]
     title = conversation.title or conversation.conversation_id[:12]
@@ -230,8 +293,14 @@ def import_conversation(
         interactive=interactive,
     )
     _report_saved(reporter, len(ids), interactive=interactive)
-    _mark_processed(processed, conversation, source_file=source_file, saved_count=len(ids))
-    return len(ids), None
+    _mark_processed(
+        processed,
+        conversation,
+        source_file=source_file,
+        saved_count=len(ids),
+        cold_chunk_count=cold_count,
+    )
+    return len(ids), None, cold_count
 
 
 def _memory_index_key(memory_id: str) -> str:
@@ -470,7 +539,7 @@ def import_chatgpt_file(
                     total=total,
                 )
             )
-        saved_count, skip_reason = import_conversation(
+        saved_count, skip_reason, cold_count = import_conversation(
             conversation,
             source_file=source_file,
             force=force,
@@ -478,7 +547,7 @@ def import_chatgpt_file(
             interactive=interactive,
             reporter=reporter,
         )
-        _apply_import_result(summary, conversation, saved_count, skip_reason)
+        _apply_import_result(summary, conversation, saved_count, skip_reason, cold_count)
 
     return summary
 
@@ -488,11 +557,15 @@ def _apply_import_result(
     conversation: ChatGPTConversation,
     saved_count: int,
     skip_reason: str | None,
+    cold_chunk_count: int = 0,
 ) -> tuple[int, str | None]:
+    summary.cold_chunks += max(0, cold_chunk_count)
     if skip_reason == "do_not_remember":
         summary.skipped_do_not_remember += 1
     elif skip_reason == "duplicate":
         summary.skipped_duplicate += 1
+    elif skip_reason == "cold_backfill":
+        summary.cold_backfill += 1
     elif skip_reason in ("empty", "no_facts"):
         summary.skipped_empty += 1
     elif skip_reason and skip_reason.startswith("failed:"):
@@ -585,7 +658,7 @@ def _import_chatgpt_json_path(
                     total=total,
                 )
             )
-        saved_count, skip_reason = import_conversation(
+        saved_count, skip_reason, cold_count = import_conversation(
             conversation,
             source_file=source_file,
             force=force,
@@ -593,7 +666,7 @@ def _import_chatgpt_json_path(
             interactive=interactive,
             reporter=reporter,
         )
-        _apply_import_result(summary, conversation, saved_count, skip_reason)
+        _apply_import_result(summary, conversation, saved_count, skip_reason, cold_count)
     return summary
 
 
@@ -605,9 +678,11 @@ def _merge_import_summaries(target: ImportSummary, source: ImportSummary) -> Non
     target.skipped_empty += source.skipped_empty
     target.skipped_disabled += source.skipped_disabled
     target.skipped_duplicate += source.skipped_duplicate
+    target.cold_backfill += source.cold_backfill
     target.failed += source.failed
     target.imported += source.imported
     target.saved_count += source.saved_count
+    target.cold_chunks += source.cold_chunks
     target.errors.extend(source.errors)
 
 

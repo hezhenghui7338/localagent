@@ -22,6 +22,8 @@ def test_complete_all_subcommands_from_empty():
     assert "chat" in hits
     assert "memory" in hits
     assert "rag" in hits
+    assert "reflect" in hits
+    assert "websearch" in hits
     assert "tasks" in hits
     assert "add-file" not in hits
     assert "sync-file" not in hits
@@ -33,6 +35,9 @@ def test_complete_memory_actions():
     assert "ingest" in hits
     assert "query" in hits
     assert "search" in hits
+    assert "reflect" in hits
+    assert "pending" in hits
+    assert "approve" in hits
 
 
 def test_complete_rag_actions():
@@ -56,6 +61,7 @@ def test_list_slash_command_names_excludes_chat():
     assert "provider" in names
     assert "model" in names
     assert "deepsearch" in names
+    assert "websearch" in names
     assert "q" in names
     assert "memory" in names
     assert "rag" in names
@@ -65,7 +71,7 @@ def test_list_slash_command_names_excludes_chat():
     assert "add-file" not in names
     assert "forget" not in names
     assert "search" not in names
-    assert "reflect" not in names
+    assert "reflect" in names
 
 
 def test_session_slash_tab_lists_all_on_slash():
@@ -73,6 +79,8 @@ def test_session_slash_tab_lists_all_on_slash():
     assert "/help" in hits
     assert "/memory" in hits
     assert "/rag" in hits
+    assert "/reflect" in hits
+    assert "/websearch" in hits
     assert "/provider" in hits
     assert "/model" in hits
     assert "/deepsearch" in hits
@@ -82,7 +90,6 @@ def test_session_slash_tab_lists_all_on_slash():
     assert "/add-file" not in hits
     assert "/forget" not in hits
     assert "/search" not in hits
-    assert "/reflect" not in hits
     assert all(h.startswith("/") for h in hits)
 
 
@@ -92,6 +99,7 @@ def test_session_slash_tab_memory_rag_subcommands():
     assert "forget" in mem
     assert "search" in mem
     assert "reflect" in mem
+    assert "pending" in mem
     rag = suggest_session_slash_completions("/rag ", text="")
     assert "add" in rag
 
@@ -155,6 +163,52 @@ def test_install_repl_readline_completer():
     # Should not raise; returns False only when readline is unavailable.
     result = install_repl_readline_completer()
     assert result in (True, False)
+
+
+def test_complete_audit_report_flag():
+    hits = suggest_completions(["LA", "audit", "--rep"], build_parser())
+    assert hits == ["--report"]
+    assert "--report" in suggest_completions(["LA", "audit", "--"], build_parser())
+    assert "--report" in suggest_completions(["LA", "audit", ""], build_parser())
+
+
+def test_complete_workspace_and_logs_flags():
+    assert "--days" in suggest_completions(["LA", "workspace", "--"], build_parser())
+    assert "--level" in suggest_completions(["LA", "logs", "--"], build_parser())
+
+
+def test_complete_config_actions_include_set_apply():
+    hits = suggest_completions(["LA", "config", ""], build_parser())
+    assert "set" in hits
+    assert "apply" in hits
+    assert "set-key" in hits
+    assert suggest_completions(["LA", "config", "se"], build_parser()) == ["set", "set-key"]
+    set_flags = suggest_completions(["LA", "config", "set", "--"], build_parser())
+    assert "--provider" in set_flags
+    assert "--model" in set_flags
+    init_flags = suggest_completions(["LA", "config", "init", "--"], build_parser())
+    assert "--force" in init_flags
+    assert "--provider" not in init_flags
+
+
+def test_complete_nested_memory_query_after_sort_value():
+    hits = suggest_completions(["LA", "memory", "query", "--sort", "newest", "--"], build_parser())
+    assert "--tag" in hits
+
+
+def test_session_slash_tab_audit_report():
+    assert suggest_session_slash_completions("/audit --rep", text="--rep") == ["--report"]
+    # libedit may split on ``-`` so readline ``text`` is only the trailing fragment
+    assert suggest_session_slash_completions("/audit --rep", text="rep") == ["report"]
+    assert "--report" in suggest_session_slash_completions("/audit ", text="")
+    assert "--report" in suggest_session_slash_completions("/audit --", text="--")
+
+
+def test_session_slash_tab_config_nested():
+    hits = suggest_session_slash_completions("/config ", text="")
+    assert "set" in hits
+    assert "apply" in hits
+    assert "--provider" in suggest_session_slash_completions("/config set --", text="--")
 
 
 def test_complete_chat_provider_flags():

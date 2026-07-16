@@ -1,7 +1,7 @@
 [project]
 name = "la-localagent"
 dynamic = ["version"]
-description = "完全本地的主动式 AI 助手：模糊意图会追问；Mem0 长期多层次记忆（ChatGPT 历史/个人文档/对话）；联网搜索 + 本地 Shell，打通本机、用户画像与互联网"
+description = "完全本地的个人 AI 助手：零成本默认可玩、易用少命令；Mem0 长期多层次记忆 + RAG；本机工具与可选联网，数据始终留在本地"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -27,6 +27,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pyyaml>=6.0.0",
     "loguru>=0.7.0",
+    "prompt-toolkit>=3.0.0",
     "cursor-sdk>=0.1.9",
     "langgraph>=0.2.0",
     "langgraph-checkpoint-sqlite>=2.0.0",
@@ -50,6 +51,10 @@ dev = [
 # Optional cross-encoder rerank (LA_MEMORY_RERANK_BACKEND=cross_encoder|auto).
 rerank = [
     "sentence-transformers>=3.0.0",
+]
+# Optional Neo4j for precise graph queries (counts / aggregations / multi-hop).
+neo4j = [
+    "neo4j>=5.0.0",
 ]
 
 [project.urls]

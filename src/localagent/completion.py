@@ -13,6 +13,16 @@ from localagent import config
 _FILE_SENTINEL = "__LA_FILE__"
 _TASK_ACTIONS = ("delete", "pause", "resume", "restart", "logs", "list", "show")
 _CHAT_PROVIDERS = ("auto",) + config.VALID_PROVIDERS
+# Flags whose values are filesystem paths (Tab → file completion).
+_PATH_OPTION_FLAGS = frozenset(
+    {
+        "--report",
+        "--cwd",
+        "--file",
+        "--dir",
+        "--path",
+    }
+)
 _ZSHRC_START = "# >>> LA CLI completion >>>"
 _ZSHRC_END = "# <<< LA CLI completion <<<"
 
@@ -129,6 +139,24 @@ def _find_option_action(
     return None
 
 
+def _is_flag_token(token: str) -> bool:
+    return token.startswith("-") and token != "-"
+
+
+def _option_takes_value(parser: argparse.ArgumentParser, flag: str) -> bool:
+    action = _find_option_action(parser, flag)
+    if action is None:
+        return False
+    if isinstance(
+        action,
+        (argparse._StoreTrueAction, argparse._StoreFalseAction, argparse._HelpAction, argparse._VersionAction),
+    ):
+        return False
+    if action.nargs == 0:
+        return False
+    return True
+
+
 def _completing_option(args: list[str], current: str, parser: argparse.ArgumentParser) -> list[str]:
     flags = _option_strings(parser)
     if current.startswith("-"):
@@ -138,7 +166,7 @@ def _completing_option(args: list[str], current: str, parser: argparse.ArgumentP
         return _prefix_match(flags, current)
 
     prev = args[-1]
-    if not prev.startswith("-"):
+    if not _is_flag_token(prev):
         return _prefix_match(flags, current)
 
     if prev in ("--provider", "-p"):
@@ -147,15 +175,14 @@ def _completing_option(args: list[str], current: str, parser: argparse.ArgumentP
         return _prefix_match(_session_ids(), current)
     if prev == "--tag":
         return _prefix_match(_memory_tags(), current)
+    if prev in _PATH_OPTION_FLAGS:
+        return _expand_path(current)
 
     action = _find_option_action(parser, prev)
     if action is not None:
         if action.choices is not None:
             return _prefix_match([str(c) for c in action.choices], current)
-        if isinstance(
-            action,
-            (argparse._StoreTrueAction, argparse._StoreFalseAction, argparse._HelpAction),
-        ):
+        if not _option_takes_value(parser, prev):
             return _prefix_match(flags, current)
         # Value-taking flag without fixed choices (--since, --limit, …)
         return []
@@ -163,8 +190,133 @@ def _completing_option(args: list[str], current: str, parser: argparse.ArgumentP
     return _prefix_match(flags, current)
 
 
+def _wants_option_completion(tokens: list[str], current: str, parser: argparse.ArgumentParser) -> bool:
+    """True when the cursor is on a flag or the value of a value-taking flag."""
+    if current.startswith("-"):
+        return True
+    if not tokens:
+        return False
+    prev = tokens[-1]
+    if not _is_flag_token(prev):
+        return False
+    return _option_takes_value(parser, prev)
+
+
+def _complete_parser(parser: argparse.ArgumentParser, tokens: list[str], current: str) -> list[str]:
+    """Walk nested argparse subparsers; at each level complete subcommands or options."""
+    subs = _get_subparsers(parser)
+
+    # Descend into a known subcommand before offering this level's flags.
+    if subs and tokens and tokens[0] in subs:
+        return _complete_parser(subs[tokens[0]], tokens[1:], current)
+
+    if _wants_option_completion(tokens, current, parser):
+        return _completing_option(tokens, current, parser)
+
+    if subs:
+        names = sorted(subs)
+        if current.startswith("-"):
+            return _prefix_match(_option_strings(parser), current)
+        hits = _prefix_match(names, current)
+        if hits:
+            return hits
+        return _prefix_match(_option_strings(parser), current)
+
+    return _completing_option(tokens, current, parser)
+
+
+def _complete_tasks(parser: argparse.ArgumentParser, tokens: list[str], current: str) -> list[str]:
+    if _wants_option_completion(tokens, current, parser) or current.startswith("-"):
+        return _completing_option(tokens, current, parser)
+    if not tokens:
+        return _prefix_match(list(_TASK_ACTIONS) + _task_ids(), current)
+    if tokens[0] in _TASK_ACTIONS and len(tokens) == 1:
+        return _prefix_match(_task_ids(), current)
+    if tokens[0].startswith("t-"):
+        return []
+    return _prefix_match(list(_TASK_ACTIONS) + _task_ids(), current)
+
+
+def _complete_memory(parser: argparse.ArgumentParser, tokens: list[str], current: str) -> list[str]:
+    mem_subs = _get_subparsers(parser)
+    mem_names = sorted(mem_subs)
+    if not tokens:
+        return _prefix_match(mem_names, current)
+
+    mem_cmd = tokens[0]
+    mem_tail = tokens[1:]
+    if mem_cmd not in mem_subs:
+        return _prefix_match(mem_names, current)
+
+    mem_parser = mem_subs[mem_cmd]
+    if _wants_option_completion(mem_tail, current, mem_parser) or current.startswith("-"):
+        return _completing_option(mem_tail, current, mem_parser)
+    if mem_cmd == "forget" and not mem_tail:
+        return _prefix_match(_memory_ids(), current)
+    if mem_cmd == "ingest":
+        sources = ["chat", "chatgpt", "all"]
+        if not mem_tail:
+            return _prefix_match(sources, current)
+        if mem_tail[-1] in ("--file", "--dir"):
+            return _expand_path(current)
+        if mem_tail[0] == "chatgpt" and len(mem_tail) == 1 and not current.startswith("-"):
+            return _expand_path(current)
+        return _completing_option(mem_tail, current, mem_parser)
+    if mem_cmd == "reset" and not mem_tail:
+        return _prefix_match(["chat", "chatgpt", "all"], current)
+    if mem_cmd == "graph":
+        actions = ["stats", "rebuild", "neo4j", "query"]
+        if not mem_tail:
+            return _prefix_match(actions, current)
+        if mem_tail[0] == "neo4j" and len(mem_tail) == 1:
+            return _prefix_match(["stats", "rebuild"], current)
+        return _completing_option(mem_tail, current, mem_parser)
+    if mem_cmd in ("search", "query") and not mem_tail:
+        return _completing_option([], current, mem_parser)
+    return _completing_option(mem_tail, current, mem_parser)
+
+
+def _complete_rag(parser: argparse.ArgumentParser, tokens: list[str], current: str) -> list[str]:
+    rag_subs = _get_subparsers(parser)
+    rag_names = sorted(rag_subs)
+    if not tokens:
+        return _prefix_match(rag_names, current)
+
+    rag_cmd = tokens[0]
+    rag_tail = tokens[1:]
+    if rag_cmd not in rag_subs:
+        return _prefix_match(rag_names, current)
+
+    rag_parser = rag_subs[rag_cmd]
+    if _wants_option_completion(rag_tail, current, rag_parser) or current.startswith("-"):
+        return _completing_option(rag_tail, current, rag_parser)
+    if rag_cmd == "add":
+        return _expand_path(current)
+    return _completing_option(rag_tail, current, rag_parser)
+
+
+def _complete_config(parser: argparse.ArgumentParser, tokens: list[str], current: str) -> list[str]:
+    """``config`` has both top-level flags and nested actions."""
+    subs = _get_subparsers(parser)
+    if tokens and tokens[0] in subs:
+        return _complete_parser(parser, tokens, current)
+    if current.startswith("-") or _wants_option_completion(tokens, current, parser):
+        return _completing_option(tokens, current, parser)
+    if not tokens:
+        names = sorted(subs)
+        hits = _prefix_match(names, current)
+        if hits or current:
+            return hits
+        return names
+    return _complete_parser(parser, tokens, current)
+
+
 def suggest_completions(words: list[str], parser: argparse.ArgumentParser | None = None) -> list[str]:
-    """Return completion candidates for a partial LA command line."""
+    """Return completion candidates for a partial LA command line.
+
+    ``words`` is the tokenized line including the program name, with the last
+    element the token currently being completed (may be ``""`` after a space).
+    """
     if parser is None:
         from localagent.cli import build_parser
 
@@ -180,94 +332,28 @@ def suggest_completions(words: list[str], parser: argparse.ArgumentParser | None
         return commands
 
     current = words[-1]
-    context = words[:-1]
-    args = context[1:] if len(context) > 1 else []
+    # Completed tokens after the program name (exclude the current partial word).
+    argv = words[1:-1]
 
-    if not args:
+    if not argv:
         return _prefix_match(commands, current)
 
-    cmd = args[0]
-    tail = args[1:]
+    cmd = argv[0]
+    tail = argv[1:]
 
     if cmd not in subparsers:
         return _prefix_match(commands, current)
 
     sub = subparsers[cmd]
-
     if cmd == "tasks":
-        if current.startswith("-") or (tail and tail[-1].startswith("-")):
-            return _completing_option(tail, current, sub)
-        if not tail:
-            actions = list(_TASK_ACTIONS) + _task_ids()
-            return _prefix_match(actions, current)
-        if tail[0] in _TASK_ACTIONS and len(tail) == 1:
-            return _prefix_match(_task_ids(), current)
-        if tail[0].startswith("t-"):
-            return []
-        return _prefix_match(list(_TASK_ACTIONS) + _task_ids(), current)
-
+        return _complete_tasks(sub, tail, current)
     if cmd == "memory":
-        mem_subs = _get_subparsers(sub)
-        mem_names = sorted(mem_subs)
-        if not tail:
-            return _prefix_match(mem_names, current)
-        mem_cmd = tail[0]
-        mem_tail = tail[1:]
-        if mem_cmd not in mem_subs:
-            return _prefix_match(mem_names, current)
-        mem_parser = mem_subs[mem_cmd]
-        if current.startswith("-") or (mem_tail and mem_tail[-1].startswith("-")):
-            return _completing_option(mem_tail, current, mem_parser)
-        if mem_cmd == "forget" and not mem_tail:
-            return _prefix_match(_memory_ids(), current)
-        if mem_cmd == "ingest":
-            sources = ["chat", "chatgpt", "all"]
-            if not mem_tail:
-                return _prefix_match(sources, current)
-            if mem_tail[-1] in ("--file", "--dir"):
-                return _expand_path(current)
-            if mem_tail[0] == "chatgpt" and len(mem_tail) == 1 and not current.startswith("-"):
-                return _expand_path(current)
-            return _completing_option(mem_tail, current, mem_parser)
-        if mem_cmd == "reset" and not mem_tail:
-            return _prefix_match(["chat", "chatgpt", "all"], current)
-        if mem_cmd in ("search", "query", "reflect") and not mem_tail:
-            return _completing_option([], current, mem_parser)
-        return _completing_option(mem_tail, current, mem_parser)
-
+        return _complete_memory(sub, tail, current)
     if cmd == "rag":
-        rag_subs = _get_subparsers(sub)
-        rag_names = sorted(rag_subs)
-        if not tail:
-            return _prefix_match(rag_names, current)
-        rag_cmd = tail[0]
-        rag_tail = tail[1:]
-        if rag_cmd not in rag_subs:
-            return _prefix_match(rag_names, current)
-        rag_parser = rag_subs[rag_cmd]
-        if current.startswith("-") or (rag_tail and rag_tail[-1].startswith("-")):
-            return _completing_option(rag_tail, current, rag_parser)
-        if rag_cmd == "add":
-            return _expand_path(current)
-        return _completing_option(rag_tail, current, rag_parser)
-
-    if current.startswith("-") or (tail and tail[-1].startswith("-")):
-        return _completing_option(tail, current, sub)
-
-    if cmd == "chat" and not tail:
-        return _completing_option([], current, sub)
-
+        return _complete_rag(sub, tail, current)
     if cmd == "config":
-        if not tail:
-            return _prefix_match(["init", "list", "add", "remove", "set-key"], current)
-        if tail[0] == "remove" and len(tail) == 1:
-            return []
-        if tail[0] == "set-key" and len(tail) == 1:
-            return []
-        if tail[0] == "add" and len(tail) == 1:
-            return []
-
-    return _completing_option(tail, current, sub)
+        return _complete_config(sub, tail, current)
+    return _complete_parser(sub, tail, current)
 
 
 def run_complete(argv: list[str]) -> int:
@@ -304,19 +390,46 @@ def _filter_prefix(candidates: list[str], text: str) -> list[str]:
     return [c for c in candidates if c.startswith(text)]
 
 
-def _session_arg_completions(cmd: str, argv: list[str], text: str) -> list[str]:
+def _adapt_readline_matches(hits: list[str], *, text: str, token: str) -> list[str]:
+    """Map full-token hits to replacements for readline's ``text``.
+
+    macOS libedit defaults treat ``-`` as a word break, so typing ``/audit --rep``
+    may yield ``text='rep'`` while the real token is ``--rep``. Returning
+    ``--report`` would then corrupt the line; return ``report`` instead.
+    """
+    if not hits:
+        return []
+    if not text:
+        return hits
+    if not token or token == text:
+        prefixed = [h for h in hits if h.startswith(text)]
+        return prefixed if prefixed else hits
+    if token.endswith(text) and len(token) > len(text):
+        kept = token[: -len(text)]
+        out: list[str] = []
+        for hit in hits:
+            if hit.startswith(token):
+                out.append(hit[len(kept) :])
+            elif hit.startswith(text):
+                out.append(hit)
+        return out
+    prefixed = [h for h in hits if h.startswith(text)]
+    return prefixed if prefixed else hits
+
+
+def _session_arg_completions(cmd: str, completed: list[str], current: str) -> list[str]:
     """Complete arguments after a session slash command name.
 
-    ``argv`` is tokens after the command name (may include the current word).
-    ``text`` is the readline current word being completed.
+    ``completed`` are finished tokens after the command name; ``current`` is the
+    partial token under the cursor (``""`` after a trailing space).
     """
     if cmd == "provider":
-        needle = text.lower()
+        needle = current.lower()
         return [c for c in _session_provider_choices() if c.startswith(needle)]
     if cmd == "model":
         # Avoid dumping hundreds of models on bare Tab (readline "Display all N?").
         # Require a filter prefix; then match by prefix or substring.
-        needle = text.strip()
+        needle = current.strip()
         if not needle:
             return []
         models = _session_model_choices()
@@ -330,14 +443,9 @@ def _session_arg_completions(cmd: str, argv: list[str], text: str) -> list[str]:
     from localagent.cli import build_parser
 
     parser = build_parser()
-    cli_argv = [cmd, *argv]
     if cmd not in _get_subparsers(parser):
         return []
-
-    completed = list(cli_argv)
-    if text and completed and completed[-1] == text:
-        completed = completed[:-1]
-    return suggest_completions(["LA", *completed, text], parser)
+    return suggest_completions(["LA", cmd, *completed, current], parser)
 
 
 def suggest_session_slash_completions(line: str, text: str = "") -> list[str]:
@@ -357,21 +465,30 @@ def suggest_session_slash_completions(line: str, text: str = "") -> list[str]:
 
     from localagent.session_commands import list_slash_command_names
 
-    # Past the command name → complete args (readline ``text`` is the current word)
+    # Past the command name → complete args from the line tokens (not readline
+    # delims), then adapt hits so they correctly replace readline ``text``.
     if rest and any(ch.isspace() for ch in rest):
         parts = rest.split()
         if not parts:
             return []
         cmd = parts[0].lower()
+        trailing_space = rest[-1].isspace()
+        if trailing_space:
+            completed = parts[1:]
+            current = ""
+        else:
+            completed = parts[1:-1]
+            current = parts[-1] if len(parts) > 1 else ""
+
         if cmd in ("p", "provider"):
             cmd = "provider"
         elif cmd == "model":
             cmd = "model"
-        elif cmd in ("add", "search", "forget", "reflect"):
-            return _session_arg_completions("memory", [cmd, *parts[1:]], text)
-        elif cmd == "add-file":
-            return _session_arg_completions("rag", ["add", *parts[1:]], text)
-        return _session_arg_completions(cmd, parts[1:], text)
+        elif cmd in ("add", "search", "forget"):
+            hits = _session_arg_completions("memory", [cmd, *completed], current)
+            return _adapt_readline_matches(hits, text=text, token=current)
+        hits = _session_arg_completions(cmd, completed, current)
+        return _adapt_readline_matches(hits, text=text, token=current)
 
     needle = rest.lower()
     hits = [name for name in list_slash_command_names() if name.startswith(needle)]
@@ -403,9 +520,10 @@ def install_repl_readline_completer() -> bool:
     except ImportError:
         return False
 
-    # Keep ``/`` and ``:`` inside the completion word (``/help``, not ``help``).
+    # Keep ``/``, ``:``, ``-``, ``.`` inside the completion word so flags like
+    # ``--report`` and model ids like ``qwen3.5:4b`` stay one token.
     delims = readline.get_completer_delims()
-    for ch in "/:":
+    for ch in "/:-.":
         delims = delims.replace(ch, "")
     readline.set_completer_delims(delims)
 

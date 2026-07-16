@@ -19,6 +19,8 @@ def test_e2e_help():
     assert result.returncode == 0
     assert "memory" in result.stdout
     assert "rag" in result.stdout
+    assert "reflect" in result.stdout
+    assert "websearch" in result.stdout
     assert "chat" in result.stdout
     assert "tasks" in result.stdout
     assert "delete|pause|resume|restart|logs" in result.stdout
