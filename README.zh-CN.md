@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="./README.md">English</a> · <a href="./README.zh-CN.md">中文</a>
+  <a href="https://github.com/hezhenghui7338/localagent">English</a> · <b>中文</b>
 </p>
 
 # <img src="assets/logo-icon.png" alt="LA" width="36" valign="middle"> LocalAgent
