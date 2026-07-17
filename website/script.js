@@ -105,12 +105,11 @@
   function detectLang() {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved === "zh" || saved === "en") return saved;
-    const nav = (navigator.language || "").toLowerCase();
-    return nav.startsWith("zh") ? "zh" : "en";
+    return "en";
   }
 
   function applyLang(lang) {
-    const dict = strings[lang] || strings.zh;
+    const dict = strings[lang] || strings.en;
     document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
     document.title = dict.title;
 
@@ -151,7 +150,7 @@
 
     btn.addEventListener("click", async () => {
       const lang = localStorage.getItem(STORAGE_KEY) || detectLang();
-      const dict = strings[lang] || strings.zh;
+      const dict = strings[lang] || strings.en;
       try {
         await navigator.clipboard.writeText(INSTALL_CMD);
       } catch {
