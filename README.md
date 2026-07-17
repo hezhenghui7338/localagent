@@ -40,26 +40,6 @@ Optional OpenRouter / Cursor / Tavily for extras — **identity and data stay on
 
 - **Not in this release:** workspace file-watcher incremental indexing, and external task sources.
 
-### User stories
-
-| I want to… | Where |
-| --- | --- |
-| Install once and chat | [User install](#user-install-recommended) |
-| Hack on the source / run tests | [Developer install](#developer-install) |
-| Run with my own API keys | [Configuration](#configuration) · `la config` |
-| Be profiled and remembered across sessions | [Mem0 long-term memory](#mem0-long-term-memory--remembers-you-end-to-end) · [Product tour §3](examples/product-tour.md) |
-| Search the web | [Feature highlights](#feature-highlights) · [Product tour §6](examples/product-tour.md) |
-| Use local Shell / write files | [Local Shell](#local-execution--shell-that-actually-acts) · [Product tour §7](examples/product-tour.md) |
-| Import ChatGPT history so LA knows me faster | `LA memory ingest chatgpt` · [Product tour §4](examples/product-tour.md) |
-| Have dangerous commands blocked | [Agent tools & safety](#agent-tools--safety) · [Product tour §7](examples/product-tour.md) |
-| See token / cost spend | `LA audit` · [Product tour §8](examples/product-tour.md) |
-| Put local docs in a KB and recall deeply | `LA rag add` · [Product tour §5](examples/product-tour.md) |
-| One-click summarize a local doc (document dialogue by default) | `la summarize <path>` · `/keep` in `sum>` to archive; `--no-chat` for digest-only |
-| News sniff / daily brief | `la news sync` → `la news brief` (interactive on TTY); `r` deep-read chat; `la news schedule on` |
-| One-click polish copy (clipboard by default) | `la polish` / `/polish` · `--scene` / `--tone` / `--no-copy` |
-
-> **Daily trio** (most used): [summarize · news · polish](#daily-essentials-summarize--news--polish)
-
 ### What we believe
 
 - AI is revolutionary — embrace it; hearing about it a thousand times beats nothing next to downloading LA and debugging it yourself  
@@ -80,18 +60,22 @@ la                              # asks before installing Ollama (you can skip)
 
 ## Features
 
-- **Fully local**: default `qwen3.5:4b` — chat, memory write, retrieval, workspace awareness, and Shell execution all run on-device; optional cloud models, data still owned locally
-- **Truly easy**: main path `la` / `la setup` / `la chat`; advanced power via subcommands without blocking daily use
-- **Long-term multi-layer memory**: Hot (core profile) / Warm (facts) / Cold (docs + conversation archives) with JIT recall
-- **Mem0 + conversation memory**: ChatGPT history and LA chats → Warm facts **and** Cold searchable archives; docs via `LA rag` into Cold
-- **External tools + safety**: workspace + `run_shell` + write_file; approve before execute; hard-block dangerous commands; write-file hallucination detection
-- **Web search**: ddgs by default (no key); optional Tavily / SearXNG
-- **Document knowledge base (RAG)**: symlink personal files (including PDF); Chroma + BM25 hybrid search
-- **One-click summarize**: `la summarize` for txt / md / pdf / xlsx — up to three sentences + cited key points, then a `sum>` document dialogue by default; `--no-chat` for digest-only (multi-file ok); **not kept by default** — `/keep` or `--keep` to archive (never prompts after every run)
-- **News sniff**: `la news sync` pulls BestBlogs RSS; `la news brief` opens an interactive browser on TTY (↑↓ navigate, `o` open URL, `r` deep-read chat); use `--no-ui` to dump; `la news schedule on` enables 08:00 auto-sync
-- **One-click polish**: `la polish` / `/polish` detects email / Moments / resume / business-chat scene and attitude, rewrites with primary + alternates; **copies primary to clipboard by default**
-- **Multi-model chat**: unified Ollama / OpenRouter / Cursor entry; `auto` mode falls back by priority
-- **Auditable**: tokens/cost, agent behavior, guardrail blocks, sensitive-file scan — exportable Markdown reports
+Runs fully local by default; optional cloud models and web extras. Details for the daily trio: [summarize · news · polish](#daily-essentials-summarize--news--polish).
+
+| I want to… | How |
+| --- | --- |
+| Install once and chat | `la` / `la setup` · [User install](#user-install-recommended) |
+| Hack on the source / run tests | [Developer install](#developer-install) |
+| Use my own API keys | [Configuration](#configuration) · `la config` |
+| Be remembered across sessions | Hot / Warm / Cold + Mem0; import ChatGPT via `LA memory ingest chatgpt` · [Product tour §3–4](examples/product-tour.md) |
+| Put docs in a KB and recall deeply | `LA rag add` / `rag search` · [Product tour §5](examples/product-tour.md) |
+| **Summarize** a doc (`sum>` dialogue by default) | `la summarize <path>`; `/keep` or `--keep` to archive; `--no-chat` for digest-only |
+| **News sniff** / daily brief | `la news sync` → `la news brief` (TTY ↑↓ / `o` open / `r` deep-read); `la news schedule on` |
+| **Polish** copy (clipboard by default) | `la polish` / `/polish` · `--scene` / `--tone` / `--no-copy` |
+| Search the web | ddgs by default; `LA chat` or `/deepsearch` · [Product tour §6](examples/product-tour.md) |
+| Local Shell / write files (dangerous ops blocked) | `run_shell` / `write_file`; approve before execute · [Local Shell](#local-execution--shell-that-actually-acts) |
+| See tokens / cost | `LA audit` · [Product tour §8](examples/product-tour.md) |
+| Switch models | Ollama / OpenRouter / Cursor; `auto` falls back by priority |
 
 ## Requirements
 
