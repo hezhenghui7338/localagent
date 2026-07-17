@@ -5,7 +5,7 @@
 
 **一句话**：一键获得你的本地个人 AI 助手——用你的算力、网络与工具，持久记住你，真正越来越懂你，能力可扩展。
 
-对外主叙事见 [README.md](../README.md)（英文默认 · [中文锚点](../README.md#zh-cn)）；可跑通故事见 [examples/product-tour.zh-CN.md](../examples/product-tour.zh-CN.md)。
+对外主叙事见 [README.md](../README.md)（英文默认 · [中文](../README.zh-CN.md)）；可跑通故事见 [examples/product-tour.zh-CN.md](../examples/product-tour.zh-CN.md)。
 
 ---
 
