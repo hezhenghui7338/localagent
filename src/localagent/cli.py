@@ -53,7 +53,7 @@ def _ensure_ollama_for_chat() -> None:
         if result.message:
             print(f"[setup] {result.message}")
         return
-    if result.installed_now or result.pulled_now:
+    if result.installed_now or result.pulled_now or result.adopted_existing:
         print(f"[setup] {result.message}")
     elif not result.model_ready:
         print(f"[setup] 警告: {result.message}")
@@ -1309,7 +1309,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="LA",
         description=(
-            "LocalAgent — 本机个人 AI 中枢\n\n"
+            "LocalAgent — 本地个人 AI 助手\n\n"
             "主路径（少即是多）：\n"
             "  la / la chat     对话\n"
             "  la setup [-y]    安装/拉取本地 Ollama 模型\n"

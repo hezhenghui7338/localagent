@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from localagent.ollama_setup import OllamaSetupResult, ensure_ollama_ready, has_model
+from localagent.ollama_setup import (
+    OllamaSetupResult,
+    ensure_ollama_ready,
+    has_model,
+    pick_available_completion_model,
+)
 
 
 def test_ensure_ollama_ready_skips(monkeypatch):
@@ -21,6 +26,37 @@ def test_has_model_matches_prefix(monkeypatch):
     assert has_model("missing") is False
 
 
+def test_pick_prefers_running_model(monkeypatch):
+    monkeypatch.setattr(
+        "localagent.ollama_setup.list_local_models",
+        lambda base_url=None: [
+            {"name": "llama3.2:3b", "capabilities": ["completion"]},
+            {"name": "mistral:7b", "capabilities": ["completion"]},
+            {"name": "bge-m3:latest", "capabilities": ["embedding"]},
+        ],
+    )
+    monkeypatch.setattr(
+        "localagent.ollama_setup.list_running_completion_model_names",
+        lambda base_url=None: ["mistral:7b"],
+    )
+    assert pick_available_completion_model("qwen3.5:4b") == "mistral:7b"
+
+
+def test_pick_uses_preferred_when_installed(monkeypatch):
+    monkeypatch.setattr(
+        "localagent.ollama_setup.list_local_models",
+        lambda base_url=None: [
+            {"name": "llama3.2:3b", "capabilities": ["completion"]},
+            {"name": "qwen3.5:4b", "capabilities": ["completion"]},
+        ],
+    )
+    monkeypatch.setattr(
+        "localagent.ollama_setup.list_running_completion_model_names",
+        lambda base_url=None: ["llama3.2:3b"],
+    )
+    assert pick_available_completion_model("qwen3.5:4b") == "qwen3.5:4b"
+
+
 def test_ensure_ollama_ready_declines_install(monkeypatch):
     monkeypatch.delenv("LA_SKIP_OLLAMA_SETUP", raising=False)
     monkeypatch.setattr("localagent.ollama_setup.is_ollama_installed", lambda: False)
@@ -31,6 +67,36 @@ def test_ensure_ollama_ready_declines_install(monkeypatch):
     assert result.skipped is True
     assert result.installed is False
     assert "跳过" in result.message
+
+
+def test_ensure_ollama_ready_adopts_existing_model(monkeypatch):
+    monkeypatch.delenv("LA_SKIP_OLLAMA_SETUP", raising=False)
+    monkeypatch.setattr("localagent.ollama_setup.is_ollama_installed", lambda: True)
+    monkeypatch.setattr(
+        "localagent.ollama_setup.is_ollama_reachable",
+        lambda base_url=None, timeout=2.0: True,
+    )
+    monkeypatch.setattr(
+        "localagent.ollama_setup.pick_available_completion_model",
+        lambda preferred=None, base_url=None: "llama3.2:3b",
+    )
+    monkeypatch.setattr(
+        "localagent.ollama_setup._persist_ollama_model",
+        lambda model: True,
+    )
+
+    pulled: list[str] = []
+    monkeypatch.setattr(
+        "localagent.ollama_setup.pull_model",
+        lambda model, log=None: pulled.append(model),
+    )
+
+    result = ensure_ollama_ready(model="qwen3.5:4b", prompt=True)
+    assert result.model_ready is True
+    assert result.adopted_existing is True
+    assert result.model == "llama3.2:3b"
+    assert pulled == []
+    assert "llama3.2:3b" in result.message
 
 
 def test_ensure_ollama_ready_installs_when_user_accepts(monkeypatch):
@@ -52,6 +118,10 @@ def test_ensure_ollama_ready_installs_when_user_accepts(monkeypatch):
     monkeypatch.setattr(
         "localagent.ollama_setup.is_ollama_reachable",
         lambda base_url=None, timeout=2.0: True,
+    )
+    monkeypatch.setattr(
+        "localagent.ollama_setup.pick_available_completion_model",
+        lambda preferred=None, base_url=None: preferred if "pull" in calls else None,
     )
     monkeypatch.setattr(
         "localagent.ollama_setup.has_model",
@@ -93,8 +163,8 @@ def test_ensure_ollama_ready_assume_yes_skips_prompt(monkeypatch):
         lambda base_url=None, timeout=2.0: True,
     )
     monkeypatch.setattr(
-        "localagent.ollama_setup.has_model",
-        lambda model, base_url=None: True,
+        "localagent.ollama_setup.pick_available_completion_model",
+        lambda preferred=None, base_url=None: "qwen3.5:4b",
     )
 
     result = ensure_ollama_ready(model="qwen3.5:4b", assume_yes=True)

@@ -167,7 +167,7 @@ Core promise: **new session or new model — same “who I am”**. Three layers
 
 ```bash
 LA memory add "My name is Alex Lin. I prefer Americano and dislike latte."
-LA memory add "In May 2026 I held a product roadmap meeting in Shenzhen; we decided to prioritize a personal AI hub on your machine."
+LA memory add "In May 2026 I held a product roadmap meeting in Shenzhen; we decided to prioritize a personal AI assistant on your machine."
 ```
 
 **Expected output (illustrative):**
@@ -264,7 +264,7 @@ you> What’s my name? What do I like to drink? What meeting did I have in Shenz
 [chat] thinking…
 [chat] calling search_memory…
 You’re Alex Lin; you prefer Americano (dislike latte).
-In May 2026 you held a Shenzhen product roadmap meeting and decided to prioritize a personal AI hub on your machine.
+In May 2026 you held a Shenzhen product roadmap meeting and decided to prioritize a personal AI assistant on your machine.
 [via ollama/qwen3.5:4b]
 ```
 
@@ -700,7 +700,7 @@ rm -rf "$LA_DATA_DIR"
 mkdir -p "$LA_DATA_DIR"
 
 LA memory add "My name is Alex Lin. I prefer Americano and dislike latte."
-LA memory add "In May 2026 I held a product roadmap meeting in Shenzhen; we decided to prioritize a personal AI hub on your machine."
+LA memory add "In May 2026 I held a product roadmap meeting in Shenzhen; we decided to prioritize a personal AI assistant on your machine."
 LA memory add "In May 2026, after an architecture review we tried a lightweight approach and had not yet chosen Mem0."
 LA memory add "In July 2026 we finalized Mem0: lighter and faster."
 

@@ -47,7 +47,7 @@ src/localagent/
 │   ├── bm25_store.py
 │   ├── hybrid.py
 │   └── indexer.py
-├── ingest/                # rag add / rag ingest / pipeline (Cold only; images via vision.py)
+├── ingest/                # rag add / rag ingest / pipeline (Cold only)
 ├── pending/               # 确认门
 ├── persist/               # conversations jsonl + sessions.db
 ├── workspace/             # git / recent files / todos
@@ -78,10 +78,10 @@ data/
 | 产品边界 | 只做本地 agent：数据留本机，本地可完整跑通；联网与云端模型为可选增强（见 PRD 章程） |
 | Warm 写入确认 | `LA_MEMORY_APPROVAL_REQUIRED`（默认开）：非交互提取入 `pending_queue.json`；`approve`/`reject`；`LA_MEMORY_APPROVAL_AUTO=1` 跳过（CI） |
 | 记忆引擎 | Mem0（主依赖）+ JSON fallback / 注册表 |
-| 知识检索 | Chroma + BM25 + RRF；图片 ingest 时经 Ollama VL（`LA_VL_MODEL`）文本化后入 Cold；对话归档亦入 Cold |
+| 知识检索 | Chroma + BM25 + RRF；文档与对话归档入 Cold |
 | 编排 | LangGraph + SQLite Checkpointer |
 | 联网 | **ddgs 默认**（无需 Key）；可选 Tavily / SearXNG |
-| 模型 | Ollama 优先，OpenRouter/Cursor 降级；VL 与 chat 模型分离 |
+| 模型 | Ollama 优先，OpenRouter/Cursor 降级 |
 
 ## 5. 时间召回
 
