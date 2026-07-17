@@ -14,7 +14,45 @@
 
 > **One step to your local personal AI assistant — your compute, your network, your tools; lasting memory that truly gets to know you; extensible when you need more.**
 
-LocalAgent (`LA`) is not another chat client. It is a **personal AI assistant on your machine**. Requirements live in [docs/PRD.md](docs/PRD.md); a ~30-minute runnable story is in [examples/product-tour.md](examples/product-tour.md).
+## Quick start
+
+Python 3.10+ · [pipx](https://pipx.pypa.io/) · current **v0.4.0**
+
+```bash
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
+la
+```
+
+Have an API → `la config set-key openrouter sk-...` (or edit `~/.localagent/.env`)  
+No API → `la setup -y` (Ollama + `qwen3.5:4b`)
+
+Daily side-paths: `la summarize <path>` · `la news brief` · `la polish`  
+Upgrade / dev / uninstall → [Install & upgrade](#install--upgrade)
+
+## Requirements
+
+- Python 3.10+
+- **At least one model backend**: your own API (OpenRouter / MiniMax / Cursor, …) **or** a local model server
+- **If you have no API**, [Ollama](https://ollama.com/) is recommended (default `qwen3.5:4b`; `la setup` can install — skippable)
+
+## Features
+
+Runs fully local by default; optional cloud and web. Details: [summarize · news · polish](#daily-essentials-summarize--news--polish).
+
+| I want to… | How |
+| --- | --- |
+| Install once and chat | `la` / `la setup` · [Install & upgrade](#install--upgrade) |
+| Hack on the source / run tests | [Developer install](#developer-install) |
+| Use my own API keys | [Configuration](#configuration) · `la config` |
+| Be remembered across sessions | Hot / Warm / Cold + Mem0; import ChatGPT via `LA memory ingest chatgpt` · [Product tour §3–4](examples/product-tour.md) |
+| Put docs in a KB and recall deeply | `LA rag add` / `rag search` · [Product tour §5](examples/product-tour.md) |
+| **Summarize** a doc (`sum>` dialogue by default) | `la summarize <path>`; `/keep` or `--keep` to archive; `--no-chat` for digest-only |
+| **News sniff** / daily brief | `la news sync` → `la news brief` (TTY ↑↓ / `o` open / `r` deep-read); `la news schedule on` |
+| **Polish** copy (clipboard by default) | `la polish` / `/polish` · `--scene` / `--tone` / `--no-copy` |
+| Search the web | ddgs by default; `LA chat` or `/deepsearch` · [Product tour §6](examples/product-tour.md) |
+| Local Shell / write files (dangerous ops blocked) | `run_shell` / `write_file`; approve before execute · [Local Shell](#local-execution--shell-that-actually-acts) |
+| See tokens / cost | `LA audit` · [Product tour §8](examples/product-tour.md) |
+| Switch models | Ollama / OpenRouter / Cursor; `auto` falls back by priority |
 
 ### Product design
 
@@ -34,7 +72,7 @@ LocalAgent (`LA`) is not another chat client. It is a **personal AI assistant on
 | Docs and chats are separate silos | **RAG** + conversation archives for deep recall |
 | Manual doc skim / news doomscroll / awkward drafts | **`la summarize` · `la news` · `la polish`** — digest, brief, rewrite |
 
-Optional OpenRouter / Cursor / Tavily for extras — **identity and data stay on your machine**.
+Optional OpenRouter / Cursor / Tavily — **identity and data stay on your machine**. Spec: [docs/PRD.md](docs/PRD.md); ~30-min tour: [examples/product-tour.md](examples/product-tour.md).
 
 ### TODO / Coming soon
 
@@ -48,102 +86,36 @@ Optional OpenRouter / Cursor / Tavily for extras — **identity and data stay on
 - LA does **one thing**: a personal AI assistant on your machine. Data stays local; the full loop runs offline. Networking and new tech are welcome — barriers are not  
 - Remove obstacles to using AI
 
+## Install & upgrade
+
+If GitHub is slow/blocked, use a proxy first (heavy deps; install can take a while).
+
 ```bash
-# First-time install (pin a tag — reproducible and easier to debug)
+# pin a tag (recommended)
 pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
-# Already installed: uninstall + reinstall is most reliable. If uv says the venv exists, set UV_VENV_CLEAR=1.
-la --version                    # expect: la-localagent 0.4.0
-la                              # asks before installing Ollama (you can skip)
-```
+# or track default branch / use pip
+# pipx install "git+https://github.com/hezhenghui7338/localagent.git"
+# pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
 
-> **Install can take a while (important):** this clones from GitHub and pulls heavy deps (Chroma, Mem0, spaCy, fastembed, …). If GitHub is slow or blocked — common without a proxy in mainland China, including the spaCy model on GitHub Releases — the spinner may sit on `installing la-localagent from spec 'git+https://...'` for a long time. Turn on a working proxy/VPN and retry.
-
-## Features
-
-Runs fully local by default; optional cloud models and web extras. Details for the daily trio: [summarize · news · polish](#daily-essentials-summarize--news--polish).
-
-| I want to… | How |
-| --- | --- |
-| Install once and chat | `la` / `la setup` · [User install](#user-install-recommended) |
-| Hack on the source / run tests | [Developer install](#developer-install) |
-| Use my own API keys | [Configuration](#configuration) · `la config` |
-| Be remembered across sessions | Hot / Warm / Cold + Mem0; import ChatGPT via `LA memory ingest chatgpt` · [Product tour §3–4](examples/product-tour.md) |
-| Put docs in a KB and recall deeply | `LA rag add` / `rag search` · [Product tour §5](examples/product-tour.md) |
-| **Summarize** a doc (`sum>` dialogue by default) | `la summarize <path>`; `/keep` or `--keep` to archive; `--no-chat` for digest-only |
-| **News sniff** / daily brief | `la news sync` → `la news brief` (TTY ↑↓ / `o` open / `r` deep-read); `la news schedule on` |
-| **Polish** copy (clipboard by default) | `la polish` / `/polish` · `--scene` / `--tone` / `--no-copy` |
-| Search the web | ddgs by default; `LA chat` or `/deepsearch` · [Product tour §6](examples/product-tour.md) |
-| Local Shell / write files (dangerous ops blocked) | `run_shell` / `write_file`; approve before execute · [Local Shell](#local-execution--shell-that-actually-acts) |
-| See tokens / cost | `LA audit` · [Product tour §8](examples/product-tour.md) |
-| Switch models | Ollama / OpenRouter / Cursor; `auto` falls back by priority |
-
-## Requirements
-
-- Python 3.10+ (Mem0 memory engine needs Python 3.10+)
-- **At least one model backend**: your own LLM API (e.g. OpenRouter / MiniMax / Cursor via `la config`) **or** a local model server
-- **If you have no API**, [Ollama](https://ollama.com/) is recommended to run models locally (default `qwen3.5:4b`; `la setup` can install it — skippable)
-- Optional: [pipx](https://pipx.pypa.io/) (recommended for a global `la` command)
-
-## Quick start
-
-### User install (recommended)
-
-Current release: **v0.4.0** (same as `src/localagent/__init__.py` / `la --version`).
-
-**Faster setup**: always pin a tag (e.g. `@v0.4.0`) instead of tracking the default branch tip; if upgrading, `pipx uninstall` then reinstall is more reliable than wrestling with `--force`.
-
-> **Install can take a while (important):** `pipx`/`pip` clone the repo from GitHub and also download a spaCy model wheel from GitHub Releases, plus heavy packages (Chroma, Mem0, fastembed, LangChain/LangGraph, …). On networks that cannot reach GitHub reliably (e.g. mainland China without a proxy), install may hang for tens of minutes on `installing la-localagent from spec 'git+https://...'`. Use a proxy/VPN first; a PyPI mirror alone does not fix the GitHub steps.
-
-```bash
-# Install a pinned tag (recommended, reproducible)
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
-
-# Or track the default branch tip (no version pin)
-pipx install "git+https://github.com/hezhenghui7338/localagent.git"
-
-# Or with pip into the current environment
-pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
-```
-
-Check version and upgrade:
-
-```bash
-la --version                  # or la -V → la-localagent 0.4.0
-
-# Move to a new tag (change @vX.Y.Z)
+la --version
+# upgrade to a new tag: uninstall then reinstall
 pipx uninstall la-localagent
 pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
-# If --force fails with “virtual environment already exists”:
-# UV_VENV_CLEAR=1 pipx install --force "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
-
-# When tracking the default branch, pull the latest tip
-pipx upgrade la-localagent
+# if --force fails with “venv already exists”: UV_VENV_CLEAR=1 pipx install --force "…"
+# tracking default branch: pipx upgrade la-localagent
 ```
 
-Available versions: GitHub [Releases](https://github.com/hezhenghui7338/localagent/releases) / [Tags](https://github.com/hezhenghui7338/localagent/tags).
-
-Then from **any directory** (three-command main path):
+Versions: [Releases](https://github.com/hezhenghui7338/localagent/releases) / [Tags](https://github.com/hezhenghui7338/localagent/tags). First run creates `~/.localagent/`.
 
 ```bash
-la                 # same as: la chat; prompts if Ollama is missing
-la setup           # guided install/pull (answer n to skip)
-la setup -y        # install + pull qwen3.5:4b without prompting
-la chat --provider ollama
-```
-
-First run creates `~/.localagent/` (config, `.env`, data). Pure local needs no keys; to use your own APIs:
-
-```bash
-# Minimal flags (local-only)
+la                 # = la chat
+la setup           # guided Ollama install (skippable)
+la setup -y
 la config --provider ollama --base_url "http://localhost:11434" --model qwen3.5:4b
-
-# Or copy the example JSON, edit, then load (OPENROUTER_API_KEY / CURSOR_API_KEY / TAVILY_API_KEY …)
-la config-example > my.json
-la config my.json
-la config list
+# or: la config-example > my.json && la config my.json && la config list
 ```
 
-> After the package is published to PyPI: `pipx install la-localagent==0.4.0` / `pipx upgrade la-localagent`
+> After PyPI publish: `pipx install la-localagent==0.4.0`
 
 ### Developer install
 
@@ -155,34 +127,14 @@ pip install -e ".[dev]"
 # or: uv sync --extra dev
 ```
 
-In a source checkout, config/data stay in the repo (`.env`, `data/`). After a normal install they live under `~/.localagent/`. See [Development](#development) for tests.
+Source checkout: config/data in-repo (`.env`, `data/`). Normal install: `~/.localagent/`. Tests: [Development](#development).
 
 ### Uninstall
 
-Remove the CLI (pick the method you used to install):
-
 ```bash
-# pipx
-pipx uninstall la-localagent
-
-# pip (current environment)
-pip uninstall la-localagent
-```
-
-Optional: delete local config and data (API keys, memory, knowledge base, etc.). **If you keep this directory, a reinstall will reuse the old data.**
-
-```bash
-# Normal install (pipx / pip)
-rm -rf ~/.localagent
-
-# Source checkout: delete the repo, or clean `.env` and `data/` inside it
-```
-
-Ollama and pulled models are separate; uninstalling LocalAgent does **not** remove them. To clean those up as well:
-
-```bash
-ollama rm qwen3.5:4b   # remove the model if you want
-# On macOS, uninstall the Ollama app separately if desired
+pipx uninstall la-localagent   # or: pip uninstall la-localagent
+rm -rf ~/.localagent           # optional: wipe config/data; source install → clean `.env` / `data/` in-repo
+ollama rm qwen3.5:4b           # optional: Ollama is separate and is not removed with LA
 ```
 
 ## Feature highlights
@@ -209,22 +161,6 @@ cp examples/env.local-only.example .env
 ollama pull qwen3.5:4b
 LA chat --provider ollama
 ```
-
-### Write-file hallucination detection
-
-A typical chat often claims it “wrote” a file without changing anything. LocalAgent has **hallucination detection** for file writes: if the model claims create/update/append without calling `write_file`, it retries or errors clearly instead of showing fabricated empty content. Shell and file writes also ask for your approval by default.
-
-```text
-> append one line to test.txt at the project root: cross-session persistence test
-[chat] working…
-[chat] calling write_file…
-⚠ Agent wants to write a file. Confirm before it executes.
-Allow write? [y/N] y
-Successfully appended the specified content to `test.txt`.
-[via ollama/qwen3.5:4b]
-```
-
-Best for create/edit/append file work. Read-only asks and memory recall go straight to the agent — no pre-check gate.
 
 ### Local execution — Shell that actually acts
 
@@ -624,7 +560,7 @@ Consolidation → Mem0 / JSON
 | Internet | `web_search`, `/deepsearch` | Default **ddgs**; optional Tavily / SearXNG |
 | Machine | `workspace_context`, `run_shell`, `write_file` | Workspace-scoped; shell/write need approval |
 
-Side-effect tools are gated (`always` / `dangerous` / `off`). Extreme commands (e.g. `rm -rf /`) are blocked outright. File writes also have hallucination detection: claiming a write without calling `write_file` triggers retry or a clear error.
+Side-effect tools are gated (`always` / `dangerous` / `off`). Extreme commands (e.g. `rm -rf /`) are blocked outright.
 
 ### Model routing
 

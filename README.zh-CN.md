@@ -14,7 +14,45 @@
 
 > **一键获得你的本地个人 AI 助手——用你的算力、网络与工具，持久记住你，真正越来越懂你，能力可扩展。**
 
-LocalAgent（`LA`）不是又一个 Chat 客户端，而是跑在你本机上的**个人 AI 助手**。需求展开见 [docs/PRD.md](docs/PRD.md)；约 30 分钟可跑通故事见 [examples/product-tour.zh-CN.md](examples/product-tour.zh-CN.md)。
+## 快速开始
+
+Python 3.10+ · [pipx](https://pipx.pypa.io/) · 当前 **v0.4.0**
+
+```bash
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
+la
+```
+
+有 API → `la config set-key openrouter sk-...`（或改 `~/.localagent/.env`）  
+无 API → `la setup -y`（装 Ollama + `qwen3.5:4b`）
+
+日常旁路：`la summarize <path>` · `la news brief` · `la polish`  
+升级 / 开发 / 卸载 → [安装与升级](#安装与升级)
+
+## 要求
+
+- Python 3.10+
+- **至少一种模型算力**：自有 API（OpenRouter / MiniMax / Cursor 等）**或** 本机模型服务
+- **没有 API 时推荐**：[Ollama](https://ollama.com/)，默认 `qwen3.5:4b`（`la setup` 可装，可跳过）
+
+## 特性
+
+默认本地跑通；可选云端与联网。详解：[一键总结 · 新闻嗅探 · 一键润色](#日常实用一键总结--新闻嗅探--一键润色)。
+
+| 我想… | 怎么做 |
+| --- | --- |
+| 一键装好、马上聊天 | `la` / `la setup` · [安装与升级](#安装与升级) |
+| 改源码、跑测试 | [开发者安装](#开发者安装) |
+| 用自己的 API Key | [配置](#配置) · `la config` |
+| 跨会话被记住 | Hot / Warm / Cold + Mem0；ChatGPT 历史可 `LA memory ingest chatgpt` · [产品体验 §3–4](examples/product-tour.zh-CN.md) |
+| 文档进知识库并深度召回 | `LA rag add` / `rag search` · [产品体验 §5](examples/product-tour.zh-CN.md) |
+| **一键总结**文档（默认进 `sum>` 深聊） | `la summarize <path>`；`/keep` 或 `--keep` 入库；仅速读加 `--no-chat` |
+| **新闻嗅探** / 今日简报 | `la news sync` → `la news brief`（TTY ↑↓ / `o` 打开 / `r` 精读深聊）；`la news schedule on` |
+| **一键润色**文案（默认复制主推） | `la polish` / `/polish` · `--scene` / `--tone` / `--no-copy` |
+| 联网搜索 | 默认 ddgs；`LA chat` 或 `/deepsearch` · [产品体验 §6](examples/product-tour.zh-CN.md) |
+| 本机 Shell / 写文件（危险命令拦截） | `run_shell` / `write_file`；执行前确认 · [本地 Shell](#亮点本机执行--本地-shell-真正动手) |
+| 看清 token / 费用 | `LA audit` · [产品体验 §8](examples/product-tour.zh-CN.md) |
+| 多模型切换 | Ollama / OpenRouter / Cursor；`auto` 按优先级降级 |
 
 ### 产品设计
 
@@ -34,7 +72,7 @@ LocalAgent（`LA`）不是又一个 Chat 客户端，而是跑在你本机上的
 | 文档与对话各管各的 | **RAG 知识库** + 对话归档，深度召回 |
 | 手动刷文档 / 刷资讯 / 改文案费劲 | **`la summarize` · `la news` · `la polish`** 一键搞定 |
 
-可选接入 OpenRouter / Cursor / Tavily 做增强，但**身份与数据始终留在本机**。
+可选 OpenRouter / Cursor / Tavily；**身份与数据始终留本机**。需求见 [docs/PRD.md](docs/PRD.md)；约 30 分钟跑通见 [examples/product-tour.zh-CN.md](examples/product-tour.zh-CN.md)。
 
 ### TODO · 敬请期待
 
@@ -48,102 +86,36 @@ LocalAgent（`LA`）不是又一个 Chat 客户端，而是跑在你本机上的
 - LA **只做一件事**：本地个人 AI 助手。数据留本地，本地可完整跑通；不拒绝联网与新技术，但默认不设障碍  
 - 消除使用 AI 的门槛，而不是设置门槛
 
+## 安装与升级
+
+国内访问 GitHub 不稳时先开代理（依赖含 spaCy 等，装得慢属正常）。
+
 ```bash
-# 首次安装（pin 版本，可复现、也更快定位问题）
+# pin 版本（推荐）
 pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
-# 已装旧版：优先卸载再装；若 uv 报 venv 已存在：UV_VENV_CLEAR=1 pipx install --force "…"
-la --version                    # 确认版本：la-localagent 0.4.0
-la                              # 首次若无 Ollama 会询问是否安装（可跳过）
-```
+# 或跟踪默认分支 / 用 pip
+# pipx install "git+https://github.com/hezhenghui7338/localagent.git"
+# pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
 
-> **安装可能较慢（很重要）：** 该命令会从 GitHub clone 源码，并拉取 Chroma / Mem0 / spaCy / fastembed 等较重依赖。国内若无法稳定访问 GitHub（含 spaCy 模型的 Releases），可能长时间停在 `installing la-localagent from spec 'git+https://...'`。请先开启代理/梯子后再装。
-
-## 特性
-
-默认本地跑通；可选云端模型与联网增强。**日常三剑客**详解见 [一键总结 · 新闻嗅探 · 一键润色](#日常实用一键总结--新闻嗅探--一键润色)。
-
-| 我想… | 怎么做 |
-| --- | --- |
-| 一键装好、马上聊天 | `la` / `la setup` · [用户安装](#用户安装推荐) |
-| 改源码、跑测试 | [开发者安装](#开发者安装) |
-| 用自己的 API Key | [配置](#配置) · `la config` |
-| 跨会话被记住 | Hot / Warm / Cold + Mem0；ChatGPT 历史可 `LA memory ingest chatgpt` · [产品体验 §3–4](examples/product-tour.zh-CN.md) |
-| 文档进知识库并深度召回 | `LA rag add` / `rag search` · [产品体验 §5](examples/product-tour.zh-CN.md) |
-| **一键总结**文档（默认进 `sum>` 深聊） | `la summarize <path>`；`/keep` 或 `--keep` 入库；仅速读加 `--no-chat` |
-| **新闻嗅探** / 今日简报 | `la news sync` → `la news brief`（TTY ↑↓ / `o` 打开 / `r` 精读深聊）；`la news schedule on` |
-| **一键润色**文案（默认复制主推） | `la polish` / `/polish` · `--scene` / `--tone` / `--no-copy` |
-| 联网搜索 | 默认 ddgs；`LA chat` 或 `/deepsearch` · [产品体验 §6](examples/product-tour.zh-CN.md) |
-| 本机 Shell / 写文件（危险命令拦截） | `run_shell` / `write_file`；执行前确认 · [本地 Shell](#亮点本机执行--本地-shell-真正动手) |
-| 看清 token / 费用 | `LA audit` · [产品体验 §8](examples/product-tour.zh-CN.md) |
-| 多模型切换 | Ollama / OpenRouter / Cursor；`auto` 按优先级降级 |
-
-## 要求
-
-- Python 3.10+
-- **至少一种模型算力**：自有大模型 API（如 OpenRouter / MiniMax / Cursor 等，`la config` 接入）**或** 本机模型服务
-- **没有 API 时推荐**：[Ollama](https://ollama.com/) 在本机起模型服务，默认模型 `qwen3.5:4b`（`la setup` 可引导安装；可跳过）
-- 可选：[pipx](https://pipx.pypa.io/)（推荐，用于全局 `la` 命令）
-
-## 快速开始
-
-### 用户安装（推荐）
-
-当前发布版本：**v0.4.0**（与 `src/localagent/__init__.py` / `la --version` 一致）。
-
-**加速建议**：始终 pin 到 tag（如下 `@v0.4.0`），避免跟踪默认分支时反复拉全量历史；已装旧版时优先 `pipx uninstall` 再装，比纠结 `--force` 更稳。
-
-> **安装可能较慢（很重要）：** `pipx`/`pip` 会从 GitHub clone 仓库，并从 GitHub Releases 下载 spaCy 模型 wheel，同时安装 Chroma、Mem0、fastembed、LangChain/LangGraph 等较重依赖。国内网络若直连 GitHub 不稳定，可能卡住十几分钟甚至更久（界面停在 `installing la-localagent from spec 'git+https://...'`）。请先开代理/梯子；仅换 PyPI 镜像无法加速上述 GitHub 步骤。
-
-```bash
-# 安装指定版本（推荐，可复现）
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
-
-# 或跟踪默认分支最新提交（无版本保证）
-pipx install "git+https://github.com/hezhenghui7338/localagent.git"
-
-# 或用 pip 装进当前 Python 环境
-pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
-```
-
-查看版本与升级：
-
-```bash
-la --version                  # 或 la -V → la-localagent 0.4.0
-
-# 升到某个新 tag（改掉 @vX.Y.Z）
+la --version
+# 升级到新 tag：先卸再装
 pipx uninstall la-localagent
 pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
-# 若坚持 --force 且报 “virtual environment already exists”，加：
-# UV_VENV_CLEAR=1 pipx install --force "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
-
-# 跟踪默认分支时，拉最新 tip
-pipx upgrade la-localagent
+# --force 且报 venv 已存在时：UV_VENV_CLEAR=1 pipx install --force "…"
+# 跟踪默认分支：pipx upgrade la-localagent
 ```
 
-可用版本见 GitHub [Releases](https://github.com/hezhenghui7338/localagent/releases) / [Tags](https://github.com/hezhenghui7338/localagent/tags)。
-
-然后在**任意目录**（主路径三命令）：
+版本：[Releases](https://github.com/hezhenghui7338/localagent/releases) / [Tags](https://github.com/hezhenghui7338/localagent/tags)。首次运行会建 `~/.localagent/`。
 
 ```bash
-la                 # 等同于 la chat；无 Ollama 时询问是否安装
-la setup           # 单独引导安装/拉取（可答 n 跳过）
-la setup -y        # 无需确认，直接安装并拉取 qwen3.5:4b
-la chat --provider ollama
-```
-
-首次运行会在 `~/.localagent/` 创建配置、`.env` 与数据目录。纯本地可先不填 Key；要用自有 API 时：
-
-```bash
-# 极简参数（纯本地）
+la                 # = la chat
+la setup           # 引导装 Ollama（可跳过）
+la setup -y
 la config --provider ollama --base_url "http://localhost:11434" --model qwen3.5:4b
-
-# 或复制模板改写后加载（可填 OPENROUTER_API_KEY / CURSOR_API_KEY / TAVILY_API_KEY …）
-la config-example > my.json
-la config my.json
-la config list
+# 或：la config-example > my.json && la config my.json && la config list
 ```
 
-> 发布到 PyPI 后可直接：`pipx install la-localagent==0.4.0` / `pipx upgrade la-localagent`
+> PyPI 发布后：`pipx install la-localagent==0.4.0`
 
 ### 开发者安装
 
@@ -155,34 +127,14 @@ pip install -e ".[dev]"
 # 或：uv sync --extra dev
 ```
 
-源码 checkout 时配置与数据仍在仓库内（`.env`、`data/`）；普通安装后则落在 `~/.localagent/`。测试见下方 [开发](#开发)。
+源码 checkout：配置/数据在仓库内（`.env`、`data/`）；普通安装在 `~/.localagent/`。测试见 [开发](#开发)。
 
 ### 卸载
 
-卸掉 CLI（按你当初的安装方式选一种）：
-
 ```bash
-# pipx
-pipx uninstall la-localagent
-
-# pip（当前环境）
-pip uninstall la-localagent
-```
-
-可选：删除本机配置与数据（API Key、记忆、知识库等）。**不删则重装后会沿用旧数据。**
-
-```bash
-# 普通安装（pipx / pip）
-rm -rf ~/.localagent
-
-# 源码开发安装：删仓库，或清理仓库内的 .env、data/
-```
-
-Ollama 与已拉取的模型是独立软件，卸载 LocalAgent **不会**自动移除它们。若也要清理：
-
-```bash
-ollama rm qwen3.5:4b   # 按需删除模型
-# macOS 再按需卸载 Ollama 应用本身
+pipx uninstall la-localagent   # 或：pip uninstall la-localagent
+rm -rf ~/.localagent           # 可选：清配置与数据；源码安装则删仓库内 .env / data/
+ollama rm qwen3.5:4b           # 可选：Ollama 独立，不会随 LA 自动卸
 ```
 
 ## 功能示例
@@ -209,22 +161,6 @@ cp examples/env.local-only.example .env
 ollama pull qwen3.5:4b
 LA chat --provider ollama
 ```
-
-### 亮点：写文件幻觉检测
-
-普通 Chat 常会声称「已写入」却从未真正改文件。LocalAgent 对文件写入有**幻觉检测**：若模型声称已创建/修改/追加却未调用 `write_file`，会自动重试或明确报错，而不是展示编造的空内容。写文件与 Shell 默认还会在执行前请你确认。
-
-```text
-> 修改根目录下的 test.txt，追加一行：跨对话持续性测试
-[chat] 处理中…
-[chat] 调用 写入文件…
-⚠ Agent 请求写入文件，需你确认后才会执行。
-是否允许写入？ [y/N] y
-已成功将指定内容追加到 `test.txt`。
-[via ollama/qwen3.5:4b]
-```
-
-适用场景：创建/修改/追加文件等写操作；读操作与记忆回忆则直接执行，不再做额外预检。
 
 ### 亮点：本机执行 —— 本地 Shell 真正动手
 
@@ -639,7 +575,7 @@ Mem0 / JSON 存储                      Reflect（多跳检索 + LLM）
 | 联网 | `web_search`、`/deepsearch` | 默认 **ddgs**；可选 Tavily / SearXNG |
 | 本机 | `workspace_context`、`run_shell`、`write_file` | 限定工作区；Shell/写文件需确认 |
 
-有副作用的工具受门控（`always` / `dangerous` / `off`）。极端危险命令（如 `rm -rf /`）直接拦截。文件写入另有幻觉检测：未真正调用 `write_file` 却声称已写入时，会重试或明确报错。
+有副作用的工具受门控（`always` / `dangerous` / `off`）。极端危险命令（如 `rm -rf /`）直接拦截。
 
 ### 模型路由
 
