@@ -61,7 +61,7 @@ neo4j = [
 ]
 
 [project.urls]
-Homepage = "https://localagent.dev"
+Homepage = "https://localagent.zhenghui7338.workers.dev/"
 Repository = "https://github.com/hezhenghui7338/localagent"
 Issues = "https://github.com/hezhenghui7338/localagent/issues"
 

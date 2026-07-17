@@ -1,6 +1,6 @@
 # LocalAgent website
 
-Static landing page for [localagent.dev](https://localagent.dev).
+Static landing page for [https://localagent.zhenghui7338.workers.dev/](https://localagent.zhenghui7338.workers.dev/).
 
 ## Local preview
 
@@ -13,7 +13,13 @@ python3 -m http.server 8080
 
 Then visit `http://127.0.0.1:8080`.
 
-## Deploy on Cloudflare Pages
+## Deploy on Cloudflare Pages / Workers
+
+Current production URL:
+
+**https://localagent.zhenghui7338.workers.dev/**
+
+Typical Pages setup:
 
 1. In [Cloudflare Dashboard](https://dash.cloudflare.com/) → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**.
 2. Select the `hezhenghui7338/localagent` repository.
@@ -23,12 +29,8 @@ Then visit `http://127.0.0.1:8080`.
    - **Build output directory**: `website`
 4. Save and deploy. Cloudflare will republish on pushes to the connected branch.
 
-### Custom domain `localagent.dev`
+### Optional custom domain
 
 1. Open the Pages project → **Custom domains** → **Set up a custom domain**.
-2. Add `localagent.dev` (and optionally `www.localagent.dev`).
-3. If the domain is already on Cloudflare DNS, accept the suggested DNS records.
-4. If DNS is elsewhere, either move nameservers to Cloudflare or add the CNAME / A records Cloudflare shows.
-5. Wait for SSL to become **Active**, then open https://localagent.dev.
-
-No GitHub Actions are required; Cloudflare’s Git integration handles deploys.
+2. Add your domain (e.g. `localagent.dev`) and follow DNS / SSL prompts.
+3. When ready, update README / `pyproject.toml` Homepage links to the custom domain.
