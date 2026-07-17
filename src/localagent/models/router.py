@@ -320,6 +320,18 @@ class ModelRouter:
                     self._resolved_ollama_model = name
                     return name
 
+            running_names = {
+                m.get("name") or m.get("model") or ""
+                for m in self._list_running_ollama_models()
+                if _is_completion_model(m)
+            }
+            for model in completion_models:
+                name = model.get("name", "")
+                if name and name in running_names:
+                    logger.info("ollama model %s not found, using loaded %s", configured, name)
+                    self._resolved_ollama_model = name
+                    return name
+
             if completion_models:
                 name = completion_models[0].get("name", "")
                 logger.info("ollama model %s not found, using %s", configured, name)
@@ -423,10 +435,14 @@ class ModelRouter:
         configured = server.model if server else config.OLLAMA_MODEL
         if not models:
             return (
-                "\n提示: 未检测到可用的 Ollama 对话模型。请运行 `ollama pull qwen3.5:4b`"
-                " 或在 LA_MODEL_SERVERS 中配置 ollama.model。"
+                "\n提示: 未检测到可用的 Ollama 对话模型。"
+                "请运行 `ollama pull qwen3.5:4b`，或先 `ollama pull` 任意对话模型，"
+                "或在 model_servers.yaml 中配置 ollama.model。"
             )
-        return f"\n提示: 已检测到 Ollama 模型 {', '.join(models)}，当前配置为 {configured}。"
+        return (
+            f"\n提示: 已检测到 Ollama 模型 {', '.join(models)}，当前配置为 {configured}。"
+            " 将自动改用已安装模型；也可用 `/model` 手动切换。"
+        )
 
     def _list_ollama_models(self) -> list[dict[str, Any]]:
         server = self._server("ollama")
@@ -435,6 +451,17 @@ class ModelRouter:
             resp = client.get(f"{base_url.rstrip('/')}/api/tags")
             resp.raise_for_status()
             return resp.json().get("models", [])
+
+    def _list_running_ollama_models(self) -> list[dict[str, Any]]:
+        server = self._server("ollama")
+        base_url = server.base_url if server else config.OLLAMA_BASE_URL
+        try:
+            with httpx.Client(timeout=3.0) as client:
+                resp = client.get(f"{base_url.rstrip('/')}/api/ps")
+                resp.raise_for_status()
+                return resp.json().get("models", []) or []
+        except Exception:
+            return []
 
     def provider_status(self) -> dict[str, bool]:
         status: dict[str, bool] = {}

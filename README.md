@@ -14,9 +14,9 @@
 
 # <img src="assets/logo-icon.png" alt="LA" width="36" valign="middle"> LocalAgent
 
-> **Fully local · Truly easy · Knows you long-term — a personal AI hub on your machine; data and compute stay on-device by default.**
+> **One step to your local personal AI assistant — your compute, your network, your tools; lasting memory that truly gets to know you; extensible when you need more.**
 
-LocalAgent (`LA`) is not another chat client. It is a **personal AI hub on your machine**. Requirements live in [docs/PRD.md](docs/PRD.md); a ~30-minute runnable story is in [examples/product-tour.md](examples/product-tour.md).
+LocalAgent (`LA`) is not another chat client. It is a **personal AI assistant on your machine**. Requirements live in [docs/PRD.md](docs/PRD.md); a ~30-minute runnable story is in [examples/product-tour.md](examples/product-tour.md).
 
 ### Product design
 
@@ -58,7 +58,7 @@ Optional OpenRouter / Cursor / Tavily for extras — **identity and data stay on
 - AI is revolutionary — embrace it; hearing about it a thousand times beats nothing next to downloading LA and debugging it yourself  
 - “Read it a hundred times and meaning appears” does not happen by itself — you need practice  
 - LA only picks **low-hanging, mature** fruit; no uncontrolled, expensive, hard-to-own stacks  
-- LA does **one thing**: a personal AI hub on your machine. Data stays local; the full loop runs offline. Networking and new tech are welcome — barriers are not  
+- LA does **one thing**: a personal AI assistant on your machine. Data stays local; the full loop runs offline. Networking and new tech are welcome — barriers are not  
 - Remove obstacles to using AI; the author is still learning too — let's grow together  
 
 ```bash
@@ -358,7 +358,7 @@ source .venv/bin/activate   # or: source ~/.zshrc
 
 ### Ollama tips
 
-- Default model is `qwen3.5:4b`; if missing, LA tries to match an installed tag with the same name
+- Default model is `qwen3.5:4b`. If it is missing, LA reuses any installed chat model (preferring one already loaded in Ollama), and only prompts to pull the default when none are available
 - Qwen3 often emits many thinking tokens; LocalAgent defaults `OLLAMA_THINK=0` to disable thinking mode
 - When local Ollama is slow, `auto` falls back to OpenRouter within ~12s; or switch manually in chat with `/provider openrouter`
 
@@ -392,7 +392,7 @@ $ LA -h
 ```text
 usage: LA [-h] <command> ...
 
-LocalAgent — personal AI hub on your machine
+LocalAgent — personal AI assistant on your machine
 
 Main path:
   la / la chat     Chat
@@ -648,9 +648,9 @@ MIT
 
 # <img src="assets/logo-icon.png" alt="LA" width="36" valign="middle"> LocalAgent
 
-> **完全本地 · 真正易用 · 长期懂你 — 本机个人 AI 中枢，数据与算力默认留在本地。**
+> **一键获得你的本地个人 AI 助手——用你的算力、网络与工具，持久记住你，真正越来越懂你，能力可扩展。**
 
-LocalAgent（`LA`）不是又一个 Chat 客户端，而是跑在你本机上的**个人 AI 中枢**。需求展开见 [docs/PRD.md](docs/PRD.md)；约 30 分钟可跑通故事见 [examples/product-tour.zh-CN.md](examples/product-tour.zh-CN.md)。
+LocalAgent（`LA`）不是又一个 Chat 客户端，而是跑在你本机上的**个人 AI 助手**。需求展开见 [docs/PRD.md](docs/PRD.md)；约 30 分钟可跑通故事见 [examples/product-tour.zh-CN.md](examples/product-tour.zh-CN.md)。
 
 ### 产品设计
 
@@ -692,7 +692,7 @@ LocalAgent（`LA`）不是又一个 Chat 客户端，而是跑在你本机上的
 - AI 是革命性技术，必须拥抱；旁观一万遍，不如一键下载、亲手调试  
 - 「书读百遍其义自见」不会自动发生——你需要的是实践  
 - LA 只摘**低垂、成熟**的 AI 果实；不引入失控、昂贵、难维护的重栈  
-- LA **只做一件事**：本机个人 AI 中枢。数据留本地，本地可完整跑通；不拒绝联网与新技术，但默认不设障碍  
+- LA **只做一件事**：本地个人 AI 助手。数据留本地，本地可完整跑通；不拒绝联网与新技术，但默认不设障碍  
 - 消除使用 AI 的门槛，而不是设置门槛；作者也在持续学习——让我们一起成长  
 
 ```bash
@@ -993,7 +993,7 @@ source .venv/bin/activate   # 或: source ~/.zshrc
 
 ### Ollama 提示
 
-- 默认模型 `qwen3.5:4b`；若未安装，LA 会尝试匹配已安装的同名 tag
+- 默认模型 `qwen3.5:4b`；若未安装，LA 会改用本机已有对话模型（优先已加载到内存的），仅在没有任何可用模型时才提示拉取默认模型
 - Qwen3 系列默认生成大量 thinking token，LocalAgent 默认 `OLLAMA_THINK=0` 关闭思考模式
 - 本地 Ollama 较慢时，`auto` 模式会在 12 秒内降级到 OpenRouter；也可在 chat 中输入 `/provider openrouter` 手动切换
 
@@ -1027,7 +1027,7 @@ $ LA -h
 ```text
 usage: LA [-h] <command> ...
 
-LocalAgent — 本机个人 AI 中枢
+LocalAgent — 本地个人 AI 助手
 
 主路径：
   la / la chat     对话

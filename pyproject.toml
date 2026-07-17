@@ -1,7 +1,7 @@
 [project]
 name = "la-localagent"
 dynamic = ["version"]
-description = "完全本地的个人 AI 助手：零成本默认可玩、易用少命令；Mem0 长期多层次记忆 + RAG；本机工具与可选联网，数据始终留在本地"
+description = "一键获得本地个人 AI 助手：用你的算力、网络与工具；持久记忆、越来越懂你；本机工具 + RAG，能力可扩展，数据留本地"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

@@ -34,7 +34,8 @@ def test_resolve_fallback_by_tag():
     models = [{"name": "qwen3.5:4b", "capabilities": ["completion", "tools"]}]
     with patch.object(router, "_list_ollama_models", return_value=models):
         with patch("localagent.models.router.config.OLLAMA_MODEL", "qwen3:4b"):
-            assert router.resolve_ollama_model() == "qwen3.5:4b"
+            with patch.object(router, "_server", return_value=None):
+                assert router.resolve_ollama_model() == "qwen3.5:4b"
 
 
 def test_resolve_skips_embedding_only():
@@ -44,8 +45,24 @@ def test_resolve_skips_embedding_only():
         {"name": "qwen3.5:4b", "capabilities": ["completion"]},
     ]
     with patch.object(router, "_list_ollama_models", return_value=models):
-        with patch("localagent.models.router.config.OLLAMA_MODEL", "missing:7b"):
-            assert router.resolve_ollama_model() == "qwen3.5:4b"
+        with patch.object(router, "_list_running_ollama_models", return_value=[]):
+            with patch("localagent.models.router.config.OLLAMA_MODEL", "missing:7b"):
+                with patch.object(router, "_server", return_value=None):
+                    assert router.resolve_ollama_model() == "qwen3.5:4b"
+
+
+def test_resolve_fallback_prefers_running():
+    router = ModelRouter()
+    models = [
+        {"name": "llama3.2:3b", "capabilities": ["completion"]},
+        {"name": "mistral:7b", "capabilities": ["completion"]},
+    ]
+    running = [{"name": "mistral:7b", "capabilities": ["completion"]}]
+    with patch.object(router, "_list_ollama_models", return_value=models):
+        with patch.object(router, "_list_running_ollama_models", return_value=running):
+            with patch("localagent.models.router.config.OLLAMA_MODEL", "missing:9b"):
+                with patch.object(router, "_server", return_value=None):
+                    assert router.resolve_ollama_model() == "mistral:7b"
 
 
 def test_list_provider_models_ollama():

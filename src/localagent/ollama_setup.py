@@ -1,4 +1,4 @@
-"""Ensure Ollama is installed and the default chat model is available."""
+"""Ensure Ollama is installed and a usable chat model is available."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
-from typing import Callable
+from typing import Any, Callable
 
 import httpx
 
@@ -17,6 +17,8 @@ from localagent import config
 
 DEFAULT_OLLAMA_MODEL = "qwen3.5:4b"
 _INSTALL_SCRIPT = "https://ollama.com/install.sh"
+_EMBED_HINTS = ("embed", "bge", "nomic", "e5", "minilm", "mxbai")
+_COMPLETION_CAPS = frozenset({"completion", "tools", "vision"})
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,7 @@ class OllamaSetupResult:
     model: str = DEFAULT_OLLAMA_MODEL
     model_ready: bool = False
     pulled_now: bool = False
+    adopted_existing: bool = False
     message: str = ""
     skipped: bool = False
     declined: bool = False
@@ -68,18 +71,81 @@ def is_ollama_reachable(base_url: str | None = None, *, timeout: float = 2.0) ->
         return False
 
 
-def list_local_model_names(base_url: str | None = None) -> list[str]:
+def _fetch_ollama_models(path: str, *, base_url: str | None = None, timeout: float = 5.0) -> list[dict[str, Any]]:
     url = (base_url or default_ollama_base_url()).rstrip("/")
     try:
-        with httpx.Client(timeout=5.0) as client:
-            resp = client.get(f"{url}/api/tags")
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.get(f"{url}{path}")
             resp.raise_for_status()
             models = resp.json().get("models") or []
     except Exception:
         return []
+    return [m for m in models if isinstance(m, dict)]
+
+
+def _model_capabilities(model: dict[str, Any]) -> set[str]:
+    caps = model.get("capabilities")
+    if isinstance(caps, list):
+        return {str(c) for c in caps}
+    details = model.get("details") or {}
+    detail_caps = details.get("capabilities")
+    if isinstance(detail_caps, list):
+        return {str(c) for c in detail_caps}
+    return set()
+
+
+def _is_completion_model(model: dict[str, Any]) -> bool:
+    name = str(model.get("name") or model.get("model") or "").strip().lower()
+    caps = _model_capabilities(model)
+    if name and any(hint in name for hint in _EMBED_HINTS):
+        if not caps or caps == {"embedding"} or ("embedding" in caps and not (caps & _COMPLETION_CAPS)):
+            return False
+    if not caps:
+        return True
+    if caps == {"embedding"}:
+        return False
+    return bool(caps & _COMPLETION_CAPS) or "embedding" not in caps
+
+
+def _model_name(model: dict[str, Any]) -> str:
+    return str(model.get("name") or model.get("model") or "").strip()
+
+
+def list_local_models(base_url: str | None = None) -> list[dict[str, Any]]:
+    return _fetch_ollama_models("/api/tags", base_url=base_url)
+
+
+def list_running_models(base_url: str | None = None) -> list[dict[str, Any]]:
+    """Models currently loaded in VRAM (Ollama ``/api/ps``)."""
+    return _fetch_ollama_models("/api/ps", base_url=base_url, timeout=3.0)
+
+
+def list_local_model_names(base_url: str | None = None) -> list[str]:
     names: list[str] = []
-    for item in models:
-        name = str(item.get("name") or "").strip()
+    for item in list_local_models(base_url):
+        name = _model_name(item)
+        if name:
+            names.append(name)
+    return names
+
+
+def list_completion_model_names(base_url: str | None = None) -> list[str]:
+    names: list[str] = []
+    for item in list_local_models(base_url):
+        if not _is_completion_model(item):
+            continue
+        name = _model_name(item)
+        if name:
+            names.append(name)
+    return names
+
+
+def list_running_completion_model_names(base_url: str | None = None) -> list[str]:
+    names: list[str] = []
+    for item in list_running_models(base_url):
+        if not _is_completion_model(item):
+            continue
+        name = _model_name(item)
         if name:
             names.append(name)
     return names
@@ -94,6 +160,56 @@ def has_model(model: str, *, base_url: str | None = None) -> bool:
         if name == target or name.startswith(f"{target}-") or name.startswith(f"{target}:"):
             return True
     return False
+
+
+def pick_available_completion_model(
+    preferred: str | None = None,
+    *,
+    base_url: str | None = None,
+) -> str | None:
+    """Choose a usable local chat model.
+
+    Priority: exact preferred match → same tag → currently loaded → first installed.
+    """
+    preferred = (preferred or "").strip()
+    installed = list_local_models(base_url)
+    completion = [m for m in installed if _is_completion_model(m) and _model_name(m)]
+    if not completion:
+        return None
+
+    names = [_model_name(m) for m in completion]
+    if preferred and preferred in names:
+        return preferred
+
+    if preferred:
+        tag = preferred.split(":", 1)[-1] if ":" in preferred else ""
+        if tag:
+            for name in names:
+                if name.endswith(f":{tag}"):
+                    return name
+        for name in names:
+            if name == preferred or name.startswith(f"{preferred}-") or name.startswith(f"{preferred}:"):
+                return name
+
+    running = list_running_completion_model_names(base_url)
+    for name in running:
+        if name in names:
+            return name
+
+    return names[0]
+
+
+def _persist_ollama_model(model: str) -> bool:
+    """Best-effort write adopted model into model_servers.yaml."""
+    try:
+        from localagent.env_config import set_server_model
+        from localagent.models.router import reset_model_router
+
+        set_server_model("ollama", model)
+        reset_model_router()
+        return True
+    except Exception:
+        return False
 
 
 def _run(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -215,25 +331,29 @@ def ensure_ollama_ready(
     - ``LA_SKIP_OLLAMA_SETUP=1``: skip entirely.
     """
     emit = log or (lambda msg: print(f"[ollama] {msg}"))
-    target = (model or default_ollama_model()).strip() or DEFAULT_OLLAMA_MODEL
+    preferred = (model or default_ollama_model()).strip() or DEFAULT_OLLAMA_MODEL
+    target = preferred
 
     if _env_skip():
         base = default_ollama_base_url()
         installed = is_ollama_installed()
         served = is_ollama_reachable(base) if installed else False
-        ready = has_model(target, base_url=base) if served else False
+        adopted = pick_available_completion_model(preferred, base_url=base) if served else None
+        ready = adopted is not None
+        used = adopted or preferred
         next_steps = (
             "下一步: 取消跳过则 la setup；或配置云端 Key 后 LA chat --provider openrouter|cursor"
         )
         return OllamaSetupResult(
             installed=installed,
-            model=target,
+            model=used,
             model_ready=ready,
             served=served,
+            adopted_existing=bool(adopted and adopted != preferred),
             skipped=True,
             message=(
                 f"已跳过 Ollama 安装引导（LA_SKIP_OLLAMA_SETUP=1）。"
-                f"{' 本机已有模型 '+target+'。' if ready else ' '}"
+                f"{' 本机已有模型 '+used+'。' if ready else ' '}"
                 f"{next_steps}"
             ),
         )
@@ -250,7 +370,11 @@ def ensure_ollama_ready(
         should_install = assume_yes
         if not should_install and prompt:
             emit("未检测到本机 Ollama。")
-            emit("本地对话默认使用 Ollama + qwen3.5:4b；若只用云端模型（OpenRouter/Cursor 等）可跳过。")
+            emit(
+                "本地对话优先用本机已有 Ollama 模型；"
+                f"若无可用模型再拉取默认 {DEFAULT_OLLAMA_MODEL}。"
+                "只用云端（OpenRouter/Cursor 等）可跳过。"
+            )
             should_install = prompt_yes_no("是否现在本地安装 Ollama？", default=True)
         elif not prompt and not assume_yes:
             return OllamaSetupResult(
@@ -305,13 +429,31 @@ def ensure_ollama_ready(
                 message=str(exc),
             )
 
-    model_ready = has_model(target) if served else False
+    adopted_existing = False
     pulled_now = False
+    model_ready = False
+    if served:
+        adopted = pick_available_completion_model(preferred)
+        if adopted:
+            target = adopted
+            model_ready = True
+            if adopted != preferred:
+                adopted_existing = True
+                emit(f"未找到配置模型 {preferred}，改用本机已有模型 {adopted}")
+                if _persist_ollama_model(adopted):
+                    emit(f"已将 ollama.model 更新为 {adopted}")
+
     if served and not model_ready and pull:
         should_pull = assume_yes
+        available = list_completion_model_names()
         if not should_pull and prompt:
+            hint = (
+                f"未找到可用对话模型（配置为 {preferred}）"
+                if not available
+                else f"未找到配置模型 {preferred}"
+            )
             should_pull = prompt_yes_no(
-                f"未找到模型 {target}，是否现在拉取？（约 2.5GB）",
+                f"{hint}，是否现在拉取 {preferred}？（约 2.5GB）",
                 default=True,
             )
         elif not prompt and not assume_yes:
@@ -319,11 +461,13 @@ def ensure_ollama_ready(
                 installed=True,
                 installed_now=installed_now,
                 served=served,
-                model=target,
+                model=preferred,
                 model_ready=False,
                 declined=True,
                 skipped=True,
-                message=f"未拉取模型 {target}。需要时运行: la setup 或 ollama pull {target}",
+                message=(
+                    f"未拉取模型 {preferred}。需要时运行: la setup 或 ollama pull {preferred}"
+                ),
             )
 
         if not should_pull:
@@ -331,41 +475,45 @@ def ensure_ollama_ready(
                 installed=True,
                 installed_now=installed_now,
                 served=served,
-                model=target,
+                model=preferred,
                 model_ready=False,
                 declined=True,
                 skipped=True,
                 message=(
-                    f"已跳过拉取 {target}。可改用云端模型，"
-                    f"或稍后: la setup / ollama pull {target}"
+                    f"已跳过拉取 {preferred}。可改用云端模型，"
+                    f"或稍后: la setup / ollama pull {preferred}"
                 ),
             )
 
         try:
-            pull_model(target, log=emit)
+            pull_model(preferred, log=emit)
             pulled_now = True
-            model_ready = has_model(target)
+            target = preferred
+            model_ready = has_model(preferred)
         except Exception as exc:
             return OllamaSetupResult(
                 installed=True,
                 installed_now=installed_now,
                 served=served,
-                model=target,
+                model=preferred,
                 model_ready=False,
                 message=f"拉取模型失败: {exc}",
             )
 
     if model_ready:
-        msg = f"已就绪（模型 {target}）"
+        if adopted_existing:
+            msg = f"已就绪（改用本机已有模型 {target}；原配置 {preferred}）"
+        else:
+            msg = f"已就绪（模型 {target}）"
     elif not served:
         msg = (
             "Ollama 未响应，请运行: ollama serve。诊断: "
-            + _diagnose_hint(base_url=default_ollama_base_url(), target=target)
+            + _diagnose_hint(base_url=default_ollama_base_url(), target=preferred)
         )
     else:
         msg = (
-            f"模型 {target} 尚未就绪。诊断: "
-            + _diagnose_hint(base_url=default_ollama_base_url(), target=target)
+            f"模型 {preferred} 尚未就绪。诊断: "
+            + _diagnose_hint(base_url=default_ollama_base_url(), target=preferred)
         )
     return OllamaSetupResult(
         installed=True,
@@ -374,5 +522,6 @@ def ensure_ollama_ready(
         model=target,
         model_ready=model_ready,
         pulled_now=pulled_now,
+        adopted_existing=adopted_existing,
         message=msg,
     )

@@ -37,7 +37,7 @@ class AgentState(TypedDict):
     final_response: str
 
 
-SYSTEM_PROMPT = """你是 LocalAgent，用户的本机个人 AI 中枢。你可访问本地记忆库（长期记忆）和知识库。
+SYSTEM_PROMPT = """你是 LocalAgent，用户的本机个人 AI 助手。你可访问本地记忆库（长期记忆）和知识库。
 今天是 {today}。
 
 原则：
