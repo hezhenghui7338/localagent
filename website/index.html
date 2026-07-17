@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="LocalAgent — Your AI. Your Data. Your Machine. A fully local personal AI assistant."
+    />
+    <meta name="theme-color" content="#0a0a0c" />
+    <title>LocalAgent</title>
+    <link rel="icon" href="assets/logo-icon.png" type="image/png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="bg-grid" aria-hidden="true"></div>
+    <div class="bg-glow" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand-mark" href="#top" aria-label="LocalAgent">
+        <img src="assets/logo-icon.png" alt="" width="36" height="36" />
+        <span>LocalAgent</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="#features" data-i18n="nav.features">特性</a>
+        <a href="#install" data-i18n="nav.install">安装</a>
+        <a href="#contact" data-i18n="nav.contact">联系</a>
+        <a
+          class="nav-github"
+          href="https://github.com/hezhenghui7338/localagent"
+          target="_blank"
+          rel="noopener noreferrer"
+          >GitHub</a
+        >
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button type="button" data-lang="zh" class="is-active">中文</button>
+          <button type="button" data-lang="en">EN</button>
+        </div>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <img
+          class="hero-logo"
+          id="hero-logo"
+          src="assets/logo.zh-CN.png"
+          alt="LocalAgent"
+          width="420"
+          height="420"
+        />
+        <p class="hero-brand">LocalAgent</p>
+        <h1 class="hero-tagline" data-i18n="hero.tagline">
+          Your AI. Your Data. Your Machine.
+        </h1>
+        <p class="hero-lead" data-i18n="hero.lead">
+          一键获得你的本地个人 AI 助手——用你的算力、网络与工具，持久记住你，真正越来越懂你。
+        </p>
+        <div class="hero-cta">
+          <a
+            class="btn btn-primary"
+            href="https://github.com/hezhenghui7338/localagent"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-i18n="hero.ctaGithub"
+            >在 GitHub 查看</a
+          >
+          <a class="btn btn-ghost" href="#install" data-i18n="hero.ctaInstall"
+            >快速安装</a
+          >
+        </div>
+      </section>
+
+      <section id="features" class="section features">
+        <p class="section-eyebrow" data-i18n="features.eyebrow">产品设计</p>
+        <h2 class="section-title" data-i18n="features.title">
+          本地跑通，真正越来越懂你
+        </h2>
+        <p class="section-lead" data-i18n="features.lead">
+          默认零账单、零账号门槛；数据与身份留本机。可选云端与联网增强，但始终有纯本地路径。
+        </p>
+        <ul class="feature-list">
+          <li>
+            <h3 data-i18n="features.f1.title">完全本地化</h3>
+            <p data-i18n="features.f1.body">
+              对话、记忆、检索、执行可纯本地跑通；算力默认本机，可选 API 增强。
+            </p>
+          </li>
+          <li>
+            <h3 data-i18n="features.f2.title">真正易用</h3>
+            <p data-i18n="features.f2.body">
+              一键安装、立即可用；主路径只有
+              <code>la</code> · <code>la setup</code> · <code>la chat</code>。
+            </p>
+          </li>
+          <li>
+            <h3 data-i18n="features.f3.title">长期多层次记忆</h3>
+            <p data-i18n="features.f3.body">
+              Hot / Warm / Cold + Mem0：记住你，也懂得该记什么、何时介入。
+            </p>
+          </li>
+          <li>
+            <h3 data-i18n="features.f4.title">本机工具</h3>
+            <p data-i18n="features.f4.body">
+              本地 Shell、写文件、工作区感知；执行前确认，危险命令拦截。
+            </p>
+          </li>
+          <li>
+            <h3 data-i18n="features.f5.title">本地 RAG</h3>
+            <p data-i18n="features.f5.body">
+              文档进知识库，对话时可深度召回原文。
+            </p>
+          </li>
+          <li>
+            <h3 data-i18n="features.f6.title">日常三剑客</h3>
+            <p data-i18n="features.f6.body">
+              <code>la summarize</code> · <code>la news</code> ·
+              <code>la polish</code>——总结、资讯、润色一键搞定。
+            </p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="install" class="section install">
+        <p class="section-eyebrow" data-i18n="install.eyebrow">快速开始</p>
+        <h2 class="section-title" data-i18n="install.title">
+          一行命令，装上就聊
+        </h2>
+        <p class="section-lead" data-i18n="install.lead">
+          需要 Python 3.10+ 与 pipx。当前版本 v0.4.0。
+        </p>
+        <div class="code-block">
+          <pre><code id="install-cmd">pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
+la</code></pre>
+          <button
+            type="button"
+            class="btn-copy"
+            id="copy-install"
+            data-i18n="install.copy"
+          >
+            复制
+          </button>
+        </div>
+        <p class="install-hint" data-i18n="install.hint">
+          有 API → 写入 Key；无 API → <code>la setup -y</code> 装 Ollama。
+        </p>
+        <p class="install-more">
+          <a
+            href="https://github.com/hezhenghui7338/localagent#readme"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-i18n="install.docs"
+            >完整文档与升级说明 →</a
+          >
+        </p>
+      </section>
+
+      <section id="contact" class="section contact">
+        <p class="section-eyebrow" data-i18n="contact.eyebrow">联系</p>
+        <h2 class="section-title" data-i18n="contact.title">打招呼</h2>
+        <p class="section-lead" data-i18n="contact.lead">
+          问题、建议或合作，欢迎来信或开 Issue。
+        </p>
+        <ul class="contact-list">
+          <li>
+            <span class="contact-label" data-i18n="contact.emailLabel"
+              >邮箱</span
+            >
+            <a href="mailto:zhenghui7338@gmail.com">zhenghui7338@gmail.com</a>
+          </li>
+          <li>
+            <span class="contact-label">GitHub</span>
+            <a
+              href="https://github.com/hezhenghui7338/localagent"
+              target="_blank"
+              rel="noopener noreferrer"
+              >github.com/hezhenghui7338/localagent</a
+            >
+          </li>
+        </ul>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        <span data-i18n="footer.line">LocalAgent · MIT · v0.4.0</span>
+        ·
+        <a
+          href="https://github.com/hezhenghui7338/localagent"
+          target="_blank"
+          rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </p>
+    </footer>
+
+    <script src="script.js" defer></script>
+  </body>
+</html>
