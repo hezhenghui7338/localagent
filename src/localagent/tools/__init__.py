@@ -663,6 +663,52 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "cwd": "可选，工作目录（默认 LA_WORKSPACE 或当前目录）",
         },
     },
+    {
+        "name": "summarize_document",
+        "description": (
+            "原子速读本地文档（txt/md/pdf/xlsx）：最多三句话 + 带章节/页索引的结构化要点。"
+            "默认不入库；仅当用户明确要求收藏/入库时才传 keep=true。"
+            "需要多轮追问时，引导用户运行 `la summarize <path>` 进入文档对话（sum>），不要假装已进入会话。"
+            "不要在总结后主动追问是否入库；若用户问为何搜不到/没入库，说明默认不入库并告知 "
+            "会话内 /keep 或 `la summarize <path> --keep`"
+        ),
+        "parameters": {
+            "path": "文件路径（相对工作区或绝对路径）",
+            "keep": "可选，true 时总结后写入知识库，默认 false",
+            "cwd": "可选，工作目录（默认 LA_WORKSPACE 或当前目录）",
+        },
+    },
+    {
+        "name": "news_brief",
+        "description": (
+            "获取今日新闻简报（BestBlogs RSS 精选池经本地兴趣重排）。"
+            "用于「今天有什么新闻/早报/资讯」；每条含可点击原文链接。"
+            "若库为空请先提示用户运行 la news sync"
+        ),
+        "parameters": {
+            "date": "可选，日期 YYYY-MM-DD，默认今天",
+            "limit": "可选，条数上限，默认按用户 brief_size",
+        },
+    },
+    {
+        "name": "news_read",
+        "description": (
+            "精读一篇新闻：抓取正文并生成总结卡片；默认不入库。"
+            "仅当用户明确要求入库时传 keep=true"
+        ),
+        "parameters": {
+            "id_or_url": "文章 id（如 n_abc…）或原文 URL",
+            "keep": "可选，true 时写入知识库，默认 false",
+        },
+    },
+    {
+        "name": "news_mark",
+        "description": "标记新闻：bookmark 收藏 / skip 不感兴趣 / read 已读",
+        "parameters": {
+            "id_or_url": "文章 id 或 URL",
+            "action": "bookmark | skip | read",
+        },
+    },
 ]
 
 
@@ -811,4 +857,59 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> str:
             except (TypeError, ValueError):
                 timeout_val = None
         return run_shell(command, cwd=cwd_str, timeout=timeout_val)
+    if name == "summarize_document":
+        from localagent.summarize.document import summarize_document_tool
+
+        path = str(arguments.get("path") or "").strip()
+        cwd = arguments.get("cwd")
+        cwd_str = str(cwd).strip() if cwd else None
+        keep_raw = arguments.get("keep", False)
+        if isinstance(keep_raw, str):
+            keep = keep_raw.strip().lower() in {"1", "true", "yes", "on"}
+        else:
+            keep = bool(keep_raw)
+        return summarize_document_tool(path, keep=keep, cwd=cwd_str)
+    if name == "news_brief":
+        from localagent.news.brief import build_brief
+
+        date = str(arguments.get("date") or "").strip() or None
+        limit_raw = arguments.get("limit")
+        limit: int | None = None
+        if limit_raw is not None and str(limit_raw).strip():
+            try:
+                limit = int(limit_raw)
+            except (TypeError, ValueError):
+                limit = None
+        text, _ranked = build_brief(since_date=date, limit=limit, plain_links=True)
+        return text
+    if name == "news_read":
+        from localagent.news.read import read_article
+
+        target = str(
+            arguments.get("id_or_url")
+            or arguments.get("id")
+            or arguments.get("url")
+            or ""
+        ).strip()
+        keep_raw = arguments.get("keep", False)
+        if isinstance(keep_raw, str):
+            keep = keep_raw.strip().lower() in {"1", "true", "yes", "on"}
+        else:
+            keep = bool(keep_raw)
+        result = read_article(target, keep=keep, plain_links=True)
+        if result.error:
+            return f"错误: {result.error}"
+        return result.markdown
+    if name == "news_mark":
+        from localagent.news.mark import mark_article
+
+        target = str(
+            arguments.get("id_or_url")
+            or arguments.get("id")
+            or arguments.get("url")
+            or ""
+        ).strip()
+        action = str(arguments.get("action") or "").strip()
+        _art, msg = mark_article(target, action)
+        return msg if _art else f"错误: {msg}"
     return f"未知工具: {name}"

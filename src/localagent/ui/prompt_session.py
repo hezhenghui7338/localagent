@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.shortcuts.prompt import CompleteStyle
 
 if TYPE_CHECKING:
     from prompt_toolkit.completion import CompleteEvent
@@ -54,6 +55,7 @@ def get_repl_session() -> PromptSession[str]:
             completer=SessionSlashCompleter(),
             complete_while_typing=False,
             multiline=False,
+            complete_style=CompleteStyle.MULTI_COLUMN,
         )
     return _SESSION
 

@@ -21,7 +21,7 @@ def test_e2e_version():
 def test_e2e_help_lists_core_commands():
     result = run_la(["--help"])
     assert result.returncode == 0
-    for cmd in ("memory", "rag", "chat", "tasks", "workspace", "audit", "logs", "config", "setup"):
+    for cmd in ("memory", "rag", "chat", "tasks", "workspace", "audit", "logs", "config", "setup", "summarize", "polish"):
         assert cmd in result.stdout
 
 

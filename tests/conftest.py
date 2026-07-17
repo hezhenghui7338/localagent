@@ -52,6 +52,12 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
         "EVENTS_LOG_FILE": data_dir / "audit" / "events.jsonl",
         "LOGS_DIR": data_dir / "logs",
         "APP_LOG_FILE": data_dir / "logs" / "localagent.log",
+        "NEWS_DIR": data_dir / "news",
+        "NEWS_DB_FILE": data_dir / "news" / "articles.sqlite",
+        "NEWS_PROFILE_FILE": data_dir / "news" / "news_profile.json",
+        "NEWS_SYNC_STATE_FILE": data_dir / "news" / "sync_state.json",
+        "NEWS_SYNC_LOG_FILE": data_dir / "news" / "sync.log",
+        "NEWS_CACHE_DIR": data_dir / "news" / "cache",
     }
     for key, val in paths.items():
         monkeypatch.setattr(f"localagent.config.{key}", val)
@@ -80,6 +86,7 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
     (data_dir / "chroma").mkdir(parents=True, exist_ok=True)
     (data_dir / "mem0").mkdir(parents=True, exist_ok=True)
     (data_dir / "audit").mkdir(parents=True, exist_ok=True)
+    (data_dir / "news" / "cache").mkdir(parents=True, exist_ok=True)
 
     reset_sync_index_singleton()
     reset_memory_store_singleton()

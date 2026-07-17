@@ -42,6 +42,12 @@ class ChatREPL:
 
             install_repl_readline_completer()
         print_welcome(provider=self.provider, session_id=self.session_id)
+        try:
+            from localagent.news.notify import maybe_print_news_ready
+
+            maybe_print_news_ready()
+        except Exception:
+            pass
         logging.getLogger(__name__).info(
             "chat session start session=%s provider=%s",
             self.session_id,
