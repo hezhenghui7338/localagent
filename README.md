@@ -66,7 +66,7 @@ Optional OpenRouter / Cursor / Tavily for extras — **identity and data stay on
 - “Read it a hundred times and meaning appears” does not happen by itself — you need practice  
 - LA only picks **low-hanging, mature** fruit; no uncontrolled, expensive, hard-to-own stacks  
 - LA does **one thing**: a personal AI assistant on your machine. Data stays local; the full loop runs offline. Networking and new tech are welcome — barriers are not  
-- Remove obstacles to using AI; the author is still learning too — let's grow together  
+- Remove obstacles to using AI
 
 ```bash
 # First-time install (pin a tag — reproducible and easier to debug)
