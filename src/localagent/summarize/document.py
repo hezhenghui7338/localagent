@@ -265,7 +265,7 @@ def summarize_loaded(
     if char_count > config.SUMMARIZE_SHORT_MAX_CHARS:
         raise DocumentTooLongError(
             f"文档约 {char_count} 字，超出短总结上限（{config.SUMMARIZE_SHORT_MAX_CHARS}）。"
-            "当前版本优先把短文档做到极致；请拆成章节后重试，长文档 Map-Reduce 即将支持。"
+            "请拆成章节后重试，或提高 LA_SUMMARIZE_SHORT_MAX_CHARS。"
         )
 
     warnings: list[str] = []

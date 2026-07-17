@@ -83,7 +83,7 @@ data/
 | Warm 写入确认 | `LA_MEMORY_APPROVAL_REQUIRED`（默认开）：非交互提取入 `pending_queue.json`；`approve`/`reject`；`LA_MEMORY_APPROVAL_AUTO=1` 跳过（CI） |
 | 记忆引擎 | Mem0（主依赖）+ JSON fallback / 注册表 |
 | 知识检索 | Chroma + BM25 + RRF；文档与对话归档入 Cold |
-| 一键总结 | 短路径单次生成（1～最多 3 句 + 〔§/p.〕引用）；TTY 默认 `DocumentChatREPL`（`sum>`）；默认不入库；长文 Map-Reduce 后续 |
+| 一键总结 | 短路径单次生成（1～最多 3 句 + 〔§/p.〕引用）；TTY 默认 `DocumentChatREPL`（`sum>`）；默认不入库 |
 | 新闻嗅探 | BestBlogs RSS → SQLite；兴趣重排；`brief` TTY 用 prompt_toolkit 浏览器（↑↓ / o→webbrowser / r→精读+DocumentChatREPL）；launchd/cron 早 8 点 sync；chat 启动就绪通知 |
 | 一键润色 | `writing/polish.py` 旁路 Agent；场景/态度识别 → 主推+备选；默认 `clipboard.copy_text` |
 | 编排 | LangGraph + SQLite Checkpointer |

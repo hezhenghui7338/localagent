@@ -143,7 +143,7 @@ LA audit --since 7d
 - **默认不入库**；会话内 `/keep` 或 `--keep` 收藏到 Cold 知识库；**禁止**每次总结后追问是否入库
 - `--list` / `--resume` / `--id`：文档对话可离开再续
 - 与 `la chat` 区分：chat = 和助手聊；summarize = 针对已打开文件的速读/深聊
-- 对话内工具：`summarize_document`（原子速读）；长文档 Map-Reduce 后续迭代
+- 对话内工具：`summarize_document`（原子速读）
 
 ### 4.8 一键润色（支柱 2 + 3）
 

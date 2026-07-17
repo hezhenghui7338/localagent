@@ -19,10 +19,11 @@ LocalAgent (`LA`) is not another chat client. It is a **personal AI assistant on
 ### Product design
 
 1. **Fully local** — zero-bill / zero-account default path: chat, memory, retrieval, and execution run on-device; identity and data stay local; compute defaults to local, with optional cloud/network extras — a pure-local path always remains  
-2. **Truly easy** — one-command install, ready immediately; daily path is just `la` / `la setup` / `la chat` — less is more  
+2. **Truly easy** — one-command install, ready immediately; daily path is `la` / `la setup` / `la chat`, plus everyday side-paths: `la summarize` · `la news` · `la polish`  
 3. **Long-term, multi-layer memory** — Hot / Warm / Cold + Mem0: remember you, and decide what to keep, what to drop, and when to step in  
 4. **External tools** — local Shell, write_file, workspace awareness; approve before side effects; block dangerous commands; audit cost and behavior  
-5. **RAG** — local documents into a knowledge base; deep recall during chat
+5. **RAG** — local documents into a knowledge base; deep recall during chat  
+6. **Daily essentials** — one-click summarize (doc dialogue), news sniff (interactive brief from trusted feeds), one-click polish (clipboard-ready rewrite)
 
 | Typical local chat | LocalAgent |
 | --- | --- |
@@ -31,12 +32,12 @@ LocalAgent (`LA`) is not another chat client. It is a **personal AI assistant on
 | Forgets — or memorizes everything blindly | **Multi-layer memory** that knows you and prioritizes |
 | Can't act or search | **Local tools** + optional web search |
 | Docs and chats are separate silos | **RAG** + conversation archives for deep recall |
+| Manual doc skim / news doomscroll / awkward drafts | **`la summarize` · `la news` · `la polish`** — digest, brief, rewrite |
 
 Optional OpenRouter / Cursor / Tavily for extras — **identity and data stay on your machine**.
 
 ### TODO / Coming soon
 
-- **Long-document summarize (Map-Reduce)** — hierarchical summary for very long PDFs; short-doc path is already available (see below).
 - **Not in this release:** workspace file-watcher incremental indexing, and external task sources.
 
 ### User stories
