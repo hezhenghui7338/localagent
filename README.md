@@ -80,7 +80,8 @@ Runs fully local by default; optional cloud models and web extras. Details for t
 ## Requirements
 
 - Python 3.10+ (Mem0 memory engine needs Python 3.10+)
-- [Ollama](https://ollama.com/) + `qwen3.5:4b` (recommended; also the project default)
+- **At least one model backend**: your own LLM API (e.g. OpenRouter / MiniMax / Cursor via `la config`) **or** a local model server
+- **If you have no API**, [Ollama](https://ollama.com/) is recommended to run models locally (default `qwen3.5:4b`; `la setup` can install it — skippable)
 - Optional: [pipx](https://pipx.pypa.io/) (recommended for a global `la` command)
 
 ## Quick start
