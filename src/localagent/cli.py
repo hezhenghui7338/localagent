@@ -34,6 +34,12 @@ from localagent.tools import (
 from localagent.ui.console import emit
 
 
+def _cmd_news(args: argparse.Namespace) -> int:
+    from localagent.news.commands import cmd_news
+
+    return cmd_news(args)
+
+
 def _print_ingest_result(result) -> None:
     if result.status.value == "failed":
         print(f"  ! {result.filename}: {result.error}")
@@ -174,6 +180,301 @@ def _format_file_size(path: str | Path) -> str:
     if size < 1024 * 1024:
         return f"{size / 1024:.1f} KB"
     return f"{size / (1024 * 1024):.1f} MB"
+
+
+def cmd_summarize(args: argparse.Namespace) -> int:
+    """Summarize file(s): default enters document dialogue; --no-chat is atomic only."""
+    from localagent.summarize.document import (
+        KEEP_HINT,
+        DocumentTooLongError,
+        SummarizeError,
+        summarize_path,
+    )
+    from localagent.summarize.repl import (
+        rebuild_result_from_disk,
+        run_document_chat,
+        should_enter_document_chat,
+    )
+    from localagent.summarize.sessions import (
+        find_session_by_path,
+        get_session,
+        list_sessions,
+        new_summarize_session_id,
+    )
+
+    prefix = "summarize"
+
+    if getattr(args, "list", False):
+        rows = list_sessions(limit=int(getattr(args, "limit", 20) or 20))
+        if not rows:
+            print(f"[{prefix}] 暂无文档对话会话")
+            return 0
+        print(f"{'id':<14} {'updated':<22} {'kept':<5} file")
+        for row in rows:
+            kept = "yes" if row.kept else "no"
+            print(f"{row.id:<14} {row.updated_at:<22} {kept:<5} {row.filename}")
+        print(f"[{prefix}] 续聊: la summarize <path> --resume  或  la summarize --id <id>")
+        return 0
+
+    resume_id = (getattr(args, "id", None) or "").strip()
+    paths_raw = list(getattr(args, "paths", None) or [])
+    if getattr(args, "path", None) and not paths_raw:
+        # back-compat if parser still exposes singular path
+        paths_raw = [args.path]
+
+    no_chat = bool(getattr(args, "no_chat", False))
+    do_resume = bool(getattr(args, "resume", False)) or bool(resume_id)
+    heuristic = bool(getattr(args, "heuristic", False))
+    keep = bool(getattr(args, "keep", False))
+    provider = getattr(args, "provider", None) or "auto"
+    out_path = getattr(args, "out", None)
+
+    # Resume by session id
+    if resume_id:
+        record = get_session(resume_id)
+        if record is None:
+            print(f"[{prefix}] error: 未找到会话 {resume_id}")
+            return 1
+        source = Path(record.path)
+        if not source.is_file():
+            print(f"[{prefix}] error: 会话文件不存在: {source}")
+            return 1
+        return _summarize_resume_one(
+            source,
+            record=record,
+            prefix=prefix,
+            provider=provider,
+            heuristic=heuristic,
+            keep=keep,
+        )
+
+    if not paths_raw:
+        print(f"[{prefix}] error: 请指定文件路径，或使用 --list / --id")
+        return 1
+
+    paths = [Path(p).expanduser().resolve() for p in paths_raw]
+    if len(paths) > 1 and not no_chat:
+        print(f"[{prefix}] error: 多文件仅支持仅速读模式，请加 --no-chat")
+        return 1
+
+    if do_resume and len(paths) == 1 and not no_chat:
+        record = find_session_by_path(paths[0])
+        if record is None:
+            print(f"[{prefix}] 无既有会话，将新建文档对话")
+        else:
+            return _summarize_resume_one(
+                paths[0],
+                record=record,
+                prefix=prefix,
+                provider=provider,
+                heuristic=heuristic,
+                keep=keep,
+            )
+
+    results_md: list[str] = []
+    failures = 0
+    last_result = None
+    for source in paths:
+        print(f"[{prefix}] 文件: {source}")
+        try:
+            result = summarize_path(source, keep=keep, use_llm=not heuristic)
+        except KeyboardInterrupt:
+            print(f"\n[{prefix}] 已中断")
+            return 130
+        except (DocumentTooLongError, SummarizeError) as exc:
+            print(f"[{prefix}] error: {exc}")
+            failures += 1
+            continue
+        except Exception as exc:
+            print(f"[{prefix}] error: {exc}")
+            failures += 1
+            continue
+
+        last_result = result
+        block = result.markdown.rstrip()
+        if len(paths) > 1:
+            header = f"\n---\n# {result.filename}\n\n"
+            print(header.rstrip())
+            results_md.append(header + block)
+        else:
+            results_md.append(block)
+        print()
+        print(block)
+        print()
+        meta_bits = [f"{result.char_count} 字"]
+        if result.page_count is not None:
+            meta_bits.append(f"{result.page_count} 页")
+        meta_bits.append("LLM" if result.used_llm else "启发式")
+        print(f"[{prefix}] {' · '.join(meta_bits)}")
+        if result.warnings:
+            for warning in result.warnings:
+                print(f"[{prefix}] 注意: {warning}")
+        if result.kept:
+            print(f"[{prefix}] 已收藏到知识库: {result.keep_target}")
+        else:
+            print(f"[{prefix}] 未收藏（默认）。{KEEP_HINT}")
+
+    if out_path and results_md:
+        out = Path(out_path).expanduser().resolve()
+        out.write_text("\n\n".join(results_md).rstrip() + "\n", encoding="utf-8")
+        print(f"[{prefix}] 已写入: {out}")
+
+    if failures and not last_result:
+        return 1
+
+    if should_enter_document_chat(no_chat=no_chat) and last_result is not None and len(paths) == 1:
+        sid = new_summarize_session_id()
+        return run_document_chat(
+            last_result,
+            provider=provider,
+            summarize_session_id=sid,
+            conversation_session_id=sid,
+        )
+
+    return 1 if failures else 0
+
+
+def _summarize_resume_one(
+    source: Path,
+    *,
+    record,
+    prefix: str,
+    provider: str,
+    heuristic: bool,
+    keep: bool,
+) -> int:
+    from localagent.summarize.document import summarize_path
+    from localagent.summarize.repl import (
+        _history_from_conversation,
+        rebuild_result_from_disk,
+        run_document_chat,
+    )
+    from localagent.summarize.sessions import file_mtime
+
+    current_mtime = file_mtime(source)
+    history = _history_from_conversation(record.conversation_session_id)
+    if abs(current_mtime - float(record.mtime or 0.0)) > 1e-6:
+        print(f"[{prefix}] 文件已更新，重新生成速读卡…")
+        result = summarize_path(source, keep=keep or record.kept, use_llm=not heuristic)
+        if record.kept and not result.kept:
+            result.kept = True
+            result.keep_target = Path(record.keep_target) if record.keep_target else result.keep_target
+    else:
+        print(f"[{prefix}] 续聊会话 {record.id} · {record.filename}")
+        result = rebuild_result_from_disk(
+            source,
+            summary_md=record.summary_md,
+            kept=bool(record.kept) or keep,
+            keep_target=record.keep_target,
+            page_count=record.page_count,
+            char_count=record.char_count,
+        )
+        if keep and not result.kept:
+            from localagent.ingest.add_file import add_file
+
+            target, _ = add_file(source)
+            result.kept = True
+            result.keep_target = target
+
+    print()
+    print(result.markdown.rstrip())
+    print()
+    if result.kept:
+        print(f"[{prefix}] 已收藏到知识库: {result.keep_target}")
+    else:
+        print(f"[{prefix}] 未收藏（默认）。会话内输入 /keep 可收藏到知识库。")
+
+    if not history:
+        history = None
+    return run_document_chat(
+        result,
+        provider=provider,
+        summarize_session_id=record.id,
+        conversation_session_id=record.conversation_session_id,
+        history=history,
+    )
+
+
+def _resolve_polish_text(args: argparse.Namespace) -> str:
+    """Resolve draft text from --file, positional args, or stdin."""
+    import sys
+
+    chunks: list[str] = []
+    file_path = getattr(args, "file", None)
+    if file_path:
+        path = Path(file_path).expanduser().resolve()
+        if not path.is_file():
+            raise FileNotFoundError(f"文件不存在: {path}")
+        chunks.append(path.read_text(encoding="utf-8"))
+    text_parts = getattr(args, "text", None) or []
+    if text_parts:
+        chunks.append(" ".join(str(p) for p in text_parts).strip())
+    if not chunks and not sys.stdin.isatty():
+        stdin_text = sys.stdin.read()
+        if stdin_text.strip():
+            chunks.append(stdin_text)
+    return "\n\n".join(c.strip() for c in chunks if c and c.strip()).strip()
+
+
+def cmd_polish(args: argparse.Namespace) -> int:
+    """One-click scene-aware text polish; copies primary rewrite to clipboard by default."""
+    from localagent.ui.console import ActivityIndicator
+    from localagent.writing.polish import PolishError, apply_clipboard, polish_text
+    from localagent.writing.scenes import SCENE_IDS, normalize_scene
+
+    prefix = "polish"
+    try:
+        draft = _resolve_polish_text(args)
+    except FileNotFoundError as exc:
+        print(f"[{prefix}] error: {exc}")
+        return 1
+    if not draft:
+        print(
+            f"[{prefix}] 用法: la polish [--scene email|moments|resume|biz] "
+            "[--tone …] [--no-copy] [--file path] <草稿>\n"
+            "       echo \"草稿\" | la polish\n"
+            "会话内: /polish <草稿>"
+        )
+        return 1
+
+    scene_raw = getattr(args, "scene", None)
+    if scene_raw:
+        scene = normalize_scene(scene_raw)
+        if scene is None:
+            print(f"[{prefix}] error: 未知场景 {scene_raw!r}（可用: {', '.join(SCENE_IDS)}）")
+            return 1
+    else:
+        scene = None
+    tone = (getattr(args, "tone", None) or "").strip() or None
+    want_copy = not bool(getattr(args, "no_copy", False))
+
+    with ActivityIndicator(prefix, "识别场景并改写…") as activity:
+        try:
+            result = polish_text(
+                draft,
+                scene=scene,
+                tone=tone,
+                on_status=activity.update,
+            )
+        except KeyboardInterrupt:
+            print(f"\n[{prefix}] 已中断")
+            return 130
+        except PolishError as exc:
+            print(f"[{prefix}] error: {exc}")
+            return 1
+        except Exception as exc:
+            print(f"[{prefix}] error: {exc}")
+            return 1
+
+    print()
+    print(result.format_report())
+    print()
+    apply_clipboard(
+        result,
+        enabled=want_copy,
+        interactive=want_copy and sys.stdin.isatty() and sys.stdout.isatty(),
+    )
+    return 0
 
 
 def cmd_add_file(args: argparse.Namespace) -> int:
@@ -1324,6 +1625,9 @@ def build_parser() -> argparse.ArgumentParser:
             "  la config list      # 查看配置\n"
             "  la memory pending   # 确认待写入记忆\n"
             "  la rag add notes.md # 文档进知识库\n"
+            "  la summarize doc.md # 一键总结（默认不入库）\n"
+            "  la news brief       # 今日新闻简报（先 la news sync）\n"
+            "  la polish \"催进度草稿\"  # 一键润色（默认复制主推）\n"
             "\n"
             "进入对话后可用 /<command>（输入 /help；: 为兼容别名）。\n"
             "使用 LA <command> -h 查看某个命令的完整说明。"
@@ -1894,6 +2198,213 @@ def build_parser() -> argparse.ArgumentParser:
         help="无需确认，直接安装/拉取",
     )
     p_setup.set_defaults(func=cmd_setup)
+
+    p_summarize = sub.add_parser(
+        "summarize",
+        help="<path…> [--no-chat] [--keep] [--resume]  文档速读；默认进入文档对话",
+        description=(
+            "针对本地文档的速读与文档对话（与 la chat「和助手聊」不同）。\n"
+            "  默认：打印速读卡后进入 sum> 文档对话（TTY）。\n"
+            "  --no-chat：仅速读（可多文件），不进入对话。\n"
+            "支持 .txt / .md / .pdf / .xlsx。\n"
+            "默认不入库；会话内 /keep 或 --keep 收藏到知识库（不每次追问）。\n"
+            "  la summarize --list                 # 最近文档对话\n"
+            "  la summarize <path> --resume        # 续聊\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_summarize.add_argument(
+        "paths",
+        nargs="*",
+        metavar="path",
+        help="本地文件路径（多文件须加 --no-chat）",
+    )
+    p_summarize.add_argument(
+        "--keep",
+        action="store_true",
+        help="速读后写入知识库（等同 LA rag add；默认不入库）",
+    )
+    p_summarize.add_argument(
+        "--no-chat",
+        action="store_true",
+        help="只输出速读卡，不进入文档对话（可多文件）",
+    )
+    p_summarize.add_argument(
+        "--out",
+        metavar="FILE",
+        help="将速读卡写入 Markdown 文件（常与 --no-chat 同用）",
+    )
+    p_summarize.add_argument(
+        "--list",
+        action="store_true",
+        help="列出最近的文档对话会话",
+    )
+    p_summarize.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="--list 显示条数（默认 20）",
+    )
+    p_summarize.add_argument(
+        "--resume",
+        action="store_true",
+        help="按路径续聊已有文档对话",
+    )
+    p_summarize.add_argument(
+        "--id",
+        dest="id",
+        metavar="SESSION_ID",
+        help="按会话 id 续聊",
+    )
+    p_summarize.add_argument(
+        "--provider",
+        "-p",
+        default="auto",
+        help=f"文档对话模型路径: auto（默认）, {', '.join(config.VALID_PROVIDERS)}",
+    )
+    p_summarize.add_argument(
+        "--heuristic",
+        action="store_true",
+        help="强制使用本地启发式摘要（不调用模型；便于离线/测试）",
+    )
+    p_summarize.set_defaults(func=cmd_summarize)
+
+    p_news = sub.add_parser(
+        "news",
+        help="新闻嗅探：sync / brief / read / schedule …",
+        description=(
+            "从 BestBlogs RSS 同步精选 AI 资讯，生成今日简报并支持精读。\n"
+            "  la news sync              # 拉取 RSS\n"
+            "  la news brief             # 今日简报（TTY 交互；--no-ui 刷屏）\n"
+            "  la news read <id|url>     # 精读卡片（--keep 入库）\n"
+            "  la news schedule on       # 每天 08:00 自动 sync（可 off）\n"
+            "进入 la/chat 后，若早间已 sync，会提示「今日更新已准备好」。"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    news_sub = p_news.add_subparsers(dest="news_action", metavar="action")
+
+    p_news_sync = news_sub.add_parser("sync", help="从 RSS 同步最新条目")
+    p_news_sync.add_argument("--url", default=None, help="覆盖默认 LA_NEWS_RSS_URL")
+    p_news_sync.set_defaults(func=_cmd_news)
+
+    p_news_brief = news_sub.add_parser(
+        "brief",
+        help="今日简报（TTY 下交互浏览；--no-ui 一次性输出）",
+    )
+    p_news_brief.add_argument("--date", default=None, help="日期 YYYY-MM-DD（默认今天）")
+    p_news_brief.add_argument("--limit", type=int, default=None, help="条数上限")
+    p_news_brief.add_argument(
+        "--plain",
+        action="store_true",
+        help="强制 Markdown 链接（不要 OSC 8）；常与 --no-ui 合用",
+    )
+    p_news_brief.add_argument(
+        "--no-ui",
+        action="store_true",
+        help="不进入交互浏览器，一次性打印全部简报",
+    )
+    p_news_brief.add_argument(
+        "--provider",
+        "-p",
+        default="auto",
+        help="精读深聊时的模型路径（默认 auto）",
+    )
+    p_news_brief.set_defaults(func=_cmd_news)
+
+    p_news_skim = news_sub.add_parser("skim", help="<id|url>  速读卡片")
+    p_news_skim.add_argument("target", help="文章 id 或 URL")
+    p_news_skim.add_argument("--plain", action="store_true")
+    p_news_skim.set_defaults(func=_cmd_news)
+
+    p_news_read = news_sub.add_parser("read", help="<id|url> [--keep]  精读卡片")
+    p_news_read.add_argument("target", help="文章 id 或 URL")
+    p_news_read.add_argument("--keep", action="store_true", help="精读后写入知识库")
+    p_news_read.add_argument(
+        "--heuristic",
+        action="store_true",
+        help="强制启发式摘要（不调模型）",
+    )
+    p_news_read.add_argument("--plain", action="store_true")
+    p_news_read.set_defaults(func=_cmd_news)
+
+    p_news_mark = news_sub.add_parser("mark", help="<id> bookmark|skip|read")
+    p_news_mark.add_argument("target", help="文章 id 或 URL")
+    p_news_mark.add_argument(
+        "mark_action",
+        choices=["bookmark", "skip", "read"],
+        help="动作",
+    )
+    p_news_mark.set_defaults(func=_cmd_news)
+
+    p_news_sched = news_sub.add_parser(
+        "schedule",
+        help="on|off|status  配置早间自动 sync",
+    )
+    p_news_sched.add_argument(
+        "schedule_action",
+        nargs="?",
+        default="status",
+        choices=["on", "off", "status", "enable", "disable"],
+    )
+    p_news_sched.add_argument("--hour", type=int, default=None)
+    p_news_sched.add_argument("--minute", type=int, default=None)
+    p_news_sched.set_defaults(func=_cmd_news)
+
+    p_news_int = news_sub.add_parser("interests", help="查看/设置兴趣标签")
+    p_news_int.add_argument(
+        "--set",
+        dest="set_interests",
+        default=None,
+        help="逗号分隔覆盖 interests",
+    )
+    p_news_int.add_argument("--add", default=None, help="追加一个兴趣词")
+    p_news_int.add_argument("--mute", default=None, help="追加 mute 关键词")
+    p_news_int.set_defaults(func=_cmd_news)
+
+    news_sub.add_parser("status", help="同步与定时状态").set_defaults(func=_cmd_news)
+    news_sub.add_parser("sources", help="查看默认 RSS 源").set_defaults(func=_cmd_news)
+    p_news.set_defaults(func=_cmd_news)
+
+    p_polish = sub.add_parser(
+        "polish",
+        help="[--scene …] [--tone …] [--no-copy]  一键润色文案（默认复制主推到剪贴板）",
+        description=(
+            "一键润色：识别邮件 / 朋友圈 / 简历 / 商务对话场景与态度，"
+            "给出主推 + 两个备选，并默认将主推复制到剪贴板。\n"
+            "  la polish \"催一下进度的草稿\"\n"
+            "  la polish --scene email --tone 更正式 --file draft.txt\n"
+            "  echo \"草稿\" | la polish --no-copy\n"
+            "会话内: /polish <草稿>"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_polish.add_argument(
+        "text",
+        nargs="*",
+        help="待润色草稿（也可 --file 或 stdin）",
+    )
+    p_polish.add_argument(
+        "--file",
+        "-f",
+        dest="file",
+        help="从文件读取草稿",
+    )
+    p_polish.add_argument(
+        "--scene",
+        choices=["email", "moments", "resume", "biz"],
+        help="强制场景（默认自动识别）",
+    )
+    p_polish.add_argument(
+        "--tone",
+        help="语气要求，如：更正式 / 更口语 / 更短",
+    )
+    p_polish.add_argument(
+        "--no-copy",
+        action="store_true",
+        help="不写入剪贴板（脚本/管道场景）",
+    )
+    p_polish.set_defaults(func=cmd_polish)
 
     return parser
 

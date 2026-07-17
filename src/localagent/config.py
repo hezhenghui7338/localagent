@@ -108,10 +108,36 @@ USAGE_LOG_FILE = AUDIT_DIR / "usage.jsonl"
 EVENTS_LOG_FILE = AUDIT_DIR / "events.jsonl"
 LOGS_DIR = DATA_DIR / "logs"
 APP_LOG_FILE = LOGS_DIR / "localagent.log"
+SUMMARIZE_SESSIONS_DIR = DATA_DIR / "summarize_sessions"
+SUMMARIZE_SESSIONS_INDEX = SUMMARIZE_SESSIONS_DIR / "index.json"
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
-SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt", ".xlsx"} | IMAGE_SUFFIXES
+# Text / tabular / PDF for RAG + one-click summarize (images still via VL).
+SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt", ".xlsx", ".pdf"} | IMAGE_SUFFIXES
+SUMMARIZE_SUFFIXES = {".md", ".markdown", ".txt", ".xlsx", ".pdf"}
 DEFAULT_USER_ID = "default_user"
+# One-click summarize: short-doc path (chars of annotated text).
+SUMMARIZE_SHORT_MAX_CHARS = _env_int("LA_SUMMARIZE_SHORT_MAX_CHARS", "12000")
+SUMMARIZE_LLM_INPUT_CHARS = _env_int("LA_SUMMARIZE_LLM_INPUT_CHARS", "10000")
+
+# --- News sniff (BestBlogs RSS → daily brief → deep read) ---
+DEFAULT_NEWS_RSS_URL = (
+    "https://www.bestblogs.dev/zh/feeds/rss?category=ai&minScore=80&timeFilter=1d"
+)
+NEWS_DIR = Path(_env("LA_NEWS_DIR")) if _env("LA_NEWS_DIR") else DATA_DIR / "news"
+NEWS_DB_FILE = NEWS_DIR / "articles.sqlite"
+NEWS_PROFILE_FILE = NEWS_DIR / "news_profile.json"
+NEWS_SYNC_STATE_FILE = NEWS_DIR / "sync_state.json"
+NEWS_SYNC_LOG_FILE = NEWS_DIR / "sync.log"
+NEWS_CACHE_DIR = NEWS_DIR / "cache"
+NEWS_RSS_URL = _env("LA_NEWS_RSS_URL", DEFAULT_NEWS_RSS_URL) or DEFAULT_NEWS_RSS_URL
+NEWS_BRIEF_SIZE = _env_int("LA_NEWS_BRIEF_SIZE", "15")
+NEWS_AUTO_SYNC = _env_bool("LA_NEWS_AUTO_SYNC", "1")
+NEWS_AUTO_SYNC_HOUR = _env_int("LA_NEWS_AUTO_SYNC_HOUR", "8")
+NEWS_AUTO_SYNC_MINUTE = _env_int("LA_NEWS_AUTO_SYNC_MINUTE", "0")
+# Phase 2 reserved
+BESTBLOGS_API_KEY = _env("LA_BESTBLOGS_API_KEY")
+NEWS_OPENAPI = _env_bool("LA_NEWS_OPENAPI", "0")
 
 # --- Vision (image → text for Cold RAG; separate from chat OLLAMA_MODEL) ---
 VL_ENABLED = _env_bool("LA_VL_ENABLED", "1")
@@ -419,5 +445,8 @@ def ensure_data_dirs() -> None:
         TASK_LOGS_DIR,
         AUDIT_DIR,
         LOGS_DIR,
+        NEWS_DIR,
+        NEWS_CACHE_DIR,
+        SUMMARIZE_SESSIONS_DIR,
     ):
         path.mkdir(parents=True, exist_ok=True)

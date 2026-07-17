@@ -1,6 +1,6 @@
 # LocalAgent feature walkthrough
 
-Six short scenarios for a **fast path**. Full user stories (install / API / profile / ChatGPT / RAG / web / tools / audit) live in [product-tour.md](product-tour.md) (Chinese: [product-tour.zh-CN.md](product-tour.zh-CN.md)). Sample data is fictional and safe to reproduce.
+Short scenarios for a **fast path**, including the daily trio (summarize · news · polish). Full user stories live in [product-tour.md](product-tour.md) (Chinese: [product-tour.zh-CN.md](product-tour.zh-CN.md)). Sample data is fictional and safe to reproduce.
 
 Chinese version: [walkthrough.zh-CN.md](walkthrough.zh-CN.md).
 
@@ -35,6 +35,9 @@ LocalAgent’s core path — **chat, memory write, memory recall, document retri
 | Memory search `LA memory search` | No | BM25 + Chroma locally |
 | Workspace `LA workspace` | No | Reads local Git / files / TODOs |
 | Audit `LA audit` | No | Reads local usage.jsonl |
+| Summarize `la summarize` | No (local model) | Digest card + `sum>` dialogue |
+| News sniff `la news` | Network only for sync | RSS → brief; deep-read can summarize locally |
+| Polish `la polish` | No (local model) | Scene rewrite + clipboard |
 | Web search | No (ddgs by default) | Works out of the box; optional Tavily / SearXNG |
 
 ```bash
@@ -242,6 +245,31 @@ Sample report: [audit-report-sample.md](audit-report-sample.md).
 
 - `ollama` line: **$0.0000** — local chat and memory, zero bill
 - `tavily` / `ddgs` / `searxng`: web search; ddgs/searxng are free; only Tavily bills
+
+---
+
+## 7. Daily trio: summarize · news · polish
+
+### Summarize
+
+```bash
+la summarize examples/sample-project-notes.md
+# sum> What is the core decision in this note?
+# sum> /exit
+```
+
+### News sniff
+
+```bash
+la news sync
+la news brief --no-ui --limit 5    # use --no-ui for scripts; omit on TTY for interactive UI
+```
+
+### Polish
+
+```bash
+la polish --no-copy --scene email "Hi — could you send the proposal this week?"
+```
 
 ---
 

@@ -37,6 +37,28 @@ def _load_xlsx(path: Path) -> str:
     return "\n".join(parts)
 
 
+def _load_pdf(path: Path) -> tuple[str, dict]:
+    """Extract text per page; inject ## [p.N] markers for citeable summarize."""
+    from pypdf import PdfReader
+
+    reader = PdfReader(str(path))
+    parts: list[str] = []
+    page_count = len(reader.pages)
+    non_empty = 0
+    for index, page in enumerate(reader.pages, start=1):
+        try:
+            raw = page.extract_text() or ""
+        except Exception:
+            raw = ""
+        text = raw.strip()
+        if not text:
+            continue
+        non_empty += 1
+        parts.append(f"## [p.{index}]\n{text}")
+    meta = {"page_count": page_count, "pages_with_text": non_empty}
+    return "\n\n".join(parts), meta
+
+
 def load_file(path: Path) -> LoadedDoc | None:
     path = Path(path)
     if not path.exists() or not path.is_file():
@@ -46,10 +68,13 @@ def load_file(path: Path) -> LoadedDoc | None:
     if suffix not in SUPPORTED_SUFFIXES:
         return None
 
+    extra_meta: dict = {}
     if suffix in {".md", ".markdown", ".txt"}:
         text = _load_txt(path)
     elif suffix == ".xlsx":
         text = _load_xlsx(path)
+    elif suffix == ".pdf":
+        text, extra_meta = _load_pdf(path)
     elif suffix in IMAGE_SUFFIXES:
         if not config.VL_ENABLED:
             return None
@@ -64,10 +89,11 @@ def load_file(path: Path) -> LoadedDoc | None:
         return None
 
     modified_at = datetime.fromtimestamp(path.stat().st_mtime).isoformat(timespec="seconds")
+    metadata = {"suffix": suffix, "modified_at": modified_at, **extra_meta}
 
     return LoadedDoc(
         text=text,
         source=str(path.resolve()),
         filename=path.name,
-        metadata={"suffix": suffix, "modified_at": modified_at},
+        metadata=metadata,
     )

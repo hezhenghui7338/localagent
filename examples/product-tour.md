@@ -20,6 +20,9 @@
 | 7 | Local tools + dangerous-command blocking | [§7](#7-local-tools--dangerous-command-blocking) |
 | 8 | Audit spend (tokens / cost) | [§8](#8-auditable--tokens--cost) |
 | 9 | Advanced: write-file hallucination + time-aware recall | [§9](#9-advanced-write-file-hallucination--time-aware-recall) |
+| 10 | **Summarize** a local doc | [§10](#10-one-click-summarize-story-6b) |
+| 11 | **News sniff** daily brief | [§11](#11-news-sniff-story-6c) |
+| 12 | **Polish** copy | [§12](#12-one-click-polish-story-6d) |
 
 **Persona (fictional)**: You are “Alex Lin”, using LocalAgent on your machine; prefer Americano; in May 2026 held a Shenzhen roadmap meeting; in July 2026 chose Mem0 as the memory engine.
 
@@ -720,6 +723,37 @@ Interactive bits (web search, shell approval, file write) still need §6 / §7 /
 
 ---
 
+## 10. One-click summarize (story 6b)
+
+```bash
+la summarize examples/sample-project-notes.md
+```
+
+Expect a digest card (≤3 sentences + 〔§…〕 cites), then a `sum>` document dialogue on TTY. `/keep` to archive; `--no-chat` for card-only.
+
+---
+
+## 11. News sniff (story 6c)
+
+```bash
+la news sync
+la news brief
+```
+
+Expect RSS items synced; on TTY, an interactive browser (↑↓, `o` open URL, `r` deep-read chat). Use `--no-ui` for scripts. Optional: `la news schedule on` for 08:00 auto-sync.
+
+---
+
+## 12. One-click polish (story 6d)
+
+```bash
+la polish --no-copy --scene email "Hi — could you send the proposal this week? We're a bit blocked."
+```
+
+Expect 【识别】/【主推】/【备选】/【改动】. Without `--no-copy`, primary is copied to the clipboard.
+
+---
+
 ## Acceptance checklist
 
 Map to [PRD §6](../docs/PRD.md) acceptance — you should be able to check:
@@ -731,6 +765,9 @@ Map to [PRD §6](../docs/PRD.md) acceptance — you should be able to check:
 - [ ] **Story 7**: Small-model chat auto-calls `web_search` (ddgs by default) with grounded answers  
 - [ ] **Stories 8–9**: Shell / write prompts for approval; dangerous ops warn or hard-block  
 - [ ] **Story 10**: `LA audit` shows tokens & cost; `--report out.html` exports HTML  
+- [ ] **Story 6b**: `la summarize` shows digest; TTY enters `sum>`; not kept by default  
+- [ ] **Story 6c**: `la news sync` + `la news brief` (or `--no-ui`) shows items with source URLs  
+- [ ] **Story 6d**: `la polish --no-copy` shows Brief + primary/alternates; without `--no-copy`, primary is paste-ready  
 - [ ] **Advanced**: Clear-path writes approve and write; May vs July + `reflect` explains the arc  
 
 ---

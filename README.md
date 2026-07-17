@@ -36,7 +36,7 @@ Optional OpenRouter / Cursor / Tavily for extras — **identity and data stay on
 
 ### TODO / Coming soon
 
-- **One-click summarize** — drop in a long PDF (or local doc) and get a 3-sentence TL;DR + structured key points you can digest in ~3 minutes; data stays on your machine. Docs and product tour will be updated when it ships. Stay tuned.
+- **Long-document summarize (Map-Reduce)** — hierarchical summary for very long PDFs; short-doc path is already available (see below).
 - **Not in this release:** workspace file-watcher incremental indexing, and external task sources.
 
 ### User stories
@@ -53,6 +53,11 @@ Optional OpenRouter / Cursor / Tavily for extras — **identity and data stay on
 | Have dangerous commands blocked | [Agent tools & safety](#agent-tools--safety) · [Product tour §7](examples/product-tour.md) |
 | See token / cost spend | `LA audit` · [Product tour §8](examples/product-tour.md) |
 | Put local docs in a KB and recall deeply | `LA rag add` · [Product tour §5](examples/product-tour.md) |
+| One-click summarize a local doc (document dialogue by default) | `la summarize <path>` · `/keep` in `sum>` to archive; `--no-chat` for digest-only |
+| News sniff / daily brief | `la news sync` → `la news brief` (interactive on TTY); `r` deep-read chat; `la news schedule on` |
+| One-click polish copy (clipboard by default) | `la polish` / `/polish` · `--scene` / `--tone` / `--no-copy` |
+
+> **Daily trio** (most used): [summarize · news · polish](#daily-essentials-summarize--news--polish)
 
 ### What we believe
 
@@ -80,7 +85,10 @@ la                              # asks before installing Ollama (you can skip)
 - **Mem0 + conversation memory**: ChatGPT history and LA chats → Warm facts **and** Cold searchable archives; docs via `LA rag` into Cold
 - **External tools + safety**: workspace + `run_shell` + write_file; approve before execute; hard-block dangerous commands; write-file hallucination detection
 - **Web search**: ddgs by default (no key); optional Tavily / SearXNG
-- **Document knowledge base (RAG)**: symlink personal files; Chroma + BM25 hybrid search
+- **Document knowledge base (RAG)**: symlink personal files (including PDF); Chroma + BM25 hybrid search
+- **One-click summarize**: `la summarize` for txt / md / pdf / xlsx — up to three sentences + cited key points, then a `sum>` document dialogue by default; `--no-chat` for digest-only (multi-file ok); **not kept by default** — `/keep` or `--keep` to archive (never prompts after every run)
+- **News sniff**: `la news sync` pulls BestBlogs RSS; `la news brief` opens an interactive browser on TTY (↑↓ navigate, `o` open URL, `r` deep-read chat); use `--no-ui` to dump; `la news schedule on` enables 08:00 auto-sync
+- **One-click polish**: `la polish` / `/polish` detects email / Moments / resume / business-chat scene and attitude, rewrites with primary + alternates; **copies primary to clipboard by default**
 - **Multi-model chat**: unified Ollama / OpenRouter / Cursor entry; `auto` mode falls back by priority
 - **Auditable**: tokens/cost, agent behavior, guardrail blocks, sensitive-file scan — exportable Markdown reports
 
@@ -254,18 +262,60 @@ In the current project (`/Users/hzh/code/LocalAgent`), main language files (Pyth
 
 Use cases: LOC counts, listing directories, Git logs, running tests/builds. Commands run in the workspace (`LA_WORKSPACE` or cwd); default timeout 30s. **Every shell/file write asks for approval by default**; `rm` / `sudo` / force-git and similar get an extra warning. Set `LA_TOOL_APPROVAL=dangerous` to only gate risky ops, or `off` to disable (not recommended).
 
+### Daily essentials: summarize · news · polish
+
+Three side-path commands built for **everyday** use — read a doc, skim a brief, polish a draft — without a long agent tool loop.
+
+#### 1. One-click summarize — 3-minute digest + document dialogue
+
+```bash
+la summarize ~/Documents/plan.pdf          # digest card → sum> dialogue
+la summarize notes.md --no-chat            # card only (multi-file ok)
+la summarize report.xlsx --keep            # also archive to KB
+```
+
+- Output: up to three sentences + key points with 〔§section | p.page〕 cites
+- **Not kept by default**; `/keep` in `sum>` or pass `--keep`
+- Ask follow-ups in `sum>` (`/summary` re-show card, `/exit` leave)
+
+#### 2. News sniff — trusted sources → today's brief
+
+Default feed: [BestBlogs](https://www.bestblogs.dev/) AI RSS (override with `LA_NEWS_RSS_URL`):
+
+```bash
+la news sync
+la news brief                  # TTY: interactive browser (recommended)
+la news brief --no-ui          # dump all items at once
+la news schedule on            # auto-sync at 08:00 (off to disable)
+```
+
+Keys in the interactive brief: ↑↓ navigate · `o` open in browser · `s` skim · `r` deep-read chat · `b`/`x`/`c` bookmark/skip/copy · `q` quit.
+
+Chat startup notifies when today's sync is ready.
+
+#### 3. One-click polish — rewrite ready to send
+
+```bash
+la polish "nudge about the proposal"
+la polish --scene email --tone more-formal "…"
+la polish --no-copy --file draft.txt
+```
+
+In-session: `/polish --scene email …`. Primary rewrite is copied to the clipboard by default; press `2`/`3` to copy an alternate. Resume mode never invents numbers not in the draft.
+
 The repo includes a **product tour** (user-story driven, full I/O, ~30 min) and a shorter walkthrough:
 
 | # | Scenario | Command |
 | --- | --- | --- |
 | 1 | Write & recall a single memory | `LA memory add` → `LA memory search` |
 | 2 | Import & recall a Markdown file | `LA rag add` → `LA rag search` |
-| 3 | Search recent news online | `LA chat` or `/deepsearch` (no API key required by default) |
-| 4 | **Fully local** qwen3.5:4b | `LA chat --provider ollama` |
-| 5 | Answer about local work | `LA workspace` / `LA chat --cwd .` |
-| 6 | Agent runs terminal commands | `LA chat` → “count project LOC” |
-| 7 | Write file + hallucination check | `LA chat` → clear path & content → approve |
-| 8 | Audit report (Ollama $0) | `LA audit --since 7d` |
+| 3 | **Summarize** a local doc | `la summarize <path>` → `sum>` |
+| 4 | **News sniff** daily brief | `la news sync` → `la news brief` |
+| 5 | **Polish** email / Moments draft | `la polish "draft"` / `/polish` |
+| 6 | Search recent news online | `LA chat` or `/deepsearch` |
+| 7 | **Fully local** qwen3.5:4b | `LA chat --provider ollama` |
+| 8 | Agent runs terminal commands | `LA chat` → “count project LOC” |
+| 9 | Audit report (Ollama $0) | `LA audit --since 7d` |
 
 ```bash
 # Full product tour (recommended): user stories · complete input/output
@@ -380,6 +430,9 @@ See [`.env.example`](.env.example). Common variables:
 | `LA_SHELL_TIMEOUT` / `LA_SHELL_MAX_OUTPUT` | Agent `run_shell` timeout (s) and output cap (default 30s / 12000 chars) |
 | `LA_TOOL_APPROVAL` | Approve before tools run: `always` (default) / `dangerous` / `off` |
 | `LA_DATA_DIR` | Custom data dir (for test isolation) |
+| `LA_NEWS_RSS_URL` | News sniff RSS (default BestBlogs AI curated) |
+| `LA_NEWS_AUTO_SYNC` / `_HOUR` | Morning auto-sync intent + hour (`la news schedule on`) |
+| `LA_SUMMARIZE_SHORT_MAX_CHARS` | Summarize short-path char cap (default 12000) |
 | `LA_LOG_LEVEL` | Diagnostic log level: `INFO` (default) / `DEBUG` / `WARNING` … |
 
 ## Commands
@@ -404,11 +457,15 @@ Everyday:
   LA memory add|search|pending|approve|reject|forget
   LA memory ingest chatgpt <path>   # Import ChatGPT export
   LA rag add|search                 # Documents → Cold KB
+  la summarize <path>               # One-click summarize → doc dialogue
+  la news sync|brief|schedule       # News sniff / daily brief
+  la polish "draft"                 # One-click polish (copies primary)
   LA audit                          # Spend / safety report
 
 Maintenance (advanced):
   memory ingest chat|all · query · reflect · status · reindex · reset · graph
   rag ingest|rebuild|reset · tasks · workspace · logs · websearch
+  news skim|read|mark|interests|status|sources
 ```
 
 `LA logs` shows runtime diagnostics (`data/logs/localagent.log`) — provider fallbacks, memory recall hits, agent retries. This is separate from `LA audit` (usage/cost/guardrails). Use `LA --debug <command>` or `LA_LOG_LEVEL=DEBUG` to mirror DEBUG lines to stderr while developing.
@@ -423,6 +480,7 @@ Runtime data defaults to `data/` (gitignored — not committed):
 data/
 ├── kb/                        # Symlinked personal files
 ├── core_profile.json          # Hot-layer core facts
+├── news/                      # News sniff: articles.sqlite · profile · sync_state · cache/
 ├── sync_index.json            # Indexed file registry
 ├── conversations/             # Chat archives
 ├── chatGPTdata/               # ChatGPT export archive

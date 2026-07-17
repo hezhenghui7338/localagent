@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from prompt_toolkit.completion import CompleteEvent
 from prompt_toolkit.document import Document
+from prompt_toolkit.shortcuts.prompt import CompleteStyle
 
+import localagent.ui.prompt_session as prompt_session
 from localagent.ui.prompt_session import (
     SessionSlashCompleter,
     _token_before_cursor,
@@ -60,3 +62,9 @@ def test_clear_history_resets_session_history():
     assert list(session.history.get_strings()) == ["first"]
     clear_history()
     assert list(get_repl_session().history.get_strings()) == []
+
+
+def test_repl_session_uses_multi_column_completions():
+    prompt_session._SESSION = None
+    session = get_repl_session()
+    assert session.complete_style is CompleteStyle.MULTI_COLUMN

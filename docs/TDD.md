@@ -47,12 +47,15 @@ src/localagent/
 │   ├── bm25_store.py
 │   ├── hybrid.py
 │   └── indexer.py
-├── ingest/                # rag add / rag ingest / pipeline (Cold only)
+├── ingest/                # rag add / rag ingest / pipeline (Cold only); PDF loader
+├── summarize/             # la summarize：短路径卡片 + DocumentChatREPL（sum>）
+├── news/                  # 新闻嗅探：RSS sync / brief TUI / read / schedule / notify
+├── writing/               # la polish：场景润色 + 剪贴板
 ├── pending/               # 确认门
 ├── persist/               # conversations jsonl + sessions.db
 ├── workspace/             # git / recent files / todos
 ├── audit/                 # usage log, security scan, reports
-└── tools/                 # search_memory / search_knowledge / web_search / workspace_context
+└── tools/                 # … + summarize_document + news_*
 ```
 
 ## 3. 数据目录
@@ -61,6 +64,7 @@ src/localagent/
 data/
 ├── kb/                  # 软链接
 ├── core_profile.json
+├── news/                # articles.sqlite · news_profile.json · sync_state.json · cache/
 ├── sync_index.json
 ├── pending_queue.json
 ├── conversations/*.jsonl
@@ -79,6 +83,9 @@ data/
 | Warm 写入确认 | `LA_MEMORY_APPROVAL_REQUIRED`（默认开）：非交互提取入 `pending_queue.json`；`approve`/`reject`；`LA_MEMORY_APPROVAL_AUTO=1` 跳过（CI） |
 | 记忆引擎 | Mem0（主依赖）+ JSON fallback / 注册表 |
 | 知识检索 | Chroma + BM25 + RRF；文档与对话归档入 Cold |
+| 一键总结 | 短路径单次生成（1～最多 3 句 + 〔§/p.〕引用）；TTY 默认 `DocumentChatREPL`（`sum>`）；默认不入库；长文 Map-Reduce 后续 |
+| 新闻嗅探 | BestBlogs RSS → SQLite；兴趣重排；`brief` TTY 用 prompt_toolkit 浏览器（↑↓ / o→webbrowser / r→精读+DocumentChatREPL）；launchd/cron 早 8 点 sync；chat 启动就绪通知 |
+| 一键润色 | `writing/polish.py` 旁路 Agent；场景/态度识别 → 主推+备选；默认 `clipboard.copy_text` |
 | 编排 | LangGraph + SQLite Checkpointer |
 | 联网 | **ddgs 默认**（无需 Key）；可选 Tavily / SearXNG |
 | 模型 | Ollama 优先，OpenRouter/Cursor 降级 |

@@ -200,6 +200,7 @@ def print_session_help() -> None:
     print("  /reflect <问题>        综合推理：记忆召回 → 知识库 → 归纳")
     print("  /websearch <关键词>    联网搜索（专注互联网）")
     print("  /deepsearch <主题>     多步联网深度研究")
+    print("  /polish <草稿>         一键润色（场景识别 + 复制主推）")
     print("  /q, /quit, /exit       退出对话")
     print()
     print("外层 LA <command> 与会话内 /<command> 等价（/chat 除外）。")
