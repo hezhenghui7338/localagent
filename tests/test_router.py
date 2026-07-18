@@ -104,6 +104,33 @@ def test_resolve_effective_provider_auto(monkeypatch):
     assert router.resolve_effective_provider("cursor") == "cursor"
 
 
+def test_is_ollama_model_loaded():
+    router = ModelRouter()
+    running = [{"name": "qwen3.5:4b", "capabilities": ["completion"]}]
+    with patch.object(router, "_list_running_ollama_models", return_value=running):
+        assert router.is_ollama_model_loaded("qwen3.5:4b")
+        assert not router.is_ollama_model_loaded("mistral:7b")
+
+
+def test_should_hint_ollama_cold_start(monkeypatch):
+    monkeypatch.setattr(
+        "localagent.models.router.config.MODEL_PROVIDER_PRIORITY",
+        ["ollama", "openrouter"],
+    )
+    router = ModelRouter()
+    with patch.object(router, "is_ollama_available", return_value=True):
+        with patch.object(router, "is_ollama_model_loaded", return_value=False):
+            assert router.should_hint_ollama_cold_start("ollama")
+            assert router.should_hint_ollama_cold_start("auto")
+            assert not router.should_hint_ollama_cold_start("openrouter")
+        with patch.object(router, "is_ollama_model_loaded", return_value=True):
+            assert not router.should_hint_ollama_cold_start("ollama")
+    router._ollama_slow = True
+    with patch.object(router, "is_ollama_available", return_value=True):
+        with patch.object(router, "is_ollama_model_loaded", return_value=False):
+            assert not router.should_hint_ollama_cold_start("auto")
+
+
 def test_provider_order_auto_uses_env_priority(monkeypatch):
     monkeypatch.setattr(
         "localagent.models.router.config.MODEL_PROVIDER_PRIORITY",

@@ -19,9 +19,9 @@
       "hero.ctaInstall": "快速安装",
       "hero.ctaDemo": "看演示 →",
       "features.eyebrow": "产品设计",
-      "features.title": "记得住你。把事办完。数据留本机。",
+      "features.title": "本地优先。真记得你。把事办完。",
       "features.lead":
-        "不是又一个 Chat 壳——本地个人 AI。算力默认本机，模型可换、与 LocalAgent 正交；会话、记忆与审计由本机持有。",
+        "装上就能聊、能记住、能动手办事——默认本机跑通，云端可选增强；你的身份与数据不离开本机。",
       "features.f1.title": "Local First",
       "features.f1.body":
         "默认零账单路径：对话、记忆、检索、工具可纯本地跑通。主路径 <code>la</code> · <code>la setup</code> · <code>la chat</code>。可选云端——身份与数据留本机。",
@@ -92,9 +92,9 @@
       "hero.ctaDemo": "See the demo →",
       "features.eyebrow": "Product design",
       "features.title":
-        "Remembers you. Gets things done. Stays on your machine.",
+        "Local first. Really remembers you. Gets things done.",
       "features.lead":
-        "Not another chat shell — a local personal AI. Compute defaults to your machine; models are orthogonal and swappable. LocalAgent owns sessions, memory, and audit on your machine.",
+        "Install and you’re chatting, remembered, and getting work done — on-device by default, cloud optional; your identity and data stay on your machine.",
       "features.f1.title": "Local First",
       "features.f1.body":
         "Zero-bill default path: chat, memory, retrieval, and tools run on-device. Main path: <code>la</code> · <code>la setup</code> · <code>la chat</code>. Optional cloud — identity and data stay local.",

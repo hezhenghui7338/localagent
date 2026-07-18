@@ -120,6 +120,7 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
     mock_router.extract_facts.return_value = []
     mock_router.extract_memories.return_value = []
     mock_router.extract_profile_updates.return_value = []
+    mock_router.should_hint_ollama_cold_start.return_value = False
     mock_router.chat.return_value = "测试回复"
     router_targets = (
         "localagent.models.router.get_model_router",

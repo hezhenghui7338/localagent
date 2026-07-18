@@ -1253,7 +1253,10 @@ def run_agent_turn(
     reply = ""
     for iteration in range(3):
         if iteration == 0:
-            _status("生成回复…")
+            if router.should_hint_ollama_cold_start(prefer):
+                _status("生成回复（本地模型首次加载可能较慢）…")
+            else:
+                _status("生成回复…")
         else:
             _status(f"综合工具结果 (第 {iteration + 1} 轮)…")
 

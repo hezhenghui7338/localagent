@@ -194,6 +194,16 @@ def test_run_agent_turn_empty_reply_gets_fallback(isolated_data):
     assert isolated_data["router"].chat.call_count == 3
 
 
+def test_run_agent_turn_hints_ollama_cold_start(isolated_data):
+    statuses: list[str] = []
+    isolated_data["router"].should_hint_ollama_cold_start.return_value = True
+    isolated_data["router"].chat.return_value = "你好"
+
+    run_agent_turn("hi", provider="ollama", on_status=statuses.append)
+
+    assert any("首次加载可能较慢" in s for s in statuses)
+
+
 def test_looks_incomplete_reply_detects_truncated_synthesis():
     assert _looks_incomplete_reply("根据", had_tools=True)
     assert _looks_incomplete_reply("根据工具结果，", had_tools=True)
