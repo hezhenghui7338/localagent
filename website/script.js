@@ -1,5 +1,7 @@
 (() => {
-  const STORAGE_KEY = "la-site-lang";
+  // v2: ignore legacy auto-detected lang so the site defaults to English.
+  const STORAGE_KEY = "la-site-lang-v2";
+  const LEGACY_STORAGE_KEY = "la-site-lang";
   const INSTALL_CMD =
     'pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"\nla';
 
@@ -102,15 +104,25 @@
     },
   };
 
-  function detectLang() {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved === "zh" || saved === "en") return saved;
+  let currentLang = "en";
+
+  function preferredLang() {
+    try {
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved === "zh" || saved === "en") return saved;
+    } catch {
+      /* private mode / blocked storage */
+    }
     return "en";
   }
 
-  function applyLang(lang) {
-    const dict = strings[lang] || strings.en;
-    document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  function applyLang(lang, { persist = false } = {}) {
+    const next = lang === "zh" ? "zh" : "en";
+    currentLang = next;
+    const dict = strings[next];
+
+    document.documentElement.lang = next === "zh" ? "zh-CN" : "en";
     document.title = dict.title;
 
     const meta = document.querySelector('meta[name="description"]');
@@ -126,20 +138,29 @@
     const logo = document.getElementById("hero-logo");
     if (logo) {
       logo.src =
-        lang === "zh" ? "assets/logo.zh-CN.png" : "assets/logo.png";
+        next === "zh" ? "assets/logo.zh-CN.png" : "assets/logo.png";
     }
 
     document.querySelectorAll(".lang-switch [data-lang]").forEach((btn) => {
-      btn.classList.toggle("is-active", btn.getAttribute("data-lang") === lang);
+      btn.classList.toggle(
+        "is-active",
+        btn.getAttribute("data-lang") === next,
+      );
     });
 
-    localStorage.setItem(STORAGE_KEY, lang);
+    if (persist) {
+      try {
+        localStorage.setItem(STORAGE_KEY, next);
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   function setupLangSwitch() {
     document.querySelectorAll(".lang-switch [data-lang]").forEach((btn) => {
       btn.addEventListener("click", () => {
-        applyLang(btn.getAttribute("data-lang"));
+        applyLang(btn.getAttribute("data-lang"), { persist: true });
       });
     });
   }
@@ -149,8 +170,7 @@
     if (!btn) return;
 
     btn.addEventListener("click", async () => {
-      const lang = localStorage.getItem(STORAGE_KEY) || detectLang();
-      const dict = strings[lang] || strings.en;
+      const dict = strings[currentLang] || strings.en;
       try {
         await navigator.clipboard.writeText(INSTALL_CMD);
       } catch {
@@ -173,7 +193,7 @@
     });
   }
 
-  applyLang(detectLang());
+  applyLang(preferredLang());
   setupLangSwitch();
   setupCopy();
 })();
