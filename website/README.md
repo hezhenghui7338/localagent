@@ -13,24 +13,28 @@ python3 -m http.server 8080
 
 Then visit `http://127.0.0.1:8080`.
 
-## Deploy on Cloudflare Pages / Workers
+## Deploy on Cloudflare Workers
 
 Current production URL:
 
 **https://localagent.zhenghui7338.workers.dev/**
 
-Typical Pages setup:
+This site is a static asset Worker. Repo root `wrangler.jsonc` points `assets.directory` at `./website`.
 
-1. In [Cloudflare Dashboard](https://dash.cloudflare.com/) → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**.
-2. Select the `hezhenghui7338/localagent` repository.
-3. Build settings:
-   - **Framework preset**: None
-   - **Build command**: leave empty
-   - **Build output directory**: `website`
-4. Save and deploy. Cloudflare will republish on pushes to the connected branch.
+### CLI
+
+```bash
+npx wrangler deploy
+```
+
+### Git / Dashboard
+
+1. In [Cloudflare Dashboard](https://dash.cloudflare.com/) → **Workers & Pages** → connect the `hezhenghui7338/localagent` repository as a **Worker**.
+2. Ensure the project uses the root `wrangler.jsonc` (no build command needed).
+3. Deploy / push; Cloudflare will upload files under `website/`.
 
 ### Optional custom domain
 
-1. Open the Pages project → **Custom domains** → **Set up a custom domain**.
+1. Open the Worker → **Settings** → **Domains & Routes** (or **Custom domains**).
 2. Add your domain (e.g. `localagent.dev`) and follow DNS / SSL prompts.
 3. When ready, update README / `pyproject.toml` Homepage links to the custom domain.
