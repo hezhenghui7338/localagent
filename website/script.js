@@ -21,7 +21,7 @@
       "features.eyebrow": "产品设计",
       "features.title": "记得住你。把事办完。数据留本机。",
       "features.lead":
-        "不是又一个 Chat 壳——本地个人 AI。模型是算力；会话、记忆与审计由 LocalAgent 在本机持有。",
+        "不是又一个 Chat 壳——本地个人 AI。算力默认本机，模型可换、与 LocalAgent 正交；会话、记忆与审计由本机持有。",
       "features.f1.title": "Local First",
       "features.f1.body":
         "默认零账单路径：对话、记忆、检索、工具可纯本地跑通。主路径 <code>la</code> · <code>la setup</code> · <code>la chat</code>。可选云端——身份与数据留本机。",
@@ -94,7 +94,7 @@
       "features.title":
         "Remembers you. Gets things done. Stays on your machine.",
       "features.lead":
-        "Not another chat shell — a local personal AI. Models are compute; LocalAgent owns sessions, memory, and audit on your machine.",
+        "Not another chat shell — a local personal AI. Compute defaults to your machine; models are orthogonal and swappable. LocalAgent owns sessions, memory, and audit on your machine.",
       "features.f1.title": "Local First",
       "features.f1.body":
         "Zero-bill default path: chat, memory, retrieval, and tools run on-device. Main path: <code>la</code> · <code>la setup</code> · <code>la chat</code>. Optional cloud — identity and data stay local.",
