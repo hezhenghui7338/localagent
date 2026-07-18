@@ -33,7 +33,7 @@ la
 ## 要求
 
 - Python 3.10+
-- **至少一种模型算力**：自有 API（OpenRouter / OpenAI / Cursor 等）**或** 本机模型服务
+- **至少一种推理路径**：本机模型服务（如 Ollama）**或** 云端 API（OpenRouter / OpenAI / Cursor 等）
 - **没有 API 时推荐**：[Ollama](https://ollama.com/)，默认 `qwen3.5:4b`（`la setup` 可装，可跳过）
 
 ## 特性
@@ -576,7 +576,7 @@ Mem0 / JSON 存储                      Reflect（多跳检索 + LLM）
 
 ### 模型路由
 
-`ModelRouter` 统一 **Ollama**（默认本地）、**OpenAI**、**OpenRouter**、**Cursor**。`auto` 模式按 `LA_MODEL_PROVIDER_PRIORITY` 降级。模型只是算力供应商；会话、记忆与审计数据由 LocalAgent 落盘保管。
+`ModelRouter` 统一 **Ollama**（默认本地）、**OpenAI**、**OpenRouter**、**Cursor**。`auto` 模式按 `LA_MODEL_PROVIDER_PRIORITY` 降级。算力默认本机（Ollama），可扩展到 OpenAI / OpenRouter / Cursor 等；模型与 LocalAgent 正交——小模型可跑通基本任务，更好的模型效果更好。会话、记忆与审计由 LocalAgent 落盘保管。
 
 ### 源码模块一览
 

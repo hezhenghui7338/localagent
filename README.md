@@ -33,7 +33,7 @@ Upgrade / dev / uninstall → [Install & upgrade](#install--upgrade)
 ## Requirements
 
 - Python 3.10+
-- **At least one model backend**: your own API (OpenRouter / OpenAI / Cursor, …) **or** a local model server
+- **At least one inference path**: a local model server (e.g. Ollama) **or** a cloud API (OpenRouter / OpenAI / Cursor, …)
 - **If you have no API**, [Ollama](https://ollama.com/) is recommended (default `qwen3.5:4b`; `la setup` can install — skippable)
 
 ## Features
@@ -561,7 +561,7 @@ Side-effect tools are gated (`always` / `dangerous` / `off`). Extreme commands (
 
 ### Model routing
 
-`ModelRouter` unifies **Ollama** (default local), **OpenAI**, **OpenRouter**, and **Cursor**. In `auto` mode it follows `LA_MODEL_PROVIDER_PRIORITY` and falls back when a path is slow or unavailable. Models are compute providers; LocalAgent owns sessions, memory, and audit data on disk.
+`ModelRouter` unifies **Ollama** (default local), **OpenAI**, **OpenRouter**, and **Cursor**. In `auto` mode it follows `LA_MODEL_PROVIDER_PRIORITY` and falls back when a path is slow or unavailable. Compute defaults to local (Ollama) and can extend to OpenAI / OpenRouter / Cursor; models are orthogonal to LocalAgent — a small model can cover the basics, a better model improves quality. LocalAgent owns sessions, memory, and audit data on disk.
 
 ### Module map (source)
 
