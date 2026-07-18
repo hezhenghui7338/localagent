@@ -123,6 +123,12 @@ def _draw_chrome(draw: ImageDraw.ImageDraw, width: int, title_font: ImageFont.Im
     return bar_h
 
 
+def _row_height(kind: str, text: str, font: ImageFont.ImageFont, label_font: ImageFont.ImageFont) -> int:
+    use_font = label_font if kind == "label" else font
+    bbox = use_font.getbbox(text or " ")
+    return max(18, bbox[3] - bbox[1])
+
+
 def _layout_lines(
     events: list[dict],
     *,
@@ -132,7 +138,7 @@ def _layout_lines(
     label_font: ImageFont.ImageFont,
     draw: ImageDraw.ImageDraw,
 ) -> list[tuple[str, str, int]]:
-    """Return visible rows as (kind, text, y)."""
+    """Return rows as (kind, text, y) in content coordinates (may extend past frame)."""
     pad_x = 28
     max_w = width - pad_x * 2
     y = body_top + 22
@@ -149,12 +155,39 @@ def _layout_lines(
         wrapped = _wrap_text(text, use_font, max_w, draw)
         for part in wrapped:
             rows.append((kind, part, y))
-            bbox = use_font.getbbox(part or " ")
-            h = max(18, bbox[3] - bbox[1])
-            y += h + line_gap
+            y += _row_height(kind, part, font, label_font) + line_gap
         if kind == "label":
             y += 4
     return rows
+
+
+def _scroll_rows(
+    rows: list[tuple[str, str, int]],
+    *,
+    height: int,
+    body_top: int,
+    font: ImageFont.ImageFont,
+    label_font: ImageFont.ImageFont,
+    bottom_pad: int = 18,
+) -> tuple[list[tuple[str, str, int]], int]:
+    """Pin latest lines in view; return (visible rows with adjusted y, scroll_offset)."""
+    if not rows:
+        return [], 0
+    last_kind, last_text, last_y = rows[-1]
+    content_bottom = last_y + _row_height(last_kind, last_text, font, label_font)
+    view_bottom = height - bottom_pad
+    scroll = max(0, content_bottom - view_bottom)
+    if scroll == 0:
+        return rows, 0
+    visible: list[tuple[str, str, int]] = []
+    for kind, text, y in rows:
+        ny = y - scroll
+        line_h = _row_height(kind, text, font, label_font)
+        # Keep any line that intersects the body viewport.
+        if ny + line_h < body_top + 4 or ny > height:
+            continue
+        visible.append((kind, text, ny))
+    return visible, scroll
 
 
 def render_frame(
@@ -170,18 +203,28 @@ def render_frame(
     bar_h = _draw_chrome(draw, width, fonts["title"])
     draw.rectangle((0, bar_h, width, height), fill=COLORS["bg"])
 
-    for kind, text, y in rows:
+    scrolled, scroll = _scroll_rows(
+        rows,
+        height=height,
+        body_top=bar_h,
+        font=fonts["body"],
+        label_font=fonts["label"],
+    )
+
+    for kind, text, y in scrolled:
         color = KIND_COLOR.get(kind, COLORS["text"])
         font = fonts["label"] if kind == "label" else fonts["body"]
         draw.text((28, y), text, fill=color, font=font)
 
     if cursor is not None:
         kind, x, y = cursor
-        color = KIND_COLOR.get(kind, COLORS["text"])
-        font = fonts["body"]
-        ch_w = max(8, int(draw.textlength("M", font=font)))
-        ch_h = 16
-        draw.rectangle((x, y + 2, x + max(2, ch_w // 3), y + ch_h), fill=color)
+        y = y - scroll
+        if y + 16 >= bar_h and y <= height:
+            color = KIND_COLOR.get(kind, COLORS["text"])
+            font = fonts["body"]
+            ch_w = max(8, int(draw.textlength("M", font=font)))
+            ch_h = 16
+            draw.rectangle((x, y + 2, x + max(2, ch_w // 3), y + ch_h), fill=color)
 
     return img
 
