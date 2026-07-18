@@ -5,7 +5,7 @@ Static landing page for [https://localagent.zhenghui7338.workers.dev/](https://l
 ## Sections
 
 - **Hero / Features / Install / Contact** — brand + pillars + quick start
-- **Demo (`#demo`)** — three pre-recorded wow-moment walkthroughs (setup / memory / deep-read). Deep links: `#demo-setup`, `#demo-memory`, `#demo-deepread`
+- **Demo (`#demo`)** — three short looping MP4 clips (setup / memory / deep-read), EN + ZH. Deep links: `#demo-setup`, `#demo-memory`, `#demo-deepread`
 
 ## Local preview
 
@@ -17,6 +17,22 @@ python3 -m http.server 8080
 ```
 
 Then visit `http://127.0.0.1:8080`.
+
+## Regenerate demo videos
+
+Clips live in `assets/demos/` (`{setup,memory,deepread}.{en,zh}.mp4` + `.poster.jpg`).
+
+Source of truth for terminal content: [`demos/scenes.json`](demos/scenes.json).
+
+```bash
+# once: python3 -m pip install pillow imageio imageio-ffmpeg numpy
+cd website/demos
+./render.sh
+# or: python3 render_demos.py
+# or only one: python3 render_demos.py --only setup.en
+```
+
+Optional [VHS](https://github.com/charmbracelet/vhs) stubs live under `demos/tapes/` if you prefer that toolchain later; keep output size **960×560**.
 
 ## Deploy on Cloudflare Pages / Workers
 

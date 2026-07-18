@@ -36,6 +36,29 @@ la
 - **至少一种推理路径**：本机模型服务（如 Ollama）**或** 云端 API（OpenRouter / OpenAI / Cursor 等）
 - **没有 API 时推荐**：[Ollama](https://ollama.com/)（`la setup` 可装，可跳过）。默认对话模型按系统内存分档（见 [Ollama 提示](#ollama-提示)）
 
+## 支持的环境
+
+主战场是**带本机 Ollama 的个人电脑**。操作系统重要，但**内存档位**和**Shell**同样决定第一天体验。
+
+| 优先级 | 环境 | 典型机器 | 说明 |
+| --- | --- | --- | --- |
+| **P0** | **macOS（Apple Silicon）** | M1–M4，16GB+ | 本地体验最好；统一内存 + Ollama |
+| **P0** | **Windows 10/11 原生** | 笔记本/台式，8–32GB | `la setup` 走 winget 或 [ollama.com/download](https://ollama.com/download) |
+| **P0** | **Linux x86_64**（优先 Ubuntu/Debian） | 开发机、小主机 | 与 CI 最接近；官方安装脚本路径 |
+| **P1** | 低配机（任意 OS） | 总内存 4–8GB | Mini 档 `qwen2.5:0.5b`——能聊；多工具 Agent 较弱 |
+| **P1** | 中高配（任意 OS） | ≥14GB | 主推质量档 `qwen3.5:4b` |
+| **P2** | WSL2 | Windows 内 Linux | 按 Linux 路径用；不单独做安装器 |
+| **P2** | macOS Intel | 老款 Intel Mac | 能跑即可，不优先打磨 |
+| **P2** | Linux aarch64 | ARM 板 / 部分云主机 | 尽力兼容；轮子与 Ollama 因机而异 |
+| — | 移动端、以 Docker 为主路径、纯机房 GPU 集群 | — | 不在「本机个人助理」主路径内 |
+
+**跨平台约定：**
+
+- **运行时：** Ollama 为一等公民；OpenAI 兼容本地服务仍可通过 YAML 高级配置接入。
+- **Shell：** bash/zsh 有 Tab 补全；PowerShell/cmd 可跑 `la` / `la setup` / 对话（补全暂跳过）。
+- **功能对齐：** P0 上 Chat、setup、记忆、RAG 必须可用。部分旁路可滞后（例如 Windows 上 `la news schedule` 暂不可用——请 `la news sync` 或用任务计划程序）。
+- **内存 → 模型：** 三端共用同一套档位——见 [Ollama 提示](#ollama-提示)。
+
 ## <img src="assets/icons/features.svg" alt="" width="28" valign="middle"> 特性
 
 默认本地跑通；可选云端与联网。详解：[一键总结 · 新闻嗅探 · 一键润色](#日常实用一键总结--新闻嗅探--一键润色)。

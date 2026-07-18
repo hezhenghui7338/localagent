@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
-  <rect width="128" height="128" rx="28" fill="#f0fdfa"/>
-  <!-- soft sliders -->
-  <rect x="28" y="34" width="72" height="14" rx="7" fill="#94a3b8"/>
-  <circle cx="52" cy="41" r="12" fill="#14b8a6"/>
-  <circle cx="52" cy="41" r="5" fill="#67e8f9"/>
-  <rect x="28" y="57" width="72" height="14" rx="7" fill="#94a3b8"/>
-  <circle cx="78" cy="64" r="12" fill="#0f766e"/>
-  <circle cx="78" cy="64" r="5" fill="#67e8f9"/>
-  <rect x="28" y="80" width="72" height="14" rx="7" fill="#94a3b8"/>
-  <circle cx="44" cy="87" r="12" fill="#38bdf8"/>
-  <circle cx="44" cy="87" r="5" fill="#f0fdfa"/>
+  <rect width="128" height="128" rx="28" fill="#0A0A1A"/>
+  <circle cx="116" cy="12" r="20" fill="#FF006E"/>
+  <rect x="16" y="22" width="96" height="20" rx="10" fill="#1A1A3A"/>
+  <circle cx="46" cy="32" r="18" fill="#FF006E"/>
+  <circle cx="46" cy="32" r="8" fill="#FFBE0B"/>
+  <rect x="16" y="54" width="96" height="20" rx="10" fill="#1A1A3A"/>
+  <circle cx="86" cy="64" r="18" fill="#3A86FF"/>
+  <circle cx="86" cy="64" r="8" fill="#FFFFFF"/>
+  <rect x="16" y="86" width="96" height="20" rx="10" fill="#1A1A3A"/>
+  <circle cx="38" cy="96" r="18" fill="#06FFA5"/>
+  <circle cx="38" cy="96" r="8" fill="#0A0A1A"/>
 </svg>

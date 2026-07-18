@@ -1,14 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
-  <rect width="128" height="128" rx="28" fill="#f0fdfa"/>
-  <!-- layered modules -->
-  <rect x="36" y="24" width="56" height="22" rx="8" fill="#14b8a6"/>
-  <rect x="24" y="54" width="36" height="22" rx="8" fill="#0f766e"/>
-  <rect x="68" y="54" width="36" height="22" rx="8" fill="#38bdf8"/>
-  <rect x="36" y="84" width="56" height="22" rx="8" fill="#334155"/>
-  <!-- connectors -->
-  <path d="M64 46v8M42 76v8M86 76v8" stroke="#94a3b8" stroke-width="4" stroke-linecap="round"/>
-  <circle cx="64" cy="35" r="4" fill="#67e8f9"/>
-  <circle cx="42" cy="65" r="3.5" fill="#67e8f9"/>
-  <circle cx="86" cy="65" r="3.5" fill="#f0fdfa"/>
-  <circle cx="64" cy="95" r="4" fill="#14b8a6"/>
+  <rect width="128" height="128" rx="28" fill="#0A0A1A"/>
+  <circle cx="10" cy="64" r="18" fill="#FF006E"/>
+  <rect x="28" y="12" width="72" height="28" rx="14" fill="#FF006E"/>
+  <rect x="10" y="48" width="48" height="28" rx="14" fill="#3A86FF"/>
+  <rect x="70" y="48" width="48" height="28" rx="14" fill="#FB5607"/>
+  <rect x="28" y="88" width="72" height="28" rx="14" fill="#06FFA5"/>
+  <path d="M64 40v8M34 76v12M94 76v12" stroke="#FFBE0B" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="64" cy="26" r="7" fill="#FFBE0B"/>
+  <circle cx="34" cy="62" r="6" fill="#FFFFFF"/>
+  <circle cx="94" cy="62" r="6" fill="#0A0A1A"/>
+  <circle cx="64" cy="102" r="7" fill="#0A0A1A"/>
 </svg>
