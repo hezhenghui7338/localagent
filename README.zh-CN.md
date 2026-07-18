@@ -81,7 +81,7 @@ la
 
 ### 产品设计
 
-1. **Local First** — 默认零账单路径：对话 / 记忆 / 检索 / 工具可纯本地跑通；主路径三命令（`la` · `la setup` · `la chat`）；可选云端与联网——身份、记忆与审计始终留本机  
+1. **Local First** — 默认零账单路径：对话 / 记忆 / 检索 / 工具可纯本地跑通；主路径三命令（`la` · `la setup` · `la chat`）；可选云端与联网——身份、记忆与审计**档案**存本机、不上传；选用云端对话或联网搜索时，当轮内容会发往对应服务  
 2. **Memory Forever** — Hot / Warm / Cold + Mem0 跨会话持久；该记则记、不该记则跳过；本地 RAG + ChatGPT 导入；换模型不换身份  
 3. **Actions Automated** — Shell / 写文件 / 工作区；`la summarize` · `la news` · `la polish`；定时简报；执行前确认、危险硬拦、办完有回执；`la status` 看今日信号  
 
@@ -91,7 +91,7 @@ la
 | 聊完就忘，或只会死记 | **Memory Forever** — 会取舍的分层记忆 + 本地 RAG |
 | 只会聊天，事还得你自己办 | **Actions Automated** — 工具 · 旁路 · 定时；确认门 + 硬拦截 |
 
-可选 OpenRouter / Cursor / Tavily；**身份与数据始终留本机**。需求见 [docs/PRD.md](docs/PRD.md)；约 30 分钟跑通见 [examples/product-tour.zh-CN.md](examples/product-tour.zh-CN.md)。
+可选 OpenRouter / Cursor / Tavily；**档案存本机**；选用云端或联网搜索时，当轮内容可能外发。需求见 [docs/PRD.md](docs/PRD.md)；约 30 分钟跑通见 [examples/product-tour.zh-CN.md](examples/product-tour.zh-CN.md)。
 
 ### TODO · 敬请期待
 
@@ -102,7 +102,7 @@ la
 - LA 致力于提供高质量的 AI 实践反馈  
 - 「书读百遍其义自见」不会自己发生；真正懂，靠的是一遍遍实践  
 - LA 只摘**低垂、成熟**的果实，不引入失控、昂贵、难维护的重栈  
-- LA **只做一件事**：本地 AI——记得住你，也能把事办完。数据留本地，本地可完整跑通；欢迎联网与新技术，默认不设门槛  
+- LA **只做一件事**：本地 AI——记得住你，也能把事办完。档案留本地，本地可完整跑通；欢迎联网与新技术，默认不设门槛  
 - 尽量消除使用 AI 的门槛，而不是再添一道
 
 ## <img src="assets/icons/install.svg" alt="" width="28" valign="middle"> 安装与升级
@@ -162,7 +162,7 @@ ollama rm qwen3.5:4b           # 可选：Ollama 独立，不会随 LA 自动卸
 
 ### <img src="assets/icons/local-first.svg" alt="" width="24" valign="middle"> 亮点：Local First
 
-LocalAgent 的核心链路——**对话、记忆写入、记忆召回、文档检索、工作区感知、Shell 执行、审计统计**——均可只依赖本地 Ollama，无需任何付费 API。数据与身份不出本机。
+LocalAgent 的核心链路——**对话、记忆写入、记忆召回、文档检索、工作区感知、Shell 执行、审计统计**——均可只依赖本地 Ollama，无需任何付费 API。身份、记忆与审计档案存本机；选用云端或联网搜索时，当轮内容会外发。
 
 | 能力 | 是否需要联网 API | 说明 |
 | --- | --- | --- |
@@ -633,11 +633,13 @@ src/localagent/
 
 ## 开发
 
-发版时同步三处（缺一不可）：
+发版时同步以下各项（缺一不可，否则对外版本会漂移）：
 
 1. 改 `src/localagent/__init__.py` 里的 `__version__`（唯一版本源）
-2. 打并推送同号 tag：`git tag v0.5.0 && git push origin v0.5.0`
+2. 打并推送同号 tag：`git tag vX.Y.Z && git push origin vX.Y.Z`
 3. 更新 README 中的 `@v…` / 当前版本说明
+4. 同步官网（`website/index.html`、`website/script.js`、`website/demos/scenes.json`）与双语 `examples/product-tour*.md`
+5. 若 setup 演示 MP4 内嵌了安装命令，用 `website/demos/render.sh` 重渲（步骤演示以 `scenes.json` 为准）
 
 GitHub Actions CI 跑 `uv run pytest`（单元+集成，含 STM；排除 `e2e` / `e2e_live`），另有独立 **e2e-offline** job（`pytest tests/e2e -m e2e`）。实机 Ollama 测试仅本机运行。
 
@@ -656,7 +658,8 @@ pytest tests/e2e -m e2e_live
 
 - **切勿提交** `.env` 或 `data/` 下的运行时数据；仓库已通过 `.gitignore` 排除
 - API Key 仅保存在本机 `.env` 中
-- 记忆与对话档案默认仅存本地，不上传云端
+- 记忆、对话档案与审计日志默认仅存本地，LocalAgent 不会上传
+- **云端 / 联网搜索**：使用云端模型或 `web_search` 时，当轮对话（及 prompt 中召回的记忆）会发往对应服务；保持纯本地请用 `/provider ollama` 并避免联网搜索
 - **本地执行门禁**：Agent 的 `run_shell` / `write_file` 默认每次需你确认（`LA_TOOL_APPROVAL=always`）；危险命令会额外警告。极端破坏性命令（如 `rm -rf /`）直接禁止。非交互环境在未提供确认回调时拒绝执行
 - 若曾在其他环境泄露过 API Key，请立即在对应平台轮换密钥
 

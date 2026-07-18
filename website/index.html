@@ -82,8 +82,9 @@
         </h2>
         <p class="section-lead" data-i18n="features.lead">
           Install and you’re chatting, remembered, and getting work done —
-          on-device by default, cloud optional; your identity and data stay
-          on your machine.
+          on-device by default, cloud optional. Identity, memory, and audit
+          archives stay on-device; cloud chat or web search sends that turn’s
+          content to the provider.
         </p>
         <ul class="feature-list pillars">
           <li>
@@ -92,7 +93,7 @@
               Zero-bill default path: chat, memory, retrieval, and tools run
               on-device. Main path:
               <code>la</code> · <code>la setup</code> · <code>la chat</code>.
-              Optional cloud — identity and data stay local.
+              Optional cloud — archives stay local; that turn’s prompt may leave.
             </p>
             <a
               class="feature-demo-link"
@@ -141,8 +142,8 @@
           Three moments you can feel
         </h2>
         <p class="section-lead" data-i18n="demo.lead">
-          Short clips — no hosted model. On your machine, these are the real
-          paths.
+          Step through the walkthrough, or watch a short clip — no hosted
+          model. On your machine, these are the real paths.
         </p>
 
         <div class="demo-tabs" role="tablist" aria-label="Demo moments">
@@ -192,8 +193,8 @@
               One step local. Zero bill by default.
             </h3>
             <p class="demo-aside-body" id="demo-aside-body">
-              No account required to chat. Compute and data stay on your
-              machine.
+              No account required to chat. Default compute is on-device;
+              memory and audit archives are not uploaded.
             </p>
             <p class="demo-aside-note" id="demo-aside-note">
               Default path is Ollama on-device — cost can be $0.
@@ -201,22 +202,79 @@
           </aside>
 
           <div class="demo-replay">
-            <div class="demo-video-shell">
-              <video
-                id="demo-video"
-                muted
-                loop
-                playsinline
-                preload="metadata"
-                poster="assets/demos/setup.en.poster.jpg"
-                aria-label="LocalAgent demo clip"
+            <div
+              class="demo-mode-switch"
+              role="group"
+              aria-label="Demo view mode"
+            >
+              <button
+                type="button"
+                class="demo-mode-btn is-active"
+                data-demo-mode="steps"
+                data-i18n="demo.mode.steps"
               >
-                <source
-                  id="demo-video-src"
-                  src="assets/demos/setup.en.mp4"
-                  type="video/mp4"
-                />
-              </video>
+                Steps
+              </button>
+              <button
+                type="button"
+                class="demo-mode-btn"
+                data-demo-mode="video"
+                data-i18n="demo.mode.video"
+              >
+                Video
+              </button>
+            </div>
+
+            <div id="demo-steps-panel">
+              <div class="demo-terminal" aria-live="polite">
+                <div class="demo-terminal-bar" aria-hidden="true">
+                  <span></span><span></span><span></span>
+                  <em>localagent</em>
+                </div>
+                <div class="demo-terminal-body" id="demo-lines"></div>
+              </div>
+              <div class="demo-controls">
+                <button
+                  type="button"
+                  class="btn-demo"
+                  id="demo-prev"
+                  data-i18n="demo.prev"
+                >
+                  Back
+                </button>
+                <span class="demo-progress" id="demo-progress">1 / 4</span>
+                <button
+                  type="button"
+                  class="btn-demo btn-demo-primary"
+                  id="demo-next"
+                  data-i18n="demo.next"
+                >
+                  Next
+                </button>
+                <button
+                  type="button"
+                  class="btn-demo"
+                  id="demo-replay"
+                  data-i18n="demo.replay"
+                >
+                  Replay
+                </button>
+              </div>
+            </div>
+
+            <div id="demo-video-panel" class="is-hidden">
+              <div class="demo-video-shell">
+                <video
+                  id="demo-video"
+                  muted
+                  loop
+                  playsinline
+                  preload="none"
+                  aria-label="LocalAgent demo clip"
+                >
+                  <source id="demo-video-src" type="video/mp4" />
+                </video>
+              </div>
             </div>
           </div>
         </div>
@@ -239,10 +297,10 @@
           One command, then chat
         </h2>
         <p class="section-lead" data-i18n="install.lead">
-          Needs Python 3.10+ and pipx. Current version v0.4.0.
+          Needs Python 3.10+ and pipx. Current version v0.5.0.
         </p>
         <div class="code-block">
-          <pre><code id="install-cmd">pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
+          <pre><code id="install-cmd">pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.5.0"
 la</code></pre>
           <button
             type="button"
@@ -257,6 +315,18 @@ la</code></pre>
           Have an API → set your key. No API → <code>la setup -y</code> for
           Ollama.
         </p>
+        <ul class="trust-points" data-i18n-list="install.trust">
+          <li data-i18n="install.trust1">
+            Default path is local Ollama — zero bill, no account.
+          </li>
+          <li data-i18n="install.trust2">
+            Side effects (shell / write file) ask before running.
+          </li>
+          <li data-i18n="install.trust3">
+            Cloud models or web search send that turn’s content outbound;
+            switch back with <code>/provider ollama</code>.
+          </li>
+        </ul>
         <p class="install-more">
           <a
             href="https://github.com/hezhenghui7338/localagent#readme"
@@ -297,7 +367,7 @@ la</code></pre>
 
     <footer class="site-footer">
       <p>
-        <span data-i18n="footer.line">LocalAgent · MIT · v0.4.0</span>
+        <span data-i18n="footer.line">LocalAgent · MIT · v0.5.0</span>
         ·
         <a
           href="https://github.com/hezhenghui7338/localagent"
@@ -308,6 +378,6 @@ la</code></pre>
       </p>
     </footer>
 
-    <script src="script.js?v=6" defer></script>
+    <script src="script.js?v=8" defer></script>
   </body>
 </html>

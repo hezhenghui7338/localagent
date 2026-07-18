@@ -36,14 +36,14 @@ Anywhere below that says `data/` means `$LA_DATA_DIR/` when isolation is on.
 **Input:**
 
 ```bash
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.5.0"
 la --version
 ```
 
 **Expected output:**
 
 ```text
-la-localagent 0.4.0
+la-localagent 0.5.0
 ```
 
 ### 1.2 Developer install
@@ -63,7 +63,7 @@ In a source checkout, config/data live in the repo (`.env`, `data/`); they do no
 
 ## 2. Local-only vs bring-your-own API
 
-Pure local (zero bill) needs only Ollama. To use your own OpenRouter / Cursor / Tavily keys, write them into config — **identity and memory still stay on-device**.
+Pure local (zero bill) needs only Ollama. To use your own OpenRouter / Cursor / Tavily keys, write them into config — **identity, memory, and audit archives stay on-device** (cloud chat or web search still sends that turn’s content to the provider).
 
 ### 2.1 Configure from the example
 
@@ -131,7 +131,7 @@ you> In one sentence, introduce yourself and say where your data lives.
 **Expected output (illustrative):**
 
 ```text
-LocalAgent v0.4.0 …
+LocalAgent v0.5.0 …
 │ qwen3.5:4b · ollama …
 > In one sentence, introduce yourself and say where your data lives.
 [chat] thinking…

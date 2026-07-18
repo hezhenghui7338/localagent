@@ -1,12 +1,12 @@
 {
-  "width": 960,
-  "height": 560,
-  "fps": 20,
+  "width": 800,
+  "height": 468,
+  "fps": 18,
   "demos": {
     "setup.en": [
-      { "kind": "prompt", "text": "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.4.0\"", "type": true },
+      { "kind": "prompt", "text": "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.5.0\"", "type": true },
       { "kind": "prompt", "text": "$ la --version", "type": true },
-      { "kind": "out", "text": "la-localagent 0.4.0" },
+      { "kind": "out", "text": "la-localagent 0.5.0" },
       { "kind": "gap" },
       { "kind": "prompt", "text": "$ la setup -y", "type": true },
       { "kind": "out", "text": "[setup] Ollama detected" },
@@ -26,9 +26,9 @@
       { "kind": "dim", "text": "Ready to chat · zero bill by default" }
     ],
     "setup.zh": [
-      { "kind": "prompt", "text": "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.4.0\"", "type": true },
+      { "kind": "prompt", "text": "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.5.0\"", "type": true },
       { "kind": "prompt", "text": "$ la --version", "type": true },
-      { "kind": "out", "text": "la-localagent 0.4.0" },
+      { "kind": "out", "text": "la-localagent 0.5.0" },
       { "kind": "gap" },
       { "kind": "prompt", "text": "$ la setup -y", "type": true },
       { "kind": "out", "text": "[setup] Ollama detected" },
@@ -105,7 +105,7 @@
       { "kind": "gap" },
       { "kind": "you", "text": "(press r) → fetch body, same deep-read chat" },
       { "kind": "you", "text": "sum> What’s the core claim about on-device memory?", "type": true },
-      { "kind": "assistant", "text": "Identity and long-term memory stay on-device: models are swappable; memory must not vanish with a session. 〔§Lead | p.1〕" },
+      { "kind": "assistant", "text": "Identity and long-term memory archives stay on-device: models are swappable; memory must not vanish with a session. 〔§Lead | p.1〕" },
       { "kind": "accent", "text": "News deep-read = the same DocumentChat as summarize" }
     ],
     "deepread.zh": [
