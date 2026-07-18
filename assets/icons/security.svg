@@ -1,10 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
-  <rect width="128" height="128" rx="28" fill="#f0fdfa"/>
-  <!-- soft shield -->
-  <path d="M64 20c20 8 36 12 40 14v34c0 22-16 38-40 48-24-10-40-26-40-48V34c4-2 20-6 40-14z" fill="#14b8a6"/>
-  <path d="M64 30c16 6 28 10 32 11v27c0 16-12 28-32 36-20-8-32-20-32-36V41c4-1 16-5 32-11z" fill="#0f766e"/>
-  <!-- lock -->
-  <rect x="50" y="62" width="28" height="22" rx="6" fill="#67e8f9"/>
-  <path d="M56 62v-8a8 8 0 0 1 16 0v8" stroke="#f0fdfa" stroke-width="5" stroke-linecap="round"/>
-  <circle cx="64" cy="72" r="3.5" fill="#334155"/>
+  <rect width="128" height="128" rx="28" fill="#0A0A1A"/>
+  <circle cx="108" cy="108" r="22" fill="#06FFA5"/>
+  <path d="M64 8c26 11 42 15 46 17v40c0 28-22 44-46 54-24-10-46-26-46-54V25c4-2 20-6 46-17z" fill="#FF006E"/>
+  <path d="M64 22c22 9 34 13 38 14v32c0 22-18 34-38 42-20-8-38-20-38-42V36c4-1 16-5 38-14z" fill="#FB5607"/>
+  <rect x="44" y="56" width="40" height="28" rx="9" fill="#FFBE0B"/>
+  <path d="M50 56v-14a14 14 0 0 1 28 0v14" stroke="#0A0A1A" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="64" cy="69" r="6" fill="#0A0A1A"/>
 </svg>

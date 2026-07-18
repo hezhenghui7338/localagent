@@ -36,6 +36,29 @@ Upgrade / dev / uninstall → [Install & upgrade](#install--upgrade)
 - **At least one inference path**: a local model server (e.g. Ollama) **or** a cloud API (OpenRouter / OpenAI / Cursor, …)
 - **If you have no API**, [Ollama](https://ollama.com/) is recommended (`la setup` can install — skippable). Default chat model is chosen by system RAM (see [Ollama tips](#ollama-tips))
 
+## Supported environments
+
+Primary targets are **desktop/laptop personal machines** with local Ollama. OS matters, but **RAM tier** and **shell** matter as much for day-one experience.
+
+| Priority | Environment | Typical machines | Notes |
+| --- | --- | --- | --- |
+| **P0** | **macOS (Apple Silicon)** | M1–M4, 16GB+ | Best local experience; unified memory + Ollama |
+| **P0** | **Windows 10/11 native** | Laptops/desktops, 8–32GB | `la setup` via winget or [ollama.com/download](https://ollama.com/download) |
+| **P0** | **Linux x86_64** (Ubuntu/Debian first) | Dev boxes, mini PCs | Closest to CI; install script path |
+| **P1** | Low-RAM (any OS) | 4–8GB total | Mini tier `qwen2.5:0.5b` — chat works; weak multi-tool Agent |
+| **P1** | Mid/high RAM (any OS) | ≥14GB | Default quality tier `qwen3.5:4b` |
+| **P2** | WSL2 | Windows + Linux userland | Treated as Linux; no separate installer |
+| **P2** | macOS Intel | Older Intel Macs | Supported to run; not a polish priority |
+| **P2** | Linux aarch64 | ARM boards / some cloud hosts | Best-effort; wheels / Ollama vary |
+| — | Mobile, pure Docker-as-primary, headless GPU farms | — | Out of scope for the personal-assistant path |
+
+**Also true across platforms:**
+
+- **Runtime:** Ollama is first-class; OpenAI-compatible local servers remain an advanced YAML option.
+- **Shells:** bash/zsh get tab completion; PowerShell/cmd can run `la` / `la setup` / chat (completion skipped for now).
+- **Feature parity:** Chat, setup, memory, and RAG are required on P0. Some extras may lag (e.g. `la news schedule` is not on Windows yet — use `la news sync` or Task Scheduler).
+- **RAM → model:** same tiers on all OSes — see [Ollama tips](#ollama-tips).
+
 ## <img src="assets/icons/features.svg" alt="" width="28" valign="middle"> Features
 
 Runs fully local by default; optional cloud and web. Details: [summarize · news · polish](#daily-essentials-summarize--news--polish).

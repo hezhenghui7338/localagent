@@ -1,10 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
-  <rect width="128" height="128" rx="28" fill="#f0fdfa"/>
-  <!-- package box -->
-  <path d="M64 28l40 20v40L64 108 24 88V48L64 28z" fill="#14b8a6"/>
-  <path d="M64 28l40 20-40 20L24 48 64 28z" fill="#67e8f9"/>
-  <path d="M64 68v40l40-20V48L64 68z" fill="#0f766e"/>
-  <!-- download arrow -->
-  <path d="M64 48v28" stroke="#f0fdfa" stroke-width="6" stroke-linecap="round"/>
-  <path d="M52 66l12 12 12-12" stroke="#f0fdfa" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect width="128" height="128" rx="28" fill="#0A0A1A"/>
+  <circle cx="16" cy="112" r="22" fill="#3A86FF"/>
+  <path d="M64 16l46 26v46L64 114 18 88V42L64 16z" fill="#FF006E"/>
+  <path d="M64 16l46 26-46 26L18 42 64 16z" fill="#FFBE0B"/>
+  <path d="M64 68v46l46-26V42L64 68z" fill="#FB5607"/>
+  <path d="M64 36v40" stroke="#0A0A1A" stroke-width="9" stroke-linecap="round"/>
+  <path d="M46 60l18 18 18-18" stroke="#0A0A1A" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
