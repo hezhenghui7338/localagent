@@ -198,7 +198,7 @@ def _iter_animation(
     draw = ImageDraw.Draw(probe)
     bar_h = 42
     revealed: list[dict] = []
-    hold_tail = int(fps * 1.6)
+    hold_tail = int(fps * 0.9)
 
     for event in events:
         kind = event["kind"]
@@ -208,15 +208,17 @@ def _iter_animation(
                 revealed, width=width, body_top=bar_h, font=fonts["body"], label_font=fonts["label"], draw=draw
             )
             frame = render_frame(rows, width=width, height=height, fonts=fonts)
-            for _ in range(max(2, fps // 5)):
+            for _ in range(max(1, fps // 8)):
                 yield frame
             continue
 
         text = event.get("text", "")
         typing = bool(event.get("type")) and text
         if typing:
-            for i in range(1, len(text) + 1):
-                partial = dict(event, text=text[:i])
+            # Type in chunks for snappier clips (~8–12s target).
+            step = 3 if len(text) > 48 else 2
+            for i in range(step, len(text) + 1, step):
+                partial = dict(event, text=text[: min(i, len(text))])
                 rows = _layout_lines(
                     revealed + [partial],
                     width=width,
@@ -225,7 +227,6 @@ def _iter_animation(
                     label_font=fonts["label"],
                     draw=draw,
                 )
-                # Cursor at end of last row.
                 last_kind, last_text, last_y = rows[-1]
                 cursor_x = 28 + int(draw.textlength(last_text, font=fonts["body"]))
                 frame = render_frame(
@@ -235,20 +236,27 @@ def _iter_animation(
                     fonts=fonts,
                     cursor=(last_kind, cursor_x + 2, last_y),
                 )
-                # Faster typing for long lines.
-                repeats = 1 if len(text) > 60 else 2
-                for _ in range(repeats):
-                    yield frame
+                yield frame
+            if len(text) % step != 0:
+                partial = dict(event, text=text)
+                rows = _layout_lines(
+                    revealed + [partial],
+                    width=width,
+                    body_top=bar_h,
+                    font=fonts["body"],
+                    label_font=fonts["label"],
+                    draw=draw,
+                )
+                yield render_frame(rows, width=width, height=height, fonts=fonts)
             revealed.append(event)
             rows = _layout_lines(
                 revealed, width=width, body_top=bar_h, font=fonts["body"], label_font=fonts["label"], draw=draw
             )
             frame = render_frame(rows, width=width, height=height, fonts=fonts)
-            for _ in range(max(3, fps // 4)):
+            for _ in range(max(2, fps // 6)):
                 yield frame
         else:
-            # Fade-in style: show line after a short beat.
-            for _ in range(max(2, fps // 6)):
+            for _ in range(max(1, fps // 10)):
                 rows = _layout_lines(
                     revealed, width=width, body_top=bar_h, font=fonts["body"], label_font=fonts["label"], draw=draw
                 )
@@ -258,8 +266,8 @@ def _iter_animation(
                 revealed, width=width, body_top=bar_h, font=fonts["body"], label_font=fonts["label"], draw=draw
             )
             frame = render_frame(rows, width=width, height=height, fonts=fonts)
-            pause = fps // 3 if kind in {"meta", "dim", "accent", "label"} else fps // 4
-            for _ in range(max(2, pause)):
+            pause = fps // 5 if kind in {"meta", "dim", "accent", "label"} else fps // 7
+            for _ in range(max(1, pause)):
                 yield frame
 
     rows = _layout_lines(
@@ -274,10 +282,11 @@ def render_demo(name: str, events: list[dict], *, width: int, height: int, fps: 
     import imageio.v2 as imageio
 
     prefer_cjk = any(_needs_cjk(e.get("text", "")) for e in events if e.get("kind") != "gap")
+    body_size = 15 if width <= 800 else 17
     fonts = {
-        "body": _load_font(17, prefer_cjk=prefer_cjk),
-        "label": _load_font(14, prefer_cjk=prefer_cjk),
-        "title": _load_font(13, prefer_cjk=False),
+        "body": _load_font(body_size, prefer_cjk=prefer_cjk),
+        "label": _load_font(13, prefer_cjk=prefer_cjk),
+        "title": _load_font(12, prefer_cjk=False),
     }
 
     frames = list(
@@ -286,8 +295,8 @@ def render_demo(name: str, events: list[dict], *, width: int, height: int, fps: 
     if not frames:
         raise RuntimeError(f"no frames for {name}")
 
-    # Cap duration ~28s by dropping every other frame if needed.
-    max_frames = fps * 28
+    # Cap duration ~12s by dropping frames if needed.
+    max_frames = fps * 12
     if len(frames) > max_frames:
         step = math.ceil(len(frames) / max_frames)
         frames = frames[::step]
@@ -298,14 +307,14 @@ def render_demo(name: str, events: list[dict], *, width: int, height: int, fps: 
 
     # Poster from a late frame so reduced-motion / loading still shows content.
     poster_idx = min(len(frames) - 1, max(0, int(len(frames) * 0.82)))
-    frames[poster_idx].save(poster_path, quality=85, optimize=True)
+    frames[poster_idx].save(poster_path, quality=72, optimize=True)
 
     # imageio-ffmpeg writes H.264.
     writer = imageio.get_writer(
         mp4_path,
         fps=fps,
         codec="libx264",
-        quality=7,
+        quality=8,
         pixelformat="yuv420p",
         macro_block_size=None,
     )

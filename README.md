@@ -81,7 +81,7 @@ Runs fully local by default; optional cloud and web. Details: [summarize · news
 
 ### Product design
 
-1. **Local First** — zero-bill / zero-account default: chat, memory, retrieval, and tools run on-device; three-command main path (`la` · `la setup` · `la chat`); optional cloud/network — identity, memory, and audit stay local  
+1. **Local First** — zero-bill / zero-account default: chat, memory, retrieval, and tools run on-device; three-command main path (`la` · `la setup` · `la chat`); optional cloud/network — identity, memory, and audit **archives** stay on-device (not uploaded); cloud chat or web search sends that turn’s content to the provider  
 2. **Memory Forever** — Hot / Warm / Cold + Mem0 across sessions; knows what to keep, what to drop, and when to step in; local RAG + ChatGPT import; switch models, keep identity  
 3. **Actions Automated** — Shell / write_file / workspace; `la summarize` · `la news` · `la polish`; scheduled brief; confirm before side effects, block danger, show a receipt when done; `la status` for today’s signals  
 
@@ -91,7 +91,7 @@ Runs fully local by default; optional cloud and web. Details: [summarize · news
 | Forgets — or memorizes everything blindly | **Memory Forever** — layered memory with judgment + local RAG |
 | Only talks; you still do the work | **Actions Automated** — tools, side-paths, schedule; confirm + hard blocks |
 
-Optional OpenRouter / Cursor / Tavily — **identity and data stay on your machine**. Spec: [docs/PRD.md](docs/PRD.md); ~30-min tour: [examples/product-tour.md](examples/product-tour.md).
+Optional OpenRouter / Cursor / Tavily — **archives stay on-device**; that turn’s prompt may leave when you use cloud or web search. Spec: [docs/PRD.md](docs/PRD.md); ~30-min tour: [examples/product-tour.md](examples/product-tour.md).
 
 ### TODO / Coming soon
 
@@ -102,7 +102,7 @@ Optional OpenRouter / Cursor / Tavily — **identity and data stay on your machi
 - LA is dedicated to high-quality, hands-on AI practice feedback  
 - “Read it a hundred times and meaning appears” does not happen by itself — understanding comes from practice  
 - LA only picks **low-hanging, mature** fruit; no uncontrolled, expensive, hard-to-own stacks  
-- LA does **one thing**: local AI that remembers you and gets things done. Data stays local; the full loop runs offline. Networking and new tech are welcome — barriers are not  
+- LA does **one thing**: local AI that remembers you and gets things done. Archives stay local; the full loop can run offline. Networking and new tech are welcome — barriers are not  
 - Lower the bar to using AI, rather than raising another one
 
 ## <img src="assets/icons/install.svg" alt="" width="28" valign="middle"> Install & upgrade
@@ -162,7 +162,7 @@ ollama rm qwen3.5:4b           # optional: Ollama is separate and is not removed
 
 ### <img src="assets/icons/local-first.svg" alt="" width="24" valign="middle"> Local First
 
-LocalAgent’s core path — **chat, memory write, memory recall, document retrieval, workspace awareness, Shell execution, audit stats** — can run on local Ollama alone, with no paid API. Identity and data stay on your machine.
+LocalAgent’s core path — **chat, memory write, memory recall, document retrieval, workspace awareness, Shell execution, audit stats** — can run on local Ollama alone, with no paid API. Identity, memory, and audit archives stay on-device; cloud or web search sends that turn’s content outbound.
 
 | Capability | Needs cloud API? | Notes |
 | --- | --- | --- |
@@ -618,6 +618,14 @@ Design docs (not end-user tutorials): [docs/PRD.md](docs/PRD.md) and [docs/TDD.m
 
 ## Development
 
+On each release, sync all of the following (missing any one drifts user-facing version):
+
+1. Bump `__version__` in `src/localagent/__init__.py` (single source of truth)
+2. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`
+3. Update README `@v…` / current-version notes
+4. Sync website (`website/index.html`, `website/script.js`, `website/demos/scenes.json`) and both `examples/product-tour*.md`
+5. If setup demo MP4s embed the install line, re-render via `website/demos/render.sh` (step demo uses `scenes.json`)
+
 GitHub Actions CI runs `uv run pytest` (unit + integration, including STM; excludes `e2e` / `e2e_live`) and a separate **e2e-offline** job (`pytest tests/e2e -m e2e`). Live Ollama tests stay local-only.
 
 ```bash
@@ -635,7 +643,8 @@ pytest tests/e2e -m e2e_live
 
 - **Never commit** `.env` or runtime data under `data/`; both are gitignored
 - API keys live only in local `.env`
-- Memories and chat archives stay on-device by default — not uploaded
+- Memories, chat archives, and audit logs stay on-device by default — not uploaded by LocalAgent
+- **Cloud / web search**: when you use a cloud model or `web_search`, that turn’s conversation (and any recalled memory in the prompt) is sent to the provider; stay pure-local with `/provider ollama` and avoid web search
 - **Local execution gate**: `run_shell` / `write_file` require your confirmation by default (`LA_TOOL_APPROVAL=always`); dangerous commands get an extra warning. Extremely destructive commands (e.g. `rm -rf /`) are blocked outright. Non-interactive runs without an approval callback are denied
 - If a key was ever exposed elsewhere, rotate it on that platform immediately
 

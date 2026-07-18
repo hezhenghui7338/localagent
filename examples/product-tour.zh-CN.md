@@ -36,14 +36,14 @@ export LA_DATA_DIR=/tmp/la-product-tour
 **输入：**
 
 ```bash
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.5.0"
 la --version
 ```
 
 **预期输出：**
 
 ```text
-la-localagent 0.4.0
+la-localagent 0.5.0
 ```
 
 ### 1.2 开发者安装
@@ -63,7 +63,7 @@ la --version
 
 ## 2. 纯本地与自有 API 双路径
 
-纯本地（零账单）只需 Ollama；要用自己注册的 OpenRouter / Cursor / Tavily Key，写入配置即可——**身份与记忆仍留本机**。
+纯本地（零账单）只需 Ollama；要用自己注册的 OpenRouter / Cursor / Tavily Key，写入配置即可——**身份、记忆与审计档案仍存本机**（选用云端对话或联网搜索时，当轮内容仍会发往对应服务）。
 
 ### 2.1 按 example 配置
 
@@ -131,7 +131,7 @@ la chat --provider ollama
 **预期输出（示意）：**
 
 ```text
-LocalAgent v0.4.0 …
+LocalAgent v0.5.0 …
 │ qwen3.5:4b · ollama …
 > 用一句话介绍你自己，并说明你的数据存在哪里。
 [chat] 思考中…
