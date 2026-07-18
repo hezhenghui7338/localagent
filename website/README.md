@@ -5,7 +5,7 @@ Static landing page for [https://localagent.zhenghui7338.workers.dev/](https://l
 ## Sections
 
 - **Hero / Features / Install / Contact** — brand + pillars + quick start
-- **Demo (`#demo`)** — three short looping MP4 clips (setup / memory / deep-read), EN + ZH. Deep links: `#demo-setup`, `#demo-memory`, `#demo-deepread`
+- **Demo (`#demo`)** — three wow-moments (setup / memory / deep-read). Default is **step-through terminal**; optional **Video** mode lazy-loads short MP4 clips (EN + ZH). Deep links: `#demo-setup`, `#demo-memory`, `#demo-deepread`
 
 ## Local preview
 
@@ -20,7 +20,7 @@ Then visit `http://127.0.0.1:8080`.
 
 ## Regenerate demo videos
 
-Clips live in `assets/demos/` (`{setup,memory,deepread}.{en,zh}.mp4` + `.poster.jpg`).
+Clips live in `assets/demos/` (`{setup,memory,deepread}.{en,zh}.mp4` + `.poster.jpg`). Target ~800×468, ~8–12s, small files. The page only fetches an MP4 after the user switches to **Video**.
 
 Source of truth for terminal content: [`demos/scenes.json`](demos/scenes.json).
 
@@ -32,7 +32,7 @@ cd website/demos
 # or only one: python3 render_demos.py --only setup.en
 ```
 
-Optional [VHS](https://github.com/charmbracelet/vhs) stubs live under `demos/tapes/` if you prefer that toolchain later; keep output size **960×560**.
+Optional [VHS](https://github.com/charmbracelet/vhs) stubs live under `demos/tapes/`; keep output size **800×468** to match the site.
 
 ## Deploy on Cloudflare Pages / Workers
 

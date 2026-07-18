@@ -174,9 +174,9 @@
       setup: [
         {
           lines: [
-            { kind: "prompt", text: "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.4.0\"" },
+            { kind: "prompt", text: "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.5.0\"" },
             { kind: "prompt", text: "$ la --version" },
-            { kind: "out", text: "la-localagent 0.4.0" },
+            { kind: "out", text: "la-localagent 0.5.0" },
           ],
         },
         {
@@ -329,9 +329,9 @@
       setup: [
         {
           lines: [
-            { kind: "prompt", text: "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.4.0\"" },
+            { kind: "prompt", text: "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.5.0\"" },
             { kind: "prompt", text: "$ la --version" },
-            { kind: "out", text: "la-localagent 0.4.0" },
+            { kind: "out", text: "la-localagent 0.5.0" },
           ],
         },
         {
@@ -352,7 +352,7 @@
             { kind: "meta", text: "[chat] generating…" },
             {
               kind: "assistant",
-              text: "I’m LocalAgent running on your machine: chat, memory, and audit data stay in the local data directory — identity data is not uploaded to the cloud.",
+              text: "I’m LocalAgent running on your machine: chat, memory, and audit archives stay in the local data directory — not uploaded by LocalAgent.",
             },
             { kind: "dim", text: "[via ollama/qwen3.5:4b]" },
           ],

@@ -9,4 +9,4 @@ cd website/demos
 python3 render_demos.py
 ```
 
-If you have [VHS](https://github.com/charmbracelet/vhs) and `ffmpeg` installed, you can author `.tape` files here that mirror `scenes.json` and export MP4s into `../../assets/demos/`. Keep frame size **960×560** and dark theme so results match the site chrome.
+If you have [VHS](https://github.com/charmbracelet/vhs) and `ffmpeg` installed, you can author `.tape` files here that mirror `scenes.json` and export MP4s into `../../assets/demos/`. Keep frame size **800×468** and dark theme so results match the site chrome.
