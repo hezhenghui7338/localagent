@@ -296,6 +296,37 @@ class ModelRouter:
             self._ollama_available = False
         return self._ollama_available
 
+    def is_ollama_model_loaded(self, model: str | None = None) -> bool:
+        """True when the target chat model is already resident in Ollama VRAM."""
+        target = (model or "").strip()
+        if not target:
+            try:
+                target = self.resolve_ollama_model()
+            except Exception:
+                return False
+        for item in self._list_running_ollama_models():
+            if not _is_completion_model(item):
+                continue
+            name = item.get("name") or item.get("model") or ""
+            if name == target:
+                return True
+        return False
+
+    def should_hint_ollama_cold_start(self, prefer: str | None = None) -> bool:
+        """True when the next chat will likely wait on first-time Ollama model load."""
+        auto_mode = prefer is None or prefer == config.DEFAULT_MODEL_PROVIDER
+        if auto_mode:
+            if self._ollama_slow:
+                return False
+            providers = self._provider_order(None)
+            if not providers or providers[0] != "ollama":
+                return False
+        elif prefer != "ollama":
+            return False
+        if not self.is_ollama_available():
+            return False
+        return not self.is_ollama_model_loaded()
+
     def resolve_ollama_model(self) -> str:
         """Pick an installed Ollama model, falling back from configured name."""
         if self._resolved_ollama_model:
