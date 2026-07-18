@@ -1,6 +1,8 @@
 # LocalAgent 功能示例
 
-本文档用短路径场景做上手。完整用户故事见 [product-tour.zh-CN.md](product-tour.zh-CN.md)（英文：[product-tour.md](product-tour.md)）。英文短路径：[walkthrough.md](walkthrough.md)。示例数据均为虚构内容，可安全复现。
+> **Local First. Memory Forever. Actions Automated.** — 本地 AI：记得住你，也能把事办完。
+
+本文档用短路径场景做上手（按 Local → Memory → Actions）。完整用户故事见 [product-tour.zh-CN.md](product-tour.zh-CN.md)（英文：[product-tour.md](product-tour.md)）。英文短路径：[walkthrough.md](walkthrough.md)。示例数据均为虚构内容，可安全复现。
 
 **前置条件：**
 
@@ -21,9 +23,9 @@ la setup
 
 ---
 
-## 亮点：完全本地运行
+## 亮点：Local First
 
-LocalAgent 的核心链路——**对话、记忆写入、记忆召回、文档检索、工作区感知、审计统计**——均可只依赖本地 Ollama，无需任何付费 API。
+LocalAgent 的核心链路——**对话、记忆写入、记忆召回、文档检索、工作区感知、审计统计**——均可只依赖本地 Ollama，无需任何付费 API。打开时可 `la status` 查看 Daily Actions 信号。
 
 | 能力 | 是否需要联网 API | 说明 |
 |------|------------------|------|

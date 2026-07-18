@@ -1,28 +1,21 @@
 # LocalAgent Product Tour
 
-> **Goal**: In about **30 minutes**, walk through LocalAgent’s core **user stories** (see [PRD §2](../docs/PRD.md)) via one coherent fictional narrative.  
+> **Positioning**: **Local First. Memory Forever. Actions Automated.**  
+> **One-liner**: Local AI that remembers and gets things done.  
+> **Goal**: In about **30 minutes**, walk three acts of LocalAgent’s core experience (see [PRD §2](../docs/PRD.md)).  
 > Every step includes **full input** and **expected output** (all sample data is fictional and safe to reproduce).  
-> CLI entrypoint: `la` / `LA` (equivalent). Shorter 6-scene starter: [walkthrough.md](walkthrough.md).  
+> CLI entrypoint: `la` / `LA` (equivalent). Shorter starter: [walkthrough.md](walkthrough.md).  
 > [中文版](product-tour.zh-CN.md)
 
 ---
 
-## What you will experience
+## What you will experience (three acts)
 
-| # | User story | Section |
-|---|------------|---------|
-| 1 | One-command install and chat (user / developer) | [§1](#1-one-command-install--hello-user--developer) |
-| 2 | Pure-local zero cost, or run with your own API keys | [§2](#2-local-only-vs-bring-your-own-api) |
-| 3 | Profiled and remembered across sessions | [§3](#3-cross-session-memory--hot--warm--cold) |
-| 4 | Import ChatGPT so LA knows you faster | [§4](#4-chatgpt-import--know-you-faster) |
-| 5 | Local docs into KB with deep recall | [§5](#5-local-document-rag--deep-recall) |
-| 6 | Web search | [§6](#6-web-search--small-models-can-use-the-network) |
-| 7 | Local tools + dangerous-command blocking | [§7](#7-local-tools--dangerous-command-blocking) |
-| 8 | Audit spend (tokens / cost) | [§8](#8-auditable--tokens--cost) |
-| 9 | Advanced: write-file hallucination + time-aware recall | [§9](#9-advanced-write-file-hallucination--time-aware-recall) |
-| 10 | **Summarize** a local doc | [§10](#10-one-click-summarize-story-6b) |
-| 11 | **News sniff** daily brief | [§11](#11-news-sniff-story-6c) |
-| 12 | **Polish** copy | [§12](#12-one-click-polish-story-6d) |
+| Act | Pillar | You will feel | Sections |
+|-----|--------|---------------|----------|
+| **I** | **Local First** | One-command install; local or BYO API | [§1](#1-one-command-install--hello-user--developer) · [§2](#2-local-only-vs-bring-your-own-api) |
+| **II** | **Memory Forever** | Cross-session memory, ChatGPT import, RAG | [§3](#3-cross-session-memory--hot--warm--cold)–[§5](#5-local-document-rag--deep-recall) |
+| **III** | **Actions Automated** | Web, tools, daily side-paths, audit, `la status` | [§6](#6-web-search--small-models-can-use-the-network)–[§12](#12-one-click-polish-story-6d) |
 
 **Persona (fictional)**: You are “Alex Lin”, using LocalAgent on your machine; prefer Americano; in May 2026 held a Shenzhen roadmap meeting; in July 2026 chose Mem0 as the memory engine.
 

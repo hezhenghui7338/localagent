@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Your AI. Your Data. Your Machine.</strong>
+  <strong>Local First. Memory Forever. Actions Automated.</strong>
 </p>
 
 <p align="center">
@@ -13,7 +13,7 @@
 
 # <img src="assets/logo-icon.png" alt="LA" width="36" valign="middle"> LocalAgent
 
-> **一键获得你的本地个人 AI 助手——用你的算力、网络与工具，持久记住你，真正越来越懂你，能力可扩展。**
+> **本地 AI：记得住你，也能把事办完。**
 
 ## 快速开始
 
@@ -51,40 +51,35 @@ la
 | **新闻嗅探** / 今日简报 | `la news sync` → `la news brief`（TTY ↑↓ / `o` 打开 / `r` 精读深聊）；`la news schedule on` |
 | **一键润色**文案（默认复制主推） | `la polish` / `/polish` · `--scene` / `--tone` / `--no-copy` |
 | 联网搜索 | 默认 ddgs；`LA chat` 或 `/deepsearch` · [产品体验 §6](examples/product-tour.zh-CN.md) |
-| 本机 Shell / 写文件（危险命令拦截） | `run_shell` / `write_file`；执行前确认 · [本地 Shell](#亮点本机执行--本地-shell-真正动手) |
+| 本机 Shell / 写文件（危险命令拦截） | `run_shell` / `write_file`；执行前确认 · [本地 Shell](#亮点actions-automated--本地-shell-真正动手) |
+| 看今日待办信号 | `la status` |
 | 看清 token / 费用 | `LA audit` · [产品体验 §8](examples/product-tour.zh-CN.md) |
 | 多模型切换 | Ollama / OpenRouter / Cursor；`auto` 按优先级降级 |
 
 ### 产品设计
 
-1. **完全本地化** — 默认零账单、零账号门槛：对话 / 记忆 / 检索 / 执行可纯本地跑通；数据与身份留本机；算力默认本地，可选联网与云端模型增强，但始终有纯本地路径  
-2. **真正易用** — 一键安装、立即可用；主路径 `la` / `la setup` / `la chat`，日常旁路还有 `la summarize` · `la news` · `la polish`  
-3. **长期、多层次记忆** — Hot / Warm / Cold + Mem0：不仅记住你，更智能地判断该记什么、别记什么、何时介入  
-4. **支持外部工具** — 本地 Shell、写文件、工作区感知；执行前确认，危险命令拦截；可审计花费与行为  
-5. **支持 RAG** — 本地文档进知识库，对话时可深度召回原文  
-6. **日常三剑客** — 一键总结（文档对话）、新闻嗅探（信任信源交互简报）、一键润色（主推进剪贴板）
+1. **Local First** — 默认零账单路径：对话 / 记忆 / 检索 / 工具可纯本地跑通；主路径三命令（`la` · `la setup` · `la chat`）；可选云端与联网——身份、记忆与审计始终留本机  
+2. **Memory Forever** — Hot / Warm / Cold + Mem0 跨会话持久；该记则记、不该记则跳过；本地 RAG + ChatGPT 导入；换模型不换身份  
+3. **Actions Automated** — Shell / 写文件 / 工作区；`la summarize` · `la news` · `la polish`；定时简报；执行前确认、危险硬拦、办完有回执；`la status` 看今日信号  
 
 | 普通本地 Chat | LocalAgent |
 | --- | --- |
-| 云端账单与账号门槛 | **默认零成本本地路径**（Ollama），可选自有 API |
-| 装完还要学一堆命令 | **主路径三命令**：`la` · `la setup` · `la chat` |
-| 聊完就忘，或只会死记 | **多层次记忆**，懂你且会取舍 |
-| 不会动手、不会搜网 | **本机工具** + 可选联网 |
-| 文档与对话各管各的 | **RAG 知识库** + 对话归档，深度召回 |
-| 手动刷文档 / 刷资讯 / 改文案费劲 | **`la summarize` · `la news` · `la polish`** 一键搞定 |
+| 云端账单与账号门槛 | **Local First** — 默认零成本 Ollama，可选自有 API |
+| 聊完就忘，或只会死记 | **Memory Forever** — 会取舍的分层记忆 + 本地 RAG |
+| 只会聊天，事还得你自己办 | **Actions Automated** — 工具 · 旁路 · 定时；确认门 + 硬拦截 |
 
 可选 OpenRouter / Cursor / Tavily；**身份与数据始终留本机**。需求见 [docs/PRD.md](docs/PRD.md)；约 30 分钟跑通见 [examples/product-tour.zh-CN.md](examples/product-tour.zh-CN.md)。
 
 ### TODO · 敬请期待
 
-- **本周期尚未做**：工作区 watcher 增量索引、外部任务源。
+- **本周期尚未做**：工作区 watcher 增量索引、外部任务源、无人值守定时 Shell。
 
 ### 我们相信什么
 
 - AI 是革命性技术，必须拥抱；旁观一万遍，不如一键下载、亲手调试  
 - 「书读百遍其义自见」不会自动发生——你需要的是实践  
 - LA 只摘**低垂、成熟**的 AI 果实；不引入失控、昂贵、难维护的重栈  
-- LA **只做一件事**：本地个人 AI 助手。数据留本地，本地可完整跑通；不拒绝联网与新技术，但默认不设障碍  
+- LA **只做一件事**：本地 AI——记得住你，也能把事办完。数据留本地，本地可完整跑通；不拒绝联网与新技术，但默认不设障碍  
 - 消除使用 AI 的门槛，而不是设置门槛
 
 ## 安装与升级
@@ -140,7 +135,7 @@ ollama rm qwen3.5:4b           # 可选：Ollama 独立，不会随 LA 自动卸
 
 ## 功能示例
 
-### 亮点：完全本地化
+### 亮点：Local First
 
 LocalAgent 的核心链路——**对话、记忆写入、记忆召回、文档检索、工作区感知、Shell 执行、审计统计**——均可只依赖本地 Ollama，无需任何付费 API。数据与身份不出本机。
 
@@ -163,9 +158,9 @@ ollama pull qwen3.5:4b
 LA chat --provider ollama
 ```
 
-### 亮点：本机执行 —— 本地 Shell 真正动手
+### 亮点：Actions Automated —— 本地 Shell 真正动手
 
-普通 Chat 只会告诉你「去终端运行 `find … | wc -l`」。LocalAgent 的 Agent 会**自己调用 `run_shell` 工具**，在工作区执行命令并把结果整理成回答——全程纯本地 `qwen3.5:4b`，无需云端 API。
+普通 Chat 只会告诉你「去终端运行 `find … | wc -l`」。LocalAgent 的 Agent 会**自己调用 `run_shell` 工具**，在工作区执行命令并把结果整理成回答——全程纯本地 `qwen3.5:4b`，无需云端 API。办完后附带 Action receipt；安全操作可会话内 approve-once。
 
 ```text
 > 统计一下当前项目的代码行数
@@ -263,7 +258,7 @@ open examples/walkthrough.md
 
 更完整的叙事与验收对照见 [docs/PRD.md](docs/PRD.md)。
 
-### 亮点：Mem0 长期记忆 —— 全方位记住你
+### 亮点：Memory Forever —— 全方位记住你
 
 记忆输入支持 **ChatGPT 历史对话与 LA 日常对话**；个人文档请用 `LA rag` 进知识库。Warm 层接入强大的 [Mem0](https://github.com/mem0ai/mem0) 引擎（`mem0ai` 已含主依赖），提供 **Retain → Recall → Reflect（search + LLM）** 完整记忆链路。仓库提供一条「架构决策演变」叙事演示，覆盖写入、语义召回、时间感知、标签浏览与跨记忆推理：
 

@@ -20,7 +20,9 @@ from localagent.agent.observe import (
     compress_observation,
     truncate_head_tail,
 )
+from localagent.tools.action_receipt import append_action_receipt, record_side_effect
 from localagent.tools.approval import (
+    SessionApprovalGate,
     ToolRisk,
     classify_tool,
     denied_message,
@@ -1090,12 +1092,18 @@ def run_agent_turn(
     on_status: Callable[[str], None] | None = None,
     on_token: Callable[[str], None] | None = None,
     on_tool_approve: Callable[[str, dict[str, Any], ToolRisk], bool] | None = None,
+    session_approval: SessionApprovalGate | None = None,
     document_context: str | None = None,
 ) -> AgentResult:
     """Run one agent turn with up to 3 tool iterations."""
     def _status(message: str) -> None:
         if on_status is not None:
             on_status(message)
+
+    executed_actions: list[dict[str, Any]] = []
+
+    def _with_receipt(response: str) -> str:
+        return append_action_receipt(response, executed_actions)
 
     def _log_tool_decision(
         tool_name: str,
@@ -1130,7 +1138,14 @@ def run_agent_turn(
                 reason=risk.reason,
             )
             return denied_message(blocked=True, reason=risk.reason)
-        if needs_approval(tool_name, risk, policy=get_approval_policy()):
+        preapproved = (
+            session_approval is not None
+            and session_approval.is_preapproved(tool_name, risk)
+        )
+        if (
+            not preapproved
+            and needs_approval(tool_name, risk, policy=get_approval_policy())
+        ):
             if on_tool_approve is None:
                 _log_tool_decision(tool_name, risk, "denied", arguments=arguments)
                 return (
@@ -1143,12 +1158,19 @@ def run_agent_turn(
                 _log_tool_decision(tool_name, risk, "denied", arguments=arguments)
                 return denied_message()
             _log_tool_decision(tool_name, risk, "approved", arguments=arguments)
+        elif preapproved:
+            _log_tool_decision(
+                tool_name, risk, "session_preapproved", arguments=arguments
+            )
         try:
             result = execute_tool(tool_name, arguments)
         except Exception as exc:
             _log_tool_decision(tool_name, risk, "failed", arguments=arguments)
             return f"错误: 工具执行失败: {exc}"
         _log_tool_decision(tool_name, risk, "executed", arguments=arguments)
+        item = record_side_effect(tool_name, arguments, outcome="executed")
+        if item is not None:
+            executed_actions.append(item)
         return result
 
     remembered = _try_explicit_remember(user_message)
@@ -1310,7 +1332,7 @@ def run_agent_turn(
                 router.last_model or "-",
                 len(tool_calls),
             )
-            return AgentResult(response=clean, tool_calls=tool_calls)
+            return AgentResult(response=_with_receipt(clean), tool_calls=tool_calls)
 
         tool_name = call.get("name", "")
         tool_label = _TOOL_LABELS.get(tool_name, tool_name or "工具")
@@ -1354,7 +1376,7 @@ def run_agent_turn(
         router.last_model or "-",
         len(tool_calls),
     )
-    return AgentResult(response=final, tool_calls=tool_calls)
+    return AgentResult(response=_with_receipt(final), tool_calls=tool_calls)
 
 
 def build_agent_graph():

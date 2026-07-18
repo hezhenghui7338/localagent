@@ -1,12 +1,12 @@
 [project]
 name = "la-localagent"
 dynamic = ["version"]
-description = "一键获得本地个人 AI 助手：用你的算力、网络与工具；持久记忆、越来越懂你；本机工具 + RAG，能力可扩展，数据留本地"
+description = "Local First. Memory Forever. Actions Automated. Local AI that remembers and gets things done."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "hzh" }]
-keywords = ["ai", "cli", "agent", "memory", "ollama", "langgraph", "personal-assistant", "local", "mac", "offline"]
+keywords = ["ai", "cli", "agent", "memory", "ollama", "langgraph", "personal-assistant", "local", "local-first", "actions", "mac", "offline"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",

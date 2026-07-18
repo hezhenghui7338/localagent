@@ -24,7 +24,7 @@ from localagent.summarize.sessions import (
     record_from_result,
     upsert_session,
 )
-from localagent.tools.approval import ToolRisk, prompt_tool_approval
+from localagent.tools.approval import SessionApprovalGate, ToolRisk, prompt_tool_approval
 from localagent.ui.console import (
     ActivityIndicator,
     prepare_for_input,
@@ -78,6 +78,7 @@ class DocumentChatREPL:
         self.summarize_session_id = summarize_session_id or session_id or new_session_id()
         self.session_id = conversation_session_id or self.summarize_session_id
         self.provider = config.normalize_provider_choice(provider)
+        self.session_approval = SessionApprovalGate()
         set_repl_provider(self.provider)
         if history is not None:
             self.history = list(history)
@@ -257,7 +258,12 @@ class DocumentChatREPL:
                     arguments: dict,
                     risk: ToolRisk,
                 ) -> bool:
-                    return prompt_tool_approval(tool_name, arguments, risk)
+                    return prompt_tool_approval(
+                        tool_name,
+                        arguments,
+                        risk,
+                        session_gate=self.session_approval,
+                    )
 
                 result = run_agent_turn(
                     user_input,
@@ -267,6 +273,7 @@ class DocumentChatREPL:
                     on_status=activity.update,
                     on_token=on_token,
                     on_tool_approve=on_tool_approve,
+                    session_approval=self.session_approval,
                     document_context=self._document_context(user_input),
                 )
                 response = result.response

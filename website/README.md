@@ -2,6 +2,11 @@
 
 Static landing page for [https://localagent.zhenghui7338.workers.dev/](https://localagent.zhenghui7338.workers.dev/).
 
+## Sections
+
+- **Hero / Features / Install / Contact** — brand + pillars + quick start
+- **Demo (`#demo`)** — three pre-recorded wow-moment walkthroughs (setup / memory / deep-read). Deep links: `#demo-setup`, `#demo-memory`, `#demo-deepread`
+
 ## Local preview
 
 Open `index.html` in a browser, or serve the folder:

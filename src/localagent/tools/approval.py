@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from localagent import config
@@ -52,6 +52,30 @@ class ToolRisk:
     level: RiskLevel
     reason: str | None = None
     summary: str = ""
+
+
+@dataclass
+class SessionApprovalGate:
+    """Session-scoped approve-once for *safe* tool patterns only.
+
+    Dangerous / blocked classifications are never remembered.
+    """
+
+    _allowed: set[str] = field(default_factory=set)
+
+    @staticmethod
+    def pattern_key(name: str, risk: ToolRisk) -> str:
+        return f"{name}:{risk.level}"
+
+    def is_preapproved(self, name: str, risk: ToolRisk) -> bool:
+        if risk.level != "safe":
+            return False
+        return self.pattern_key(name, risk) in self._allowed
+
+    def remember(self, name: str, risk: ToolRisk) -> None:
+        if risk.level != "safe":
+            return
+        self._allowed.add(self.pattern_key(name, risk))
 
 
 def normalize_approval_policy(raw: str | None) -> ApprovalPolicy:
@@ -161,17 +185,30 @@ def prompt_tool_approval(
     risk: ToolRisk,
     *,
     default: bool = False,
+    session_gate: SessionApprovalGate | None = None,
 ) -> bool:
-    """Ask on a TTY whether to allow the tool. Non-interactive → deny by default."""
+    """Ask on a TTY whether to allow the tool. Non-interactive → deny by default.
+
+    For safe tools, ``a`` / ``always`` remembers the pattern for this session
+    when ``session_gate`` is provided. Dangerous/blocked patterns are never
+    session-remembered.
+    """
+    if session_gate is not None and session_gate.is_preapproved(name, risk):
+        return True
+
     if not sys.stdin.isatty():
         return default
 
     prepare_for_input()
     print(format_approval_prompt(name, arguments, risk), flush=True)
+    allow_session = risk.level == "safe" and session_gate is not None
     if risk.level == "dangerous":
         suffix = "[y/N]"
         default = False
         question = "⚠ 这是潜在危险操作，确定要执行吗？"
+    elif allow_session:
+        suffix = "[y/N/a]"
+        question = "是否允许执行？（a = 本会话同类安全操作不再询问）"
     else:
         suffix = "[y/N]"
         question = "是否允许执行？"
@@ -183,6 +220,9 @@ def prompt_tool_approval(
         return False
     if not answer:
         return default
+    if answer in ("a", "always", "all", "会话") and allow_session and session_gate is not None:
+        session_gate.remember(name, risk)
+        return True
     if answer in ("y", "yes", "是"):
         return True
     if answer in ("n", "no", "否"):

@@ -1248,6 +1248,14 @@ def _apply_workspace_cwd(cwd: str | None) -> None:
     os.environ["LA_WORKSPACE"] = str(Path(cwd).expanduser().resolve())
 
 
+def cmd_status(_args: argparse.Namespace) -> int:
+    """Daily Actions surface: news / pending / workspace todos."""
+    from localagent.status.daily import format_daily_actions_report
+
+    print(format_daily_actions_report())
+    return 0
+
+
 def cmd_workspace(args: argparse.Namespace) -> int:
     _apply_workspace_cwd(args.cwd)
     from localagent.workspace.context import format_workspace_summary, resolve_workspace, scan_todos
@@ -1610,11 +1618,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="LA",
         description=(
-            "LocalAgent — 本地个人 AI 助手\n\n"
+            "LocalAgent — Local First. Memory Forever. Actions Automated.\n"
+            "本地 AI：记得住你，也能把事办完。\n\n"
             "主路径（少即是多）：\n"
             "  la / la chat     对话\n"
             "  la setup [-y]    安装/拉取本地 Ollama 模型\n"
-            "  la config …      纯本地或自有 API 配置\n\n"
+            "  la config …      纯本地或自有 API 配置\n"
+            "  la status        今日待办信号（新闻 / pending / workspace）\n\n"
             "日常能力见 memory / rag / audit；运维与实验见 tasks / logs / graph 等。"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1655,6 +1665,16 @@ def build_parser() -> argparse.ArgumentParser:
             "省略子命令时默认 chat："
         ),
     )
+
+    p_status = sub.add_parser(
+        "status",
+        help="今日待办信号（新闻 / pending / workspace）",
+        description=(
+            "Daily Actions 摘要：今日新闻是否已 sync、记忆 pending 条数、"
+            "workspace 待办数量。对应产品支柱 Actions Automated。"
+        ),
+    )
+    p_status.set_defaults(func=cmd_status)
 
     p_chat = sub.add_parser(
         "chat",

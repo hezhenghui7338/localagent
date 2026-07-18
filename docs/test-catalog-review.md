@@ -19,20 +19,22 @@
 | [E2E](#e2e) | ~110 offline + 7 live |
 | [Benchmark](#benchmark) | 9 + STM (`test_stm_benchmark.py`，进日常 CI) |
 
-## PRD §6 ↔ E2E 映射
+## PRD §6 ↔ E2E 映射（三支柱）
 
 | 验收项 | 主要自动化 | 状态 |
 |--------|------------|------|
-| §6.1 安装/配置/chat 外壳 | `test_la_ops` version/config/setup/chat help | ✅ offline |
-| §6.2 跨会话 Warm | `test_la_journeys.test_journey_cross_session_warm_recall`；live chat 召回 | ✅ / live |
+| **§6.1 Local First** 安装/配置/chat | `test_la_ops` version/config/setup/chat help；banner 三板斧 `test_ui` | ✅ offline |
+| **§6.2 Memory Forever** 跨会话 Warm | `test_la_journeys.test_journey_cross_session_warm_recall`；live chat 召回 | ✅ / live |
 | §6.2 pending 确认门 | `test_la_pending` | ✅ |
 | §6.2 Cold 先于 Warm | `test_la_journeys` chatgpt/chat cold；收紧的 ingest 断言 | ✅ |
 | §6.2 rag 不写 Warm | `test_journey_rag_does_not_create_warm` | ✅ |
 | §6.2 reset 清 Cold 对话块 | `test_journey_reset_chatgpt_clears_cold_archive` | ✅ |
-| §6.3 websearch / 不入库 | `test_la_websearch` | ✅ |
+| **§6.3 Actions** websearch / 不入库 | `test_la_websearch` | ✅ |
 | §6.3 危险硬拦 / 审批 / 幻觉 | `test_la_safety` | ✅ |
 | §6.3 无意图预检 | `test_e2e_safety_no_intent_precheck_before_tools` | ✅ |
-| §6.4 audit HTML | `test_journey_audit_report_html` | ✅ |
+| §6.3 Action receipt / approve-once | `test_approval`（receipt · SessionApprovalGate · session_preapproved） | ✅ |
+| §6.3 Daily Actions / `la status` | `test_daily_status` | ✅ |
+| §6.3 audit HTML | `test_journey_audit_report_html` | ✅ |
 | 可选 Neo4j `memory://` | `test_la_graph` | ✅ P2 |
 | Observe / STM | unit + `test_stm_benchmark`（非 CLI e2e） | ✅ CI |
 
@@ -3451,7 +3453,7 @@ pytest tests/e2e/ -m e2e_live     # 实机 Ollama（本机）
 - **意图**：覆盖: render welcome shows project basics
 - **输入**：无外部夹具
 - **方法**：unit
-- **校验**：`f'LocalAgent v{__version__}' in out; 'LOCAL' in out and 'AGENT' in out; 'Your AI. Your Data. Your Machine.' in out; 'qwen3.5:4b' in out; '联网 · ddgs（免费）' in out`
+- **校验**：`f'LocalAgent v{__version__}' in out; 'LOCAL' in out and 'AGENT' in out; 'Local First. Memory Forever. Actions Automated.' in out; 'qwen3.5:4b' in out; '联网 · ddgs（免费）' in out`
 - **位置**：`test_ui.py:68-96` · 意图由函数名推断
 
 #### 8. `test_format_web_search_hint_tavily_when_key_set`

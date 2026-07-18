@@ -1,9 +1,21 @@
 # LocalAgent 技术设计文档（TDD v1）
 
+产品叙事真源见 [PRD.md](PRD.md)：**Local First. Memory Forever. Actions Automated.**
+
+## 0. 产品三支柱 → 子系统
+
+| 支柱 | 子系统 | 关键模块 |
+|------|--------|----------|
+| **Local First** | 配置 / 模型路由 / 纯本地路径 | `cli.py` · `setup` · `config` · `models/router.py` |
+| **Memory Forever** | Hot / Warm / Cold + pending | `memory/*` · `knowledge/*` · `pending/*` · `ingest/*` |
+| **Actions Automated** | 工具循环 · 旁路 · 定时 · 回执 · 确认门 | `agent/runtime.py` · `tools/*` · `summarize/` · `news/` · `writing/` · `status/` · `audit/` |
+
+Actions 三档：旁路快捷（summarize / news / polish）· Agent 工具循环（`run_shell` / `write_file` + Action receipt + session approve-once）· 定时（`news schedule`）+ Daily Actions 表面（`la status` / 欢迎横幅）。
+
 ## 1. 架构
 
 ```
-LA CLI → chat REPL / ingest / pending
+LA CLI → chat REPL / ingest / pending / status
          ↓
     LangGraph Agent (JIT tools)
          ↓
@@ -14,9 +26,12 @@ LA CLI → chat REPL / ingest / pending
           ├─ hybrid recall (+ optional SQLite hop expand)
           └─ optional Neo4j Cypher (counts / aggregations / multi-hop)
     Cold: Chroma + BM25 + RRF
+         ↓
+    Actions: tools + approval gate + action receipt
 ```
 
 精确问（多少次/列出所有/同时提到）走 `query_memory_graph` → Cypher 模板 → 计算结果；开放语义问仍走 hybrid 文本召回。**Neo4j 默认关闭**（`LA_NEO4J=0`），与 `LA_MEMORY_GRAPH` 独立；仅在需要精确计数/聚合时再 `pip install 'la-localagent[neo4j]'` 并开启——符合「只摘低垂成熟果实」。
+
 ## 2. 模块结构
 
 ```
@@ -51,11 +66,12 @@ src/localagent/
 ├── summarize/             # la summarize：短路径卡片 + DocumentChatREPL（sum>）
 ├── news/                  # 新闻嗅探：RSS sync / brief TUI / read / schedule / notify
 ├── writing/               # la polish：场景润色 + 剪贴板
-├── pending/               # 确认门
+├── pending/               # 记忆写入确认门
+├── status/                # Daily Actions（la status / 横幅信号）
 ├── persist/               # conversations jsonl + sessions.db
 ├── workspace/             # git / recent files / todos
 ├── audit/                 # usage log, security scan, reports
-└── tools/                 # … + summarize_document + news_*
+└── tools/                 # approval · action_receipt · shell · … + news_*
 ```
 
 ## 3. 数据目录
