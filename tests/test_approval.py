@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from localagent.tools.approval import (
+    SessionApprovalGate,
     classify_shell_command,
     classify_tool,
     format_approval_prompt,
@@ -13,6 +14,11 @@ from localagent.tools.approval import (
     prompt_tool_approval,
 )
 from localagent.agent.runtime import run_agent_turn
+from localagent.tools.action_receipt import (
+    append_action_receipt,
+    format_action_receipt,
+    record_side_effect,
+)
 
 
 def test_normalize_approval_policy():
@@ -131,7 +137,10 @@ def test_run_agent_turn_approves_and_executes(isolated_data, monkeypatch):
         )
 
     shell.assert_called_once()
-    assert result.response == "命令输出为 hello。"
+    assert "命令输出为 hello。" in result.response
+    assert "【Action receipt】" in result.response
+    assert "run_shell" in result.response
+    assert "echo hello" in result.response
 
 
 def test_run_agent_turn_blocks_without_callback(isolated_data, monkeypatch):
@@ -150,3 +159,98 @@ def test_run_agent_turn_blocks_without_callback(isolated_data, monkeypatch):
 
     shell.assert_not_called()
     assert result.tool_calls
+
+
+def test_session_gate_remembers_safe_only():
+    gate = SessionApprovalGate()
+    safe = classify_shell_command("ls -la")
+    dangerous = classify_shell_command("rm -rf ./tmp")
+    gate.remember("run_shell", safe)
+    gate.remember("run_shell", dangerous)
+    assert gate.is_preapproved("run_shell", safe)
+    assert not gate.is_preapproved("run_shell", dangerous)
+
+
+def test_prompt_approve_once_remembers_safe(monkeypatch):
+    gate = SessionApprovalGate()
+    risk = classify_shell_command("ls")
+    with patch("localagent.tools.approval.sys.stdin") as stdin:
+        stdin.isatty.return_value = True
+        monkeypatch.setattr("builtins.input", lambda *_: "a")
+        assert prompt_tool_approval(
+            "run_shell", {"command": "ls"}, risk, session_gate=gate
+        )
+    assert gate.is_preapproved("run_shell", risk)
+
+
+def test_prompt_approve_once_not_offered_for_dangerous(monkeypatch):
+    gate = SessionApprovalGate()
+    risk = classify_shell_command("rm -rf ./tmp")
+    with patch("localagent.tools.approval.sys.stdin") as stdin:
+        stdin.isatty.return_value = True
+        answers = iter(["a", "y"])
+
+        def _input(_prompt=""):
+            return next(answers)
+
+        monkeypatch.setattr("builtins.input", _input)
+        # First answer "a" is ignored for dangerous → falls through to default False
+        # unless we answer y. Simulate: user types a then we need second prompt.
+        # For dangerous, "a" is not accepted → returns default False.
+        assert (
+            prompt_tool_approval(
+                "run_shell",
+                {"command": "rm -rf ./tmp"},
+                risk,
+                session_gate=gate,
+            )
+            is False
+        )
+    assert not gate.is_preapproved("run_shell", risk)
+
+
+def test_run_agent_turn_session_preapproved_skips_prompt(isolated_data, monkeypatch):
+    monkeypatch.setattr("localagent.config.TOOL_APPROVAL", "always")
+    gate = SessionApprovalGate()
+    safe = classify_shell_command("echo hello")
+    gate.remember("run_shell", safe)
+
+    tool_reply = (
+        '```tool\n{"name": "run_shell", "arguments": '
+        '{"command": "echo hello"}}\n```'
+    )
+    isolated_data["router"].chat.side_effect = [
+        tool_reply,
+        "命令输出为 hello。",
+    ]
+    approvals: list[str] = []
+
+    def ask(name, args, risk):
+        approvals.append(name)
+        return True
+
+    with patch("localagent.tools.run_shell", return_value="hello") as shell:
+        result = run_agent_turn(
+            "执行 echo",
+            provider="ollama",
+            on_tool_approve=ask,
+            session_approval=gate,
+        )
+
+    shell.assert_called_once()
+    assert approvals == []
+    assert "【Action receipt】" in result.response
+
+
+def test_action_receipt_helpers():
+    item = record_side_effect(
+        "write_file",
+        {"path": "notes.md", "content": "hi", "mode": "overwrite"},
+        outcome="executed",
+    )
+    assert item is not None
+    receipt = format_action_receipt([item])
+    assert receipt and "write_file" in receipt and "notes.md" in receipt
+    text = append_action_receipt("已写好。", [item])
+    assert text.endswith(receipt)
+    assert record_side_effect("web_search", {"query": "x"}, outcome="executed") is None

@@ -15,7 +15,7 @@ from localagent.session_commands import (
     is_session_command,
     set_repl_provider,
 )
-from localagent.tools.approval import ToolRisk, prompt_tool_approval
+from localagent.tools.approval import SessionApprovalGate, ToolRisk, prompt_tool_approval
 from localagent.ui.banner import print_welcome
 from localagent.ui.console import (
     ActivityIndicator,
@@ -30,6 +30,7 @@ class ChatREPL:
         self.session_id = session_id or new_session_id()
         self.history: list[dict[str, str]] = []
         self.provider = config.normalize_provider_choice(provider)
+        self.session_approval = SessionApprovalGate()
         set_repl_provider(self.provider)
         default_core_profile()
 
@@ -131,7 +132,12 @@ class ChatREPL:
                     arguments: dict,
                     risk: ToolRisk,
                 ) -> bool:
-                    return prompt_tool_approval(tool_name, arguments, risk)
+                    return prompt_tool_approval(
+                        tool_name,
+                        arguments,
+                        risk,
+                        session_gate=self.session_approval,
+                    )
 
                 result = run_agent_turn(
                     user_input,
@@ -141,6 +147,7 @@ class ChatREPL:
                     on_status=activity.update,
                     on_token=on_token,
                     on_tool_approve=on_tool_approve,
+                    session_approval=self.session_approval,
                 )
                 response = result.response
                 provider_source = get_model_router().format_last_source()

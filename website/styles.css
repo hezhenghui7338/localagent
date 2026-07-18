@@ -307,6 +307,10 @@ main,
   gap: 2rem 2.5rem;
 }
 
+.feature-list.pillars {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .feature-list h3 {
   margin: 0 0 0.45rem;
   font-size: 1.12rem;
@@ -317,6 +321,297 @@ main,
 .feature-list p {
   margin: 0;
   color: var(--muted);
+}
+
+.feature-demo-link {
+  display: inline-block;
+  margin-top: 0.75rem;
+  font-size: 0.92rem;
+  color: var(--cyan);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.feature-demo-link:hover {
+  color: var(--gold-soft);
+  border-bottom-color: rgba(201, 166, 107, 0.45);
+}
+
+/* —— Demo replay —— */
+
+.demo-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1.75rem;
+}
+
+.demo-tab {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  padding: 0.55rem 1rem;
+  font: inherit;
+  font-size: 0.92rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.demo-tab:hover {
+  color: var(--text);
+  border-color: rgba(110, 196, 232, 0.35);
+}
+
+.demo-tab.is-active {
+  color: var(--gold-soft);
+  background: rgba(201, 166, 107, 0.12);
+  border-color: rgba(201, 166, 107, 0.45);
+}
+
+.demo-tab:focus-visible,
+.btn-demo:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.demo-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr);
+  gap: 1.75rem 2rem;
+  align-items: stretch;
+}
+
+.demo-aside {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.85rem;
+  padding: 0.25rem 0;
+}
+
+.demo-aside-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.25rem, 2.4vw, 1.55rem);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--gold-soft);
+  line-height: 1.3;
+}
+
+.demo-aside-body {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.02rem;
+}
+
+.demo-aside-note {
+  margin: 0;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--line);
+  color: var(--cyan);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.demo-replay {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.demo-terminal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  min-height: 18rem;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+.demo-terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.demo-terminal-bar span {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: rgba(155, 150, 140, 0.35);
+}
+
+.demo-terminal-bar span:nth-child(1) {
+  background: rgba(201, 166, 107, 0.55);
+}
+
+.demo-terminal-bar span:nth-child(2) {
+  background: rgba(110, 196, 232, 0.45);
+}
+
+.demo-terminal-bar em {
+  margin-left: 0.5rem;
+  font-style: normal;
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.demo-terminal-body {
+  flex: 1;
+  padding: 1rem 1.1rem 1.2rem;
+  font-family: var(--font-mono);
+  font-size: 0.84rem;
+  line-height: 1.55;
+  overflow: auto;
+  max-height: 22rem;
+  scrollbar-width: thin;
+}
+
+.demo-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0 0 0.2rem;
+  color: var(--text);
+  animation: demo-line-in 0.28s ease both;
+}
+
+.demo-line-gap {
+  height: 0.7rem;
+}
+
+.demo-line--prompt {
+  color: var(--gold-soft);
+}
+
+.demo-line--you {
+  color: var(--cyan);
+}
+
+.demo-line--assistant {
+  color: var(--text);
+}
+
+.demo-line--out {
+  color: #c8c4ba;
+}
+
+.demo-line--meta {
+  color: rgba(155, 150, 140, 0.95);
+  font-size: 0.8rem;
+}
+
+.demo-line--dim {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.demo-line--accent {
+  color: var(--gold);
+  margin-top: 0.35rem;
+}
+
+.demo-line--label {
+  color: var(--gold-soft);
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin: 0.15rem 0 0.45rem;
+}
+
+.demo-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.btn-demo {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  padding: 0.45rem 0.85rem;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.btn-demo:hover:not(:disabled) {
+  color: var(--text);
+  border-color: rgba(110, 196, 232, 0.4);
+}
+
+.btn-demo:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.btn-demo-primary {
+  color: var(--gold-soft);
+  border-color: rgba(201, 166, 107, 0.4);
+  background: rgba(201, 166, 107, 0.1);
+}
+
+.btn-demo-primary:hover:not(:disabled) {
+  color: var(--gold-soft);
+  border-color: rgba(201, 166, 107, 0.65);
+  background: rgba(201, 166, 107, 0.18);
+}
+
+.demo-progress {
+  min-width: 3.5rem;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.demo-more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem 1.75rem;
+  margin: 1.75rem 0 0;
+  font-size: 0.98rem;
+}
+
+.demo-more a {
+  text-decoration: none;
+  color: var(--cyan);
+}
+
+.demo-more a:hover {
+  color: var(--gold-soft);
+}
+
+@keyframes demo-line-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .code-block {
@@ -436,6 +731,17 @@ main,
   }
 }
 
+@media (max-width: 900px) {
+  .demo-stage {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+
+  .demo-terminal {
+    min-height: 16rem;
+  }
+}
+
 @media (max-width: 720px) {
   .site-header {
     flex-direction: column;
@@ -451,7 +757,8 @@ main,
     padding-top: 2rem;
   }
 
-  .feature-list {
+  .feature-list,
+  .feature-list.pillars {
     grid-template-columns: 1fr;
     gap: 1.6rem;
   }
@@ -459,6 +766,20 @@ main,
   .btn-copy {
     position: static;
     margin-top: 0.85rem;
+  }
+
+  .demo-tabs {
+    gap: 0.4rem;
+  }
+
+  .demo-tab {
+    flex: 1 1 auto;
+    text-align: center;
+    padding: 0.5rem 0.7rem;
+  }
+
+  .demo-controls {
+    justify-content: space-between;
   }
 }
 
@@ -469,7 +790,8 @@ main,
 
   .hero,
   .hero-logo,
-  .btn {
+  .btn,
+  .demo-line {
     animation: none;
     transition: none;
   }

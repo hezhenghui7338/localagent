@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Your AI. Your Data. Your Machine.</strong>
+  <strong>Local First. Memory Forever. Actions Automated.</strong>
 </p>
 
 <p align="center">
@@ -13,7 +13,7 @@
 
 # <img src="assets/logo-icon.png" alt="LA" width="36" valign="middle"> LocalAgent
 
-> **One step to your local personal AI assistant — your compute, your network, your tools; lasting memory that truly gets to know you; extensible when you need more.**
+> **Local AI that remembers and gets things done.**
 
 ## Quick start
 
@@ -51,40 +51,35 @@ Runs fully local by default; optional cloud and web. Details: [summarize · news
 | **News sniff** / daily brief | `la news sync` → `la news brief` (TTY ↑↓ / `o` open / `r` deep-read); `la news schedule on` |
 | **Polish** copy (clipboard by default) | `la polish` / `/polish` · `--scene` / `--tone` / `--no-copy` |
 | Search the web | ddgs by default; `LA chat` or `/deepsearch` · [Product tour §6](examples/product-tour.md) |
-| Local Shell / write files (dangerous ops blocked) | `run_shell` / `write_file`; approve before execute · [Local Shell](#local-execution--shell-that-actually-acts) |
+| Local Shell / write files (dangerous ops blocked) | `run_shell` / `write_file`; approve before execute · [Actions](#actions-automated--shell-that-actually-acts) |
+| See today’s action signals | `la status` |
 | See tokens / cost | `LA audit` · [Product tour §8](examples/product-tour.md) |
 | Switch models | Ollama / OpenRouter / Cursor; `auto` falls back by priority |
 
 ### Product design
 
-1. **Fully local** — zero-bill / zero-account default path: chat, memory, retrieval, and execution run on-device; identity and data stay local; compute defaults to local, with optional cloud/network extras — a pure-local path always remains  
-2. **Truly easy** — one-command install, ready immediately; daily path is `la` / `la setup` / `la chat`, plus everyday side-paths: `la summarize` · `la news` · `la polish`  
-3. **Long-term, multi-layer memory** — Hot / Warm / Cold + Mem0: remember you, and decide what to keep, what to drop, and when to step in  
-4. **External tools** — local Shell, write_file, workspace awareness; approve before side effects; block dangerous commands; audit cost and behavior  
-5. **RAG** — local documents into a knowledge base; deep recall during chat  
-6. **Daily essentials** — one-click summarize (doc dialogue), news sniff (interactive brief from trusted feeds), one-click polish (clipboard-ready rewrite)
+1. **Local First** — zero-bill / zero-account default: chat, memory, retrieval, and tools run on-device; three-command main path (`la` · `la setup` · `la chat`); optional cloud/network — identity, memory, and audit stay local  
+2. **Memory Forever** — Hot / Warm / Cold + Mem0 across sessions; knows what to keep, what to drop, and when to step in; local RAG + ChatGPT import; switch models, keep identity  
+3. **Actions Automated** — Shell / write_file / workspace; `la summarize` · `la news` · `la polish`; scheduled brief; confirm before side effects, block danger, show a receipt when done; `la status` for today’s signals  
 
 | Typical local chat | LocalAgent |
 | --- | --- |
-| Cloud bills and account friction | **Zero-cost local default** (Ollama); bring your own API if you want |
-| Too many commands after install | **Three-command main path**: `la` · `la setup` · `la chat` |
-| Forgets — or memorizes everything blindly | **Multi-layer memory** that knows you and prioritizes |
-| Can't act or search | **Local tools** + optional web search |
-| Docs and chats are separate silos | **RAG** + conversation archives for deep recall |
-| Manual doc skim / news doomscroll / awkward drafts | **`la summarize` · `la news` · `la polish`** — digest, brief, rewrite |
+| Cloud bills and account friction | **Local First** — zero-cost Ollama default; bring your own API if you want |
+| Forgets — or memorizes everything blindly | **Memory Forever** — layered memory with judgment + local RAG |
+| Only talks; you still do the work | **Actions Automated** — tools, side-paths, schedule; confirm + hard blocks |
 
 Optional OpenRouter / Cursor / Tavily — **identity and data stay on your machine**. Spec: [docs/PRD.md](docs/PRD.md); ~30-min tour: [examples/product-tour.md](examples/product-tour.md).
 
 ### TODO / Coming soon
 
-- **Not in this release:** workspace file-watcher incremental indexing, and external task sources.
+- **Not in this release:** workspace file-watcher incremental indexing, external task sources, unattended scheduled Shell.
 
 ### What we believe
 
 - AI is revolutionary — embrace it; hearing about it a thousand times beats nothing next to downloading LA and debugging it yourself  
 - “Read it a hundred times and meaning appears” does not happen by itself — you need practice  
 - LA only picks **low-hanging, mature** fruit; no uncontrolled, expensive, hard-to-own stacks  
-- LA does **one thing**: a personal AI assistant on your machine. Data stays local; the full loop runs offline. Networking and new tech are welcome — barriers are not  
+- LA does **one thing**: local AI that remembers and gets things done. Data stays local; the full loop runs offline. Networking and new tech are welcome — barriers are not  
 - Remove obstacles to using AI
 
 ## Install & upgrade
@@ -140,7 +135,7 @@ ollama rm qwen3.5:4b           # optional: Ollama is separate and is not removed
 
 ## Feature highlights
 
-### Fully local
+### Local First
 
 LocalAgent’s core path — **chat, memory write, memory recall, document retrieval, workspace awareness, Shell execution, audit stats** — can run on local Ollama alone, with no paid API. Identity and data stay on your machine.
 
@@ -163,7 +158,7 @@ ollama pull qwen3.5:4b
 LA chat --provider ollama
 ```
 
-### Local execution — Shell that actually acts
+### Actions Automated — Shell that actually acts
 
 A typical chat only tells you to run `find … | wc -l` yourself. LocalAgent’s agent **calls `run_shell`**, executes in the workspace, and turns the output into an answer — fully local `qwen3.5:4b`, no cloud API.
 
@@ -250,7 +245,7 @@ open examples/walkthrough.zh-CN.md
 ```
 
 Full narrative and acceptance criteria: [docs/PRD.md](docs/PRD.md).
-### Mem0 long-term memory — remembers you end-to-end
+### Memory Forever — remembers you end-to-end
 
 Memory inputs include **ChatGPT history and LA live chats**. Personal documents use `LA rag` for Cold knowledge. The Warm layer is powered by the [Mem0](https://github.com/mem0ai/mem0) engine (`mem0ai` is a core dependency): **Retain → Recall → Reflect (search + LLM)**. The repo includes an “architecture decision evolution” narrative demo covering write, semantic recall, time awareness, tag browsing, and cross-memory reasoning:
 

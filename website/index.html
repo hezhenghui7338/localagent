@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="LocalAgent — Your AI. Your Data. Your Machine. A fully local personal AI assistant."
+      content="LocalAgent — Local First. Memory Forever. Actions Automated. Local AI that remembers and gets things done."
     />
     <meta name="theme-color" content="#0a0a0c" />
-    <title>LocalAgent — Local personal AI</title>
+    <title>LocalAgent — Local AI that remembers and gets things done</title>
     <link rel="icon" href="assets/logo-icon.png" type="image/png" />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -23,6 +23,7 @@
       </a>
       <nav class="site-nav" aria-label="Primary">
         <a href="#features" data-i18n="nav.features">Features</a>
+        <a href="#demo" data-i18n="nav.demo">Demo</a>
         <a href="#install" data-i18n="nav.install">Install</a>
         <a href="#contact" data-i18n="nav.contact">Contact</a>
         <a
@@ -51,11 +52,10 @@
         />
         <p class="hero-brand">LocalAgent</p>
         <h1 class="hero-tagline" data-i18n="hero.tagline">
-          Your AI. Your Data. Your Machine.
+          Local First. Memory Forever. Actions Automated.
         </h1>
         <p class="hero-lead" data-i18n="hero.lead">
-          One step to your local personal AI assistant — your compute, your
-          network, your tools; lasting memory that truly gets to know you.
+          Local AI that remembers and gets things done.
         </p>
         <div class="hero-cta">
           <a
@@ -69,62 +69,169 @@
           <a class="btn btn-ghost" href="#install" data-i18n="hero.ctaInstall"
             >Quick install</a
           >
+          <a class="btn btn-ghost" href="#demo" data-i18n="hero.ctaDemo"
+            >See the demo →</a
+          >
         </div>
       </section>
 
       <section id="features" class="section features">
         <p class="section-eyebrow" data-i18n="features.eyebrow">Product design</p>
         <h2 class="section-title" data-i18n="features.title">
-          Fully local. Knows you long-term.
+          Remembers you. Gets things done. Stays on your machine.
         </h2>
         <p class="section-lead" data-i18n="features.lead">
-          Zero bill and zero account by default; identity and data stay on your
-          machine. Optional cloud and web — always with a pure local path.
+          Not another chat shell — a local personal AI. Models are compute;
+          LocalAgent owns sessions, memory, and audit on your machine.
         </p>
-        <ul class="feature-list">
+        <ul class="feature-list pillars">
           <li>
-            <h3 data-i18n="features.f1.title">Fully local</h3>
+            <h3 data-i18n="features.f1.title">Local First</h3>
             <p data-i18n="features.f1.body">
-              Chat, memory, retrieval, and tools can run on-device; local
-              compute by default, optional API boost.
-            </p>
-          </li>
-          <li>
-            <h3 data-i18n="features.f2.title">Truly easy</h3>
-            <p data-i18n="features.f2.body">
-              One-step install, ready to talk. Main path:
+              Zero-bill default path: chat, memory, retrieval, and tools run
+              on-device. Main path:
               <code>la</code> · <code>la setup</code> · <code>la chat</code>.
+              Optional cloud — identity and data stay local.
             </p>
+            <a
+              class="feature-demo-link"
+              href="#demo-setup"
+              data-demo-jump="setup"
+              data-i18n="features.f1.link"
+              >See the zero-cost setup demo →</a
+            >
           </li>
           <li>
-            <h3 data-i18n="features.f3.title">Layered long-term memory</h3>
+            <h3 data-i18n="features.f2.title">Memory Forever</h3>
+            <p data-i18n="features.f2.body">
+              Hot / Warm / Cold + Mem0 across sessions. Remembers you — and
+              knows what to keep, what to drop, and when to step in. Docs go
+              into a local KB for deep recall.
+            </p>
+            <a
+              class="feature-demo-link"
+              href="#demo-memory"
+              data-demo-jump="memory"
+              data-i18n="features.f2.link"
+              >See the “remembers you” demo →</a
+            >
+          </li>
+          <li>
+            <h3 data-i18n="features.f3.title">Actions Automated</h3>
             <p data-i18n="features.f3.body">
-              Hot / Warm / Cold + Mem0: remembers you — and knows what to keep,
-              and when to step in.
+              Shell, file writes, workspace; summarize · news · polish; scheduled
+              brief. Confirm before side effects, block danger, show a receipt
+              when done.
             </p>
-          </li>
-          <li>
-            <h3 data-i18n="features.f4.title">On-device tools</h3>
-            <p data-i18n="features.f4.body">
-              Local shell, file writes, workspace awareness; confirm before run,
-              block dangerous commands.
-            </p>
-          </li>
-          <li>
-            <h3 data-i18n="features.f5.title">Local RAG</h3>
-            <p data-i18n="features.f5.body">
-              Ingest documents into a knowledge base; deep-recall source text in
-              chat.
-            </p>
-          </li>
-          <li>
-            <h3 data-i18n="features.f6.title">Daily essentials</h3>
-            <p data-i18n="features.f6.body">
-              <code>la summarize</code> · <code>la news</code> ·
-              <code>la polish</code> — docs, briefing, and copy in one shot.
-            </p>
+            <a
+              class="feature-demo-link"
+              href="#demo-deepread"
+              data-demo-jump="deepread"
+              data-i18n="features.f3.link"
+              >See the deep-read demo →</a
+            >
           </li>
         </ul>
+      </section>
+
+      <section id="demo" class="section demo">
+        <p class="section-eyebrow" data-i18n="demo.eyebrow">Demo</p>
+        <h2 class="section-title" data-i18n="demo.title">
+          Three moments you can feel
+        </h2>
+        <p class="section-lead" data-i18n="demo.lead">
+          Pre-recorded walkthrough — no hosted model. On your machine, these
+          are the real paths.
+        </p>
+
+        <div class="demo-tabs" role="tablist" aria-label="Demo moments">
+          <button
+            type="button"
+            class="demo-tab is-active"
+            role="tab"
+            id="demo-tab-setup"
+            data-demo-tab="setup"
+            aria-controls="demo-panel"
+            aria-selected="true"
+            data-i18n="demo.tab.setup"
+          >
+            Setup
+          </button>
+          <button
+            type="button"
+            class="demo-tab"
+            role="tab"
+            id="demo-tab-memory"
+            data-demo-tab="memory"
+            aria-controls="demo-panel"
+            aria-selected="false"
+            tabindex="-1"
+            data-i18n="demo.tab.memory"
+          >
+            Memory
+          </button>
+          <button
+            type="button"
+            class="demo-tab"
+            role="tab"
+            id="demo-tab-deepread"
+            data-demo-tab="deepread"
+            aria-controls="demo-panel"
+            aria-selected="false"
+            tabindex="-1"
+            data-i18n="demo.tab.deepread"
+          >
+            Deep read
+          </button>
+        </div>
+
+        <div class="demo-stage" id="demo-panel" role="tabpanel" aria-labelledby="demo-tab-setup">
+          <aside class="demo-aside">
+            <h3 class="demo-aside-title" id="demo-aside-title">
+              One step local. Zero bill by default.
+            </h3>
+            <p class="demo-aside-body" id="demo-aside-body">
+              No account required to chat. Compute and data stay on your
+              machine.
+            </p>
+            <p class="demo-aside-note" id="demo-aside-note">
+              Default path is Ollama on-device — cost can be $0.
+            </p>
+          </aside>
+
+          <div class="demo-replay">
+            <div class="demo-terminal" aria-live="polite">
+              <div class="demo-terminal-bar" aria-hidden="true">
+                <span></span><span></span><span></span>
+                <em>localagent</em>
+              </div>
+              <div class="demo-terminal-body" id="demo-lines"></div>
+            </div>
+            <div class="demo-controls">
+              <button type="button" class="btn-demo" id="demo-prev" data-i18n="demo.prev">
+                Back
+              </button>
+              <span class="demo-progress" id="demo-progress">1 / 4</span>
+              <button type="button" class="btn-demo btn-demo-primary" id="demo-next" data-i18n="demo.next">
+                Next
+              </button>
+              <button type="button" class="btn-demo" id="demo-replay" data-i18n="demo.replay">
+                Replay
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <p class="demo-more">
+          <a
+            href="https://github.com/hezhenghui7338/localagent/blob/main/examples/product-tour.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-i18n="demo.moreTour"
+            >Full product tour →</a
+          >
+          <a href="#install" data-i18n="demo.moreInstall">Install →</a>
+        </p>
       </section>
 
       <section id="install" class="section install">
@@ -166,7 +273,8 @@ la</code></pre>
         <p class="section-eyebrow" data-i18n="contact.eyebrow">Contact</p>
         <h2 class="section-title" data-i18n="contact.title">Say hello</h2>
         <p class="section-lead" data-i18n="contact.lead">
-          Questions, ideas, or collaboration — email us or open an Issue.
+          Not another chat client — local AI that remembers and gets things
+          done. Questions, ideas, or collaboration welcome.
         </p>
         <ul class="contact-list">
           <li>
@@ -201,6 +309,6 @@ la</code></pre>
       </p>
     </footer>
 
-    <script src="script.js" defer></script>
+    <script src="script.js?v=4" defer></script>
   </body>
 </html>

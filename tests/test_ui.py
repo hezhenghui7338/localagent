@@ -91,7 +91,7 @@ def test_render_welcome_shows_project_basics():
     out = render_welcome(info, width=88, color=False)
     assert f"LocalAgent v{__version__}" in out
     assert "LOCAL" in out and "AGENT" in out
-    assert "Your AI. Your Data. Your Machine." in out
+    assert "Local First. Memory Forever. Actions Automated." in out
     assert "qwen3.5:4b" in out
     assert "联网 · ddgs（免费）" in out
     assert "~/code/LocalAgent" in out

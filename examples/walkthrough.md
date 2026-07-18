@@ -1,6 +1,8 @@
 # LocalAgent feature walkthrough
 
-Short scenarios for a **fast path**, including the daily trio (summarize · news · polish). Full user stories live in [product-tour.md](product-tour.md) (Chinese: [product-tour.zh-CN.md](product-tour.zh-CN.md)). Sample data is fictional and safe to reproduce.
+> **Local First. Memory Forever. Actions Automated.** — Local AI that remembers and gets things done.
+
+Short scenarios for a **fast path** (Local → Memory → Actions), including the daily trio (summarize · news · polish). Full user stories live in [product-tour.md](product-tour.md) (Chinese: [product-tour.zh-CN.md](product-tour.zh-CN.md)). Sample data is fictional and safe to reproduce.
 
 Chinese version: [walkthrough.zh-CN.md](walkthrough.zh-CN.md).
 
@@ -23,9 +25,9 @@ la setup
 
 ---
 
-## Highlight: fully local
+## Highlight: Local First
 
-LocalAgent’s core path — **chat, memory write, memory recall, document retrieval, workspace awareness, audit** — can run on local Ollama alone, with no paid API.
+LocalAgent’s core path — **chat, memory write, memory recall, document retrieval, workspace awareness, audit** — can run on local Ollama alone, with no paid API. Use `la status` for Daily Actions signals.
 
 | Capability | Needs cloud API? | Notes |
 | --- | --- | --- |

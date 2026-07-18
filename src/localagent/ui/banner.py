@@ -37,7 +37,7 @@ class WelcomeInfo:
     memory_count: int
     kb_count: int
     git_line: str
-    tagline: str = "Your AI. Your Data. Your Machine."
+    tagline: str = "Local First. Memory Forever. Actions Automated."
 
 
 _WEB_SEARCH_LABELS = {
@@ -239,10 +239,23 @@ def render_welcome(info: WelcomeInfo, *, width: int | None = None, color: bool |
         "/deepsearch <主题> 研究",
         "/q / Ctrl+C×2 退出",
         _c("───────────────", _DIM, enabled=use_color),
-        _c("项目状态", _BOLD, _CYAN, enabled=use_color),
-        f"记忆 {info.memory_count} · kb {info.kb_count}",
-        _truncate(info.git_line, right_w - 2),
+        _c("Daily Actions", _BOLD, _CYAN, enabled=use_color),
     ]
+    try:
+        from localagent.status.daily import format_daily_actions_lines
+
+        for line in format_daily_actions_lines():
+            tips.append(_truncate(line, right_w - 2))
+    except Exception:
+        tips.append("la status 查看今日信号")
+    tips.extend(
+        [
+            _c("───────────────", _DIM, enabled=use_color),
+            _c("项目状态", _BOLD, _CYAN, enabled=use_color),
+            f"记忆 {info.memory_count} · kb {info.kb_count}",
+            _truncate(info.git_line, right_w - 2),
+        ]
+    )
     if info.session_id:
         tips.append(_truncate(f"session {info.session_id}", right_w - 2))
 
