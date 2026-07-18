@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <rect width="128" height="128" rx="28" fill="#f0fdfa"/>
+  <!-- document -->
+  <path d="M36 22h40l20 20v64a8 8 0 0 1-8 8H36a8 8 0 0 1-8-8V30a8 8 0 0 1 8-8z" fill="#14b8a6"/>
+  <path d="M76 22v16a4 4 0 0 0 4 4h16" fill="#0f766e"/>
+  <!-- summary bullets -->
+  <circle cx="44" cy="56" r="4" fill="#67e8f9"/>
+  <rect x="54" y="53" width="36" height="6" rx="3" fill="#f0fdfa"/>
+  <circle cx="44" cy="72" r="4" fill="#67e8f9"/>
+  <rect x="54" y="69" width="28" height="6" rx="3" fill="#0f766e"/>
+  <circle cx="44" cy="88" r="4" fill="#67e8f9"/>
+  <rect x="54" y="85" width="32" height="6" rx="3" fill="#f0fdfa"/>
+</svg>

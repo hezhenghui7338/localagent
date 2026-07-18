@@ -6,12 +6,15 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "hzh" }]
-keywords = ["ai", "cli", "agent", "memory", "ollama", "langgraph", "personal-assistant", "local", "local-first", "actions", "mac", "offline"]
+keywords = ["ai", "cli", "agent", "memory", "ollama", "langgraph", "personal-assistant", "local", "local-first", "actions", "mac", "windows", "offline"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",

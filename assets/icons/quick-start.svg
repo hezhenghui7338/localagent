@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <rect width="128" height="128" rx="28" fill="#f0fdfa"/>
+  <!-- rocket body -->
+  <path d="M64 22c14 18 20 36 20 54 0 10-6 18-20 26-14-8-20-16-20-26 0-18 6-36 20-54z" fill="#14b8a6"/>
+  <ellipse cx="64" cy="58" rx="10" ry="12" fill="#67e8f9"/>
+  <circle cx="64" cy="56" r="5" fill="#0f766e"/>
+  <!-- fins -->
+  <path d="M44 76c-6 8-10 18-10 26 10-2 18-8 22-14-6-2-10-6-12-12z" fill="#0f766e"/>
+  <path d="M84 76c6 8 10 18 10 26-10-2-18-8-22-14 6-2 10-6 12-12z" fill="#0f766e"/>
+  <!-- flame -->
+  <path d="M56 100c2 8 4 12 8 16 4-4 6-8 8-16-4 2-8 2-16 0z" fill="#67e8f9"/>
+  <path d="M60 104c1 5 2 8 4 10 2-2 3-5 4-10-2 1-4 1-8 0z" fill="#38bdf8"/>
+</svg>

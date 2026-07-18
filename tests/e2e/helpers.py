@@ -14,6 +14,72 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+# Offline e2e duration budgets (seconds), longest-prefix match on argv.
+# Hang protection remains ``timeout=``; budgets are opt-in via ``budget=``.
+DURATION_BUDGETS: dict[tuple[str, ...], float] = {
+    ("--help",): 3.0,
+    ("-V",): 3.0,
+    ("complete",): 3.0,
+    ("logs", "--path"): 3.0,
+    ("memory", "status"): 5.0,
+    ("rag", "status"): 5.0,
+    ("status",): 5.0,
+    ("workspace",): 5.0,
+    ("config", "list"): 5.0,
+    ("tasks",): 5.0,
+    ("memory", "pending"): 5.0,
+    ("memory", "add"): 8.0,
+    ("memory", "query"): 8.0,
+    ("audit",): 8.0,
+    ("memory", "search"): 10.0,
+    ("rag", "search"): 10.0,
+    ("chat",): 10.0,
+    ("summarize",): 10.0,
+    ("audit", "--report"): 10.0,
+    ("rag", "add"): 15.0,
+    ("rag", "add", "--background"): 8.0,  # enqueue only; completion uses BACKGROUND_TASK_BUDGET
+    ("polish",): 15.0,
+    ("memory", "reindex"): 20.0,
+    ("rag", "rebuild"): 20.0,
+    ("memory", "ingest"): 30.0,
+}
+
+# End-to-end wait for background task completion (poll wall time).
+BACKGROUND_TASK_BUDGET = 30.0
+
+
+def budgets_enabled() -> bool:
+    """Duration budgets on unless ``LA_E2E_BUDGETS=0``."""
+    return os.environ.get("LA_E2E_BUDGETS", "1").strip() not in ("0", "false", "False", "no")
+
+
+def lookup_duration_budget(args: list[str]) -> float | None:
+    """Longest-prefix match against ``DURATION_BUDGETS``."""
+    best: float | None = None
+    best_len = -1
+    for prefix, seconds in DURATION_BUDGETS.items():
+        n = len(prefix)
+        if n > best_len and tuple(args[:n]) == prefix:
+            best = seconds
+            best_len = n
+    return best
+
+
+def _assert_within_budget(
+    *,
+    label: str,
+    elapsed: float,
+    budget: float,
+    detail: str = "",
+) -> None:
+    if elapsed <= budget:
+        return
+    extra = f"\n{detail}" if detail else ""
+    pytest.fail(
+        f"duration budget exceeded for {label}: "
+        f"elapsed={elapsed:.3f}s budget={budget:.3f}s{extra}"
+    )
+
 
 def run_la(
     args: list[str],
@@ -22,13 +88,20 @@ def run_la(
     input_text: str | None = None,
     timeout: int = 60,
     cwd: Path | None = None,
+    budget: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    """Run ``python -m localagent.cli …``.
+
+    ``timeout`` is hang protection only. Pass ``budget=`` (seconds) to fail when
+    wall time exceeds the budget; existing e2e omit it and are unchanged.
+    """
     base_env = os.environ.copy()
     for key in ("OPENAI_API_KEY", "OPENROUTER_API_KEY", "CURSOR_API_KEY", "TAVILY_API_KEY"):
         base_env.pop(key, None)
     if env:
         base_env.update(env)
-    return subprocess.run(
+    t0 = time.perf_counter()
+    result = subprocess.run(
         [sys.executable, "-m", "localagent.cli", *args],
         input=input_text,
         text=True,
@@ -37,6 +110,16 @@ def run_la(
         cwd=cwd or PROJECT_ROOT,
         timeout=timeout,
     )
+    elapsed = time.perf_counter() - t0
+    if budgets_enabled() and budget is not None:
+        detail = (result.stdout or "")[:400] + (result.stderr or "")[:200]
+        _assert_within_budget(
+            label=repr(args),
+            elapsed=elapsed,
+            budget=budget,
+            detail=detail,
+        )
+    return result
 
 
 def ollama_completion_models() -> list[str]:
@@ -111,8 +194,13 @@ def wait_for_task(
     env: dict[str, str],
     timeout: float = 30.0,
     poll: float = 0.2,
+    budget: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Poll ``LA tasks <id>`` until completed/skipped/failed or timeout."""
+    """Poll ``LA tasks <id>`` until completed/skipped/failed or timeout.
+
+    Optional ``budget`` asserts end-to-end poll wall time (hang ``timeout`` is separate).
+    """
+    t0 = time.perf_counter()
     deadline = time.monotonic() + timeout
     last: subprocess.CompletedProcess[str] | None = None
     while time.monotonic() < deadline:
@@ -120,6 +208,13 @@ def wait_for_task(
         assert last.returncode == 0, last.stdout + last.stderr
         out = last.stdout
         if "status: completed" in out or "status: skipped" in out:
+            if budgets_enabled() and budget is not None:
+                _assert_within_budget(
+                    label=f"wait_for_task({task_id})",
+                    elapsed=time.perf_counter() - t0,
+                    budget=budget,
+                    detail=out[:400],
+                )
             return last
         if "status: failed" in out:
             pytest.fail(out)

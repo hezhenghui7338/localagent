@@ -88,6 +88,14 @@ def schedule_status() -> ScheduleStatus:
     hour = profile.auto_sync_hour
     minute = profile.auto_sync_minute
     system = platform.system()
+    if system == "Windows":
+        return ScheduleStatus(
+            enabled=False,
+            backend="none",
+            detail="Windows 暂不支持 la news schedule（请手动运行: la news sync）",
+            hour=hour,
+            minute=minute,
+        )
     if system == "Darwin":
         path = _plist_path()
         if path.exists():
@@ -135,6 +143,12 @@ def schedule_status() -> ScheduleStatus:
 def enable_schedule(*, hour: int | None = None, minute: int | None = None) -> ScheduleStatus:
     if not config.NEWS_AUTO_SYNC:
         raise RuntimeError("LA_NEWS_AUTO_SYNC=0，拒绝安装定时任务。设为 1 后再试。")
+
+    if platform.system() == "Windows":
+        raise RuntimeError(
+            "Windows 暂不支持 la news schedule。"
+            "请手动运行: la news sync；或用系统「任务计划程序」定时执行该命令。"
+        )
 
     profile = load_news_profile()
     h = hour if hour is not None else profile.auto_sync_hour
@@ -202,6 +216,14 @@ def disable_schedule() -> ScheduleStatus:
     save_news_profile(profile)
 
     system = platform.system()
+    if system == "Windows":
+        return ScheduleStatus(
+            enabled=False,
+            backend="none",
+            detail="Windows 无新闻定时任务可卸载；请手动运行: la news sync",
+            hour=profile.auto_sync_hour,
+            minute=profile.auto_sync_minute,
+        )
     if system == "Darwin":
         path = _plist_path()
         if path.exists():

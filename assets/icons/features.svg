@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <rect width="128" height="128" rx="28" fill="#f0fdfa"/>
+  <!-- soft puzzle / spark cluster -->
+  <rect x="28" y="28" width="36" height="36" rx="10" fill="#14b8a6"/>
+  <rect x="64" y="28" width="36" height="36" rx="10" fill="#0f766e"/>
+  <rect x="28" y="64" width="36" height="36" rx="10" fill="#0f766e"/>
+  <rect x="64" y="64" width="36" height="36" rx="10" fill="#38bdf8"/>
+  <!-- sparkles -->
+  <circle cx="46" cy="46" r="5" fill="#67e8f9"/>
+  <circle cx="82" cy="46" r="4" fill="#67e8f9"/>
+  <circle cx="46" cy="82" r="4" fill="#94a3b8"/>
+  <circle cx="82" cy="82" r="5" fill="#f0fdfa"/>
+  <!-- center connector -->
+  <circle cx="64" cy="64" r="8" fill="#334155"/>
+  <circle cx="64" cy="64" r="4" fill="#67e8f9"/>
+</svg>

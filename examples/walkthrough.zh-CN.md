@@ -11,7 +11,7 @@
 pipx install "git+https://github.com/hezhenghui7338/localagent.git"
 # 或源码开发：pip install -e ".[dev]"
 
-# 2. 首次 la / la setup 会询问是否安装 Ollama 并拉取 qwen3.5:4b（可答 n 跳过）
+# 2. 首次 la / la setup 会询问是否安装 Ollama，并按内存拉取合适模型（可答 n 跳过）
 la setup
 # 或无需确认：la setup -y
 
@@ -160,23 +160,24 @@ LA chat --provider ollama
 
 ---
 
-## 示例 4：本地 qwen3.5:4b，本机就能跑
+## 示例 4：本地模型，本机就能跑
 
-推荐配置（已包含在 `examples/env.local-only.example`）：
+未配置模型时，`la setup` 会按系统内存推荐（可用 `OLLAMA_MODEL` 覆盖）。推荐配置（已包含在 `examples/env.local-only.example`）：
 
 ```bash
-OLLAMA_MODEL=qwen3.5:4b
+OLLAMA_MODEL=qwen3.5:4b           # 或 la setup 推荐的型号
 OLLAMA_THINK=0                    # 关闭 thinking，避免等数分钟
 LA_MODEL_PROVIDER_PRIORITY=ollama # 不降级到云端
 ```
 
-**硬件参考：**
+**内存 → 推荐模型**（`la setup` 在无配置时使用）：
 
-| 环境 | 体验 |
-|------|------|
-| Apple Silicon / 现代笔记本（16GB 内存） | 流畅，简单问答 3–8 秒 |
-| 中端笔记本（16GB 内存） | 可用，简单问答 10–20 秒 |
-| 仅 CPU、8GB 内存 | 较慢，建议缩短 `OLLAMA_NUM_PREDICT` |
+| 系统内存 | 模型 | 说明 |
+|------|------|------|
+| &lt; 6 GB | `qwen2.5:0.5b`（Mini） | 基础对话；多工具 Agent 较弱 |
+| 6–10 GB | `qwen2.5:1.5b` | 轻量问答 |
+| 10–14 GB | `qwen2.5:3b` | 过渡档 |
+| ≥ 14 GB | `qwen3.5:4b` | 主推质量档 |
 
 ```bash
 # 确认本地模型可用

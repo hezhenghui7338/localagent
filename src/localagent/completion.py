@@ -694,11 +694,28 @@ def _install_venv_activate_hook() -> list[Path]:
     return installed
 
 
+def _resolve_completion_shell(shell: str | None = None) -> str | None:
+    """Return zsh/bash, or None when completion should be skipped (e.g. PowerShell/cmd)."""
+    if shell:
+        name = Path(shell).name.lower()
+    else:
+        env_shell = os.environ.get("SHELL", "").strip()
+        if not env_shell:
+            return None
+        name = Path(env_shell).name.lower()
+    if name in ("zsh", "bash"):
+        return name
+    return None
+
+
 def install_shell_completion(*, shell: str | None = None) -> tuple[list[Path], Path | None]:
-    """Install zsh/bash completion into ~/.zshrc|~/.bashrc and venv activate hooks."""
-    shell_name = (shell or Path(os.environ.get("SHELL", "zsh")).name).lower()
-    if shell_name not in ("zsh", "bash"):
-        shell_name = "zsh"
+    """Install zsh/bash completion into ~/.zshrc|~/.bashrc and venv activate hooks.
+
+    Skips writing rc files when the shell is not bash/zsh (e.g. Windows PowerShell).
+    """
+    shell_name = _resolve_completion_shell(shell)
+    if shell_name is None:
+        return [], None
 
     rc_name = ".zshrc" if shell_name == "zsh" else ".bashrc"
     rc_path = Path.home() / rc_name
@@ -728,6 +745,13 @@ def ensure_shell_completion(*, shell: str | None = None) -> None:
 
 def run_complete_init(argv: list[str]) -> int:
     shell = argv[0] if argv else None
+    if _resolve_completion_shell(shell) is None:
+        name = Path(shell).name if shell else (os.environ.get("SHELL") or "unknown")
+        print(
+            f"[complete-init] 当前 shell（{name}）暂不支持自动补全安装；"
+            "请使用 bash/zsh，或稍后等待 PowerShell 支持。"
+        )
+        return 1
     try:
         venv_hooks, rc_path = install_shell_completion(shell=shell)
     except OSError as exc:

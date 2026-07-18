@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -32,8 +33,19 @@ def _format_size(path: Path) -> str:
     return f"{size / (1024 * 1024):.1f} MB"
 
 
+def _link_or_copy_into_kb(source: Path, target: Path) -> str:
+    """Prefer symlink; fall back to copy when symlink is unavailable (e.g. Windows)."""
+    try:
+        os.symlink(source, target)
+        return "symlink"
+    except OSError:
+        # Windows without Developer Mode / privilege often rejects symlinks.
+        shutil.copy2(source, target)
+        return "copy"
+
+
 def prepare_symlink(source_path: str | Path) -> tuple[Path, Path]:
-    """Validate source file and create symlink in kb/."""
+    """Validate source file and link (or copy) it into kb/."""
     config.ensure_data_dirs()
     source = Path(source_path).expanduser().resolve()
     if not source.exists():
@@ -69,14 +81,13 @@ def prepare_symlink(source_path: str | Path) -> tuple[Path, Path]:
         if target.is_symlink():
             target.unlink()
         elif target.is_file():
-            raise FileExistsError(
-                f"kb entry already exists and is not a symlink: {target}"
-            )
+            # Allow replacing a previous copy fallback with a fresh link/copy.
+            target.unlink()
         else:
             raise FileExistsError(f"kb entry already exists: {target}")
 
-    os.symlink(source, target)
-    log_event("kb.ingest", path=str(source), target=str(target), phase="symlink")
+    phase = _link_or_copy_into_kb(source, target)
+    log_event("kb.ingest", path=str(source), target=str(target), phase=phase)
     return source, target
 
 

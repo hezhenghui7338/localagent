@@ -13,7 +13,7 @@ Chinese version: [walkthrough.zh-CN.md](walkthrough.zh-CN.md).
 pipx install "git+https://github.com/hezhenghui7338/localagent.git"
 # Or from source: pip install -e ".[dev]"
 
-# 2. First `la` / `la setup` asks whether to install Ollama and pull qwen3.5:4b (you can skip)
+# 2. First `la` / `la setup` asks whether to install Ollama and pull a RAM-matched model (you can skip)
 la setup
 # Or non-interactive: la setup -y
 
@@ -156,23 +156,24 @@ Web results stay in the turn context and are **not** auto-saved to long-term mem
 
 ---
 
-## 4. Local qwen3.5:4b on your machine
+## 4. Local model on your machine
 
-Recommended settings (also in `examples/env.local-only.example`):
+`la setup` picks a model by system RAM when none is configured (override with `OLLAMA_MODEL`). Recommended settings (also in `examples/env.local-only.example`):
 
 ```bash
-OLLAMA_MODEL=qwen3.5:4b
+OLLAMA_MODEL=qwen3.5:4b           # or whatever la setup recommended
 OLLAMA_THINK=0                    # disable thinking to avoid long waits
 LA_MODEL_PROVIDER_PRIORITY=ollama # do not fall back to cloud
 ```
 
-**Hardware reference:**
+**RAM → recommended model** (used by `la setup` when nothing is configured):
 
-| Setup | Experience |
-| --- | --- |
-| Apple Silicon / modern laptop (16GB RAM) | Smooth; simple Q&A ~3–8s |
-| Mid-range laptop (16GB RAM) | Usable; simple Q&A ~10–20s |
-| CPU-only, 8GB RAM | Slower; shorten `OLLAMA_NUM_PREDICT` |
+| System RAM | Model | Notes |
+| --- | --- | --- |
+| &lt; 6 GB | `qwen2.5:0.5b` (Mini) | Basic chat; weak multi-tool Agent |
+| 6–10 GB | `qwen2.5:1.5b` | Lightweight Q&A |
+| 10–14 GB | `qwen2.5:3b` | Mid tier |
+| ≥ 14 GB | `qwen3.5:4b` | Default quality tier |
 
 ```bash
 ollama run qwen3.5:4b "Hello — introduce yourself in one sentence"

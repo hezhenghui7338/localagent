@@ -1,6 +1,6 @@
 # LocalAgent 测试用例审查目录
 
-> 更新于 **2026-07-16** · E2E 离线约 **110+** 条（含 journeys/pending/websearch/safety/graph）· 默认 `pytest` 含 STM · CI 另跑 `e2e-offline`
+> 更新于 **2026-07-18** · E2E 离线约 **130+** 条（含 journeys/pending/websearch/safety/graph/**perf**）· 默认 `pytest` 含 STM · CI 另跑 `e2e-offline`
 >
 > 建议审查顺序：Config/Models → Memory → Agent/Tools → Ingest/Tasks → CLI/UX → Audit → E2E → Benchmark
 >
@@ -16,7 +16,7 @@
 | [Ingest/Tasks](#ingesttasks) | 14+ |
 | [CLI/UX](#cliux) | 93 |
 | [Audit](#audit) | 20 |
-| [E2E](#e2e) | ~110 offline + 7 live |
+| [E2E](#e2e) | ~130 offline（含 perf 预算）+ 8 live |
 | [Benchmark](#benchmark) | 9 + STM (`test_stm_benchmark.py`，进日常 CI) |
 
 ## PRD §6 ↔ E2E 映射（三支柱）
@@ -85,6 +85,7 @@
 | `e2e/test_la_safety.py` | 护栏 / 审批 / 幻觉 / 无意图预检 |
 | `e2e/test_la_graph.py` | Neo4j `memory://` 冒烟 |
 | `e2e/test_la_live.py` | 需 Ollama 的实机语义检索 / reflect / chat / 跨 session |
+| `e2e/test_la_perf.py` | 离线关键路径 **duration budget**（超出即失败） |
 
 运行：
 
@@ -92,7 +93,44 @@
 pytest                            # CI 主 job：排除 e2e / e2e_live；含 STM
 pytest tests/e2e/ -m e2e          # CI e2e-offline job
 pytest tests/e2e/ -m e2e_live     # 实机 Ollama（本机）
+pytest tests/e2e/test_la_perf.py -m e2e   # 仅性能预算套件
+LA_E2E_BUDGETS=0 pytest tests/e2e/test_la_perf.py -m e2e  # 关闭预算断言
 ```
+
+## E2E Perf（duration budgets）
+
+离线子进程路径的 **per-command 时长门禁**（与 hang `timeout=` 分离）。机制在 [`tests/e2e/helpers.py`](../tests/e2e/helpers.py)：`DURATION_BUDGETS` + 显式 `run_la(..., budget=)` / `wait_for_task(..., budget=)`；现有非 perf e2e **不**自动套预算。`LA_E2E_BUDGETS=0` 可关闭断言。
+
+| 用例 | 命令 / 流程 | 预算（秒） |
+|------|-------------|-----------|
+| `perf_help` | `--help` | 3 |
+| `perf_version` | `-V` | 3 |
+| `perf_complete` | `complete -- LA mem` | 3 |
+| `perf_logs_path` | `logs --path` | 3 |
+| `perf_memory_status` | `memory status` | 5 |
+| `perf_rag_status` | `rag status` | 5 |
+| `perf_daily_status` | `status` | 5 |
+| `perf_workspace` | `workspace --todos-only` | 5 |
+| `perf_config_list` | `config list` | 5 |
+| `perf_tasks_list` | `tasks` | 5 |
+| `perf_memory_pending` | `memory pending` | 5 |
+| `perf_memory_add` | `memory add` | 8 |
+| `perf_memory_query` | `memory query --json` | 8 |
+| `perf_audit_summary` | `audit --since 7d` | 8 |
+| `perf_rag_bg enqueue` | `rag add --background` | 8 |
+| `perf_memory_search_hit` | `memory search` | 10 |
+| `perf_rag_search` | `rag search` | 10 |
+| `perf_chat_quit` | `chat` + `:q` | 10 |
+| `perf_summarize_heuristic` | `summarize --no-chat --heuristic` | 10 |
+| `perf_audit_report` | `audit --report` | 10 |
+| `perf_rag_add_small` | `rag add` 小文件 | 15 |
+| `perf_polish_offline` | `polish` | skip（无稳定离线改写路径） |
+| `perf_memory_reindex` | `memory reindex` | 20 |
+| `perf_rag_rebuild` | `rag rebuild` | 20 |
+| `perf_rag_bg_task` | `wait_for_task` 完成 | 30 |
+| `perf_memory_ingest_chat` | `memory ingest chat` | 30 |
+
+**不做硬失败**：live / 真模型对话、`reflect`、外网 `websearch`、`news sync`、`setup` 拉模型。
 
 ## Config/Models
 

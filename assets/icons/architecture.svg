@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <rect width="128" height="128" rx="28" fill="#f0fdfa"/>
+  <!-- layered modules -->
+  <rect x="36" y="24" width="56" height="22" rx="8" fill="#14b8a6"/>
+  <rect x="24" y="54" width="36" height="22" rx="8" fill="#0f766e"/>
+  <rect x="68" y="54" width="36" height="22" rx="8" fill="#38bdf8"/>
+  <rect x="36" y="84" width="56" height="22" rx="8" fill="#334155"/>
+  <!-- connectors -->
+  <path d="M64 46v8M42 76v8M86 76v8" stroke="#94a3b8" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="64" cy="35" r="4" fill="#67e8f9"/>
+  <circle cx="42" cy="65" r="3.5" fill="#67e8f9"/>
+  <circle cx="86" cy="65" r="3.5" fill="#f0fdfa"/>
+  <circle cx="64" cy="95" r="4" fill="#14b8a6"/>
+</svg>
