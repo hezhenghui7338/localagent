@@ -1,7 +1,7 @@
 (() => {
-  // v2: ignore legacy auto-detected lang so the site defaults to English.
-  const STORAGE_KEY = "la-site-lang-v2";
-  const LEGACY_STORAGE_KEY = "la-site-lang";
+  // v3: English-first. Ignore legacy auto-detect / sticky zh caches.
+  const STORAGE_KEY = "la-site-lang-v3";
+  const LEGACY_STORAGE_KEYS = ["la-site-lang", "la-site-lang-v2"];
   const INSTALL_CMD =
     'pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"\nla';
 
@@ -481,8 +481,11 @@
 
   function preferredLang() {
     try {
-      localStorage.removeItem(LEGACY_STORAGE_KEY);
+      for (const key of LEGACY_STORAGE_KEYS) {
+        localStorage.removeItem(key);
+      }
       const saved = localStorage.getItem(STORAGE_KEY);
+      // Only honor an explicit manual choice; otherwise English-first.
       if (saved === "zh" || saved === "en") return saved;
     } catch {
       /* private mode / blocked storage */
