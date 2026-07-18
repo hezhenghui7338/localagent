@@ -137,7 +137,7 @@ print(resolved)
 
     env = os.environ.copy()
     env["OLLAMA_MODEL"] = "qwen3:4b"
-    env.pop("MINIMAX_API_KEY", None)
+    env.pop("OPENAI_API_KEY", None)
     env.pop("OPENROUTER_API_KEY", None)
     env.pop("CURSOR_API_KEY", None)
     proc = subprocess.run(

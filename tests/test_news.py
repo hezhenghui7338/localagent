@@ -134,6 +134,18 @@ def test_rank_prefers_interests_and_mutes_jobs(isolated_data):
     assert ids[0] == "n1"
 
 
+def test_brief_size_env_overrides_persisted_profile(isolated_data, monkeypatch):
+    """LA_NEWS_BRIEF_SIZE must win over news_profile.json (saved on mute/schedule)."""
+    monkeypatch.delenv("LA_NEWS_BRIEF_SIZE", raising=False)
+    profile = load_news_profile()
+    profile.daily_brief_size = 15
+    save_news_profile(profile)
+    assert load_news_profile().daily_brief_size == 15
+
+    monkeypatch.setenv("LA_NEWS_BRIEF_SIZE", "30")
+    assert load_news_profile().daily_brief_size == 30
+
+
 def test_brief_contains_clickable_urls(isolated_data, monkeypatch):
     monkeypatch.setattr(
         "localagent.news.sync.fetch_feed_bytes",
@@ -290,6 +302,103 @@ def test_render_browser_shows_current_only():
     assert "https://a.example/x" in text
     assert "1/2" in text
     assert "键位" in text
+    assert "滚动" in text
+    # Title must not be a markdown link; URL only in footer.
+    assert "](https://" not in text
+    assert "【当前】标题甲" in text
+    assert "一句话:" not in text
+    assert text.index("标题甲") < text.index("https://a.example/x")
+    assert "入选  兴趣:Agent" in text
+    assert "编号  a" in text
+    assert "原文  https://a.example/x" in text
+
+
+def test_parse_bestblogs_rss_summary():
+    from localagent.news.summary_parse import parse_rss_summary
+
+    raw = (
+        "📌 一句话摘要 这是一句话总结。 "
+        "📝 详细摘要 这是详细摘要的第一句。这是第二句补充说明。 "
+        "💡 主要观点 短观点甲。 "
+        "这是对观点甲的较长阐述，用来解释背景与因果，并且字数明显超过观点本身很多。 "
+        "短观点乙。 "
+        "这是对观点乙的较长阐述内容，同样比观点标题更长也更详细一些，便于配对。 "
+        "💬 文章金句 金句一。 金句二。 "
+        "📊 文章信息 AI 初评： 88 来源： 量子位 作者： 闻乐 "
+        "分类： 人工智能 语言： 中文 阅读时间： 16 分钟 字数： 3923 阅读完整文章"
+    )
+    parsed = parse_rss_summary(raw)
+    assert parsed.one_liner == "这是一句话总结。"
+    assert "详细摘要的第一句" in parsed.detail
+    assert "阅读完整文章" not in parsed.detail
+    assert len(parsed.viewpoints) == 2
+    assert parsed.viewpoints[0].startswith("短观点甲")
+    assert "较长阐述" in parsed.viewpoint_notes[0]
+    assert parsed.quotes[0].startswith("金句一")
+    assert parsed.meta["ai_score"] == "88"
+    assert parsed.meta["source"] == "量子位"
+    assert parsed.meta["read_mins"] == "16"
+
+
+def test_display_summary_is_one_liner_only():
+    art = Article(
+        id="x",
+        source_id="t",
+        url="https://x.example",
+        title="T",
+        rss_summary=(
+            "📌 一句话摘要 只看这一句。 "
+            "📝 详细摘要 后面大段详细内容不该出现在一句话里。"
+        ),
+    )
+    assert art.display_summary() == "只看这一句。"
+    assert "详细内容" not in art.display_summary()
+    assert "详细内容" in art.resolved_detail()
+
+
+def test_format_article_detail_and_skim_layout():
+    from localagent.news.brief import format_article_detail, format_skim_card
+
+    art = Article(
+        id="n_demo",
+        source_id="t",
+        url="https://example.com/a",
+        title="演示标题",
+        published_at="2026-07-16T10:00:00Z",
+        rss_summary=(
+            "📌 一句话摘要 核心结论一句话。 "
+            "📝 详细摘要 " + ("详细段落内容填充。" * 50) + " "
+            "💡 主要观点 观点一。 "
+            "观点一的详细展开说明明显更长一些，用来补充论证与背景材料。 "
+            "观点二。 "
+            "观点二的详细展开说明也明显更长一些，继续补充更多上下文。 "
+            "📊 文章信息 AI 初评： 90 来源： 测试源 阅读时间： 5 分钟"
+        ),
+    )
+    summary = format_article_detail(art, mode="summary", reasons=["兴趣:RAG", "加权:Agent"])
+    assert summary.startswith("【当前】演示标题")
+    assert "](https://" not in summary
+    assert "# " not in summary
+    assert "## " not in summary
+    assert "核心结论一句话" in summary
+    assert "详细摘要" in summary
+    assert "主要观点" in summary
+    assert "入选  兴趣:RAG · 加权:Agent" in summary
+    assert "AI初评 90" in summary
+    assert summary.strip().endswith("原文  https://example.com/a")
+    # Truncated in summary mode
+    assert "…" in summary
+    assert summary.count("详细段落内容填充。") < 50
+
+    skim = format_skim_card(art, reasons=["兴趣:RAG"])
+    assert skim.startswith("【速读】演示标题")
+    assert "# 速读" not in skim
+    assert "## " not in skim
+    assert "精读:" not in skim
+    assert "核心结论一句话" in skim
+    assert skim.count("详细段落内容填充。") >= 40
+    assert "观点一的详细展开" in skim
+    assert skim.strip().endswith("原文  https://example.com/a")
 
 
 def test_open_in_browser_mocked(monkeypatch):
@@ -375,3 +484,297 @@ def test_cmd_brief_enters_browser_when_tty(isolated_data, monkeypatch):
     args = parser.parse_args(["news", "brief", "--no-ui", "--limit", "3"])
     assert args.func(args) == 0
     assert "n" not in called
+
+
+def test_run_news_browser_read_uses_activity_indicator(isolated_data, monkeypatch, capsys):
+    """Pressing r must construct ActivityIndicator(prefix, message) and enter deep-chat."""
+    from localagent.news.browser import run_news_browser
+    from localagent.news.rank import RankedArticle
+    from localagent.news.read import ReadResult
+    import localagent.news.browser as browser_mod
+    import localagent.ui.console as console_mod
+
+    art = Article(
+        id="n_read_test",
+        source_id="t",
+        url="https://example.com/read-me",
+        title="精读测试文",
+        rss_summary="摘要",
+    )
+    store = NewsStore()
+    store.upsert_article(art)
+    ranked = [
+        RankedArticle(article=art, score=1.0, reasons=["兴趣:Agent"]),
+    ]
+
+    actions = iter(["read", "quit"])
+    monkeypatch.setattr(
+        browser_mod,
+        "_run_one_session",
+        lambda state, store=None: next(actions),
+    )
+
+    ai_calls: list[tuple[str, str]] = []
+    real_ai = console_mod.ActivityIndicator
+
+    class TrackingAI(real_ai):
+        def __init__(self, prefix: str, message: str) -> None:
+            ai_calls.append((prefix, message))
+            super().__init__(prefix, message)
+
+    monkeypatch.setattr(console_mod, "ActivityIndicator", TrackingAI)
+
+    read_calls: list[str] = []
+    chat_calls: list[str] = []
+
+    def fake_read(id_or_url, **kwargs):
+        read_calls.append(id_or_url)
+        return ReadResult(
+            markdown="## 总结\n一句话精读。\n",
+            article=store.get(art.id) or art,
+            warnings=[],
+        )
+
+    def fake_chat(result, *, provider="auto"):
+        chat_calls.append(result.article.id)
+        return 0
+
+    monkeypatch.setattr("localagent.news.read.read_article", fake_read)
+    monkeypatch.setattr("localagent.news.chat_bridge.run_article_chat", fake_chat)
+
+    assert run_news_browser(ranked, day="2026-07-17", store=store) == 0
+    assert read_calls == ["n_read_test"]
+    assert chat_calls == ["n_read_test"]
+    assert ai_calls == [("news", "抓取并总结原文…")]
+    out = capsys.readouterr().out
+    assert "精读: 精读测试文" in out
+    assert "已返回简报浏览器" in out
+
+
+def test_cli_news_skim_and_read(isolated_data, monkeypatch, capsys):
+    from localagent.cli import build_parser
+    from localagent.news.read import ReadResult
+
+    monkeypatch.setattr(
+        "localagent.news.sync.fetch_feed_bytes",
+        lambda url, timeout=30.0: SAMPLE_RSS,
+    )
+    parser = build_parser()
+    assert parser.parse_args(["news", "sync"]).func(
+        parser.parse_args(["news", "sync"])
+    ) == 0
+
+    store = NewsStore()
+    arts = store.list_recent(limit=10)
+    assert arts
+    art = next(a for a in arts if "Claude" in a.title)
+
+    args = parser.parse_args(["news", "skim", art.id, "--plain"])
+    assert args.func(args) == 0
+    out = capsys.readouterr().out
+    assert art.title.split()[0] in out or "Claude" in out
+    refreshed = store.get(art.id)
+    assert refreshed and refreshed.status == "skimmed"
+
+    def fake_read(target, **kwargs):
+        return ReadResult(
+            markdown="## 总结\nCLI 精读卡\n",
+            article=store.get(art.id) or art,
+        )
+
+    monkeypatch.setattr("localagent.news.commands.read_article", fake_read)
+    args = parser.parse_args(["news", "read", art.id, "--heuristic", "--plain"])
+    assert args.func(args) == 0
+    out = capsys.readouterr().out
+    assert "CLI 精读卡" in out
+
+    args = parser.parse_args(["news", "read", "missing-id-xyz", "--heuristic"])
+    monkeypatch.setattr(
+        "localagent.news.commands.read_article",
+        lambda *a, **k: ReadResult(
+            markdown="",
+            article=Article(id="", source_id="", url=""),
+            error="未找到文章: missing-id-xyz",
+        ),
+    )
+    assert args.func(args) == 1
+    out = capsys.readouterr().out
+    assert "read 失败" in out
+
+
+def test_cli_news_mark_interests_status_sources(isolated_data, monkeypatch, capsys):
+    from localagent.cli import build_parser
+
+    monkeypatch.setattr(
+        "localagent.news.sync.fetch_feed_bytes",
+        lambda url, timeout=30.0: SAMPLE_RSS,
+    )
+    parser = build_parser()
+    assert parser.parse_args(["news", "sync"]).func(
+        parser.parse_args(["news", "sync"])
+    ) == 0
+    store = NewsStore()
+    art = store.list_recent(limit=1)[0]
+
+    args = parser.parse_args(["news", "mark", art.id, "bookmark"])
+    assert args.func(args) == 0
+    out = capsys.readouterr().out
+    assert "[news]" in out
+    assert store.get(art.id).status == "bookmarked"
+
+    args = parser.parse_args(["news", "interests", "--add", "Agent"])
+    assert args.func(args) == 0
+    profile = load_news_profile()
+    assert "Agent" in profile.interests
+
+    args = parser.parse_args(["news", "interests", "--mute", "招聘"])
+    assert args.func(args) == 0
+    profile = load_news_profile()
+    assert "招聘" in profile.mute_keywords
+
+    args = parser.parse_args(["news", "status"])
+    assert args.func(args) == 0
+    out = capsys.readouterr().out
+    assert "上次 sync" in out or "RSS" in out
+
+    args = parser.parse_args(["news", "sources"])
+    assert args.func(args) == 0
+    out = capsys.readouterr().out
+    assert "BestBlogs" in out or "RSS" in out
+
+
+def test_body_quality_ok_and_extract_origin_urls():
+    from localagent.news.fetch import body_quality_ok, extract_origin_urls
+
+    assert body_quality_ok("短") is False
+    assert body_quality_ok("字" * 600) is True
+    assert body_quality_ok("字" * 200, expected_word_count=2000) is False
+
+    html = """
+    <html><body>
+      <a href="/about">关于</a>
+      <a href="https://mp.weixin.qq.com/s/abc123">阅读原文</a>
+      <a href="https://www.bestblogs.dev/article/x">本站</a>
+    </body></html>
+    """
+    urls = extract_origin_urls(
+        html, page_url="https://www.bestblogs.dev/article/72ea7f2efd"
+    )
+    assert any("weixin" in u for u in urls)
+    assert not any("bestblogs.dev" in u for u in urls)
+
+
+def test_fetch_article_falls_back_to_origin(monkeypatch):
+    from localagent.news import fetch as fetch_mod
+
+    html_agg = (
+        "<html><body><p>短导语</p>"
+        '<a href="https://publisher.example.com/full/post">阅读原文</a>'
+        "</body></html>"
+    )
+    html_origin = "<html><body><article>" + ("完整正文段落。" * 80) + "</article></body></html>"
+
+    def fake_download(url, *, timeout):
+        if "bestblogs" in url:
+            return url, html_agg
+        if "publisher.example.com" in url:
+            return url, html_origin
+        raise AssertionError(url)
+
+    monkeypatch.setattr(fetch_mod, "_download_html", fake_download)
+    monkeypatch.setattr(fetch_mod.config, "NEWS_FETCH_USE_JINA", False)
+    monkeypatch.setattr(fetch_mod.config, "NEWS_FETCH_MIN_CHARS", 500)
+
+    def fake_extract(html, *, url):
+        if "publisher" in url:
+            return "Full Title", "完整正文段落。" * 80
+        return "Teaser", "短导语而已"
+
+    monkeypatch.setattr(fetch_mod, "_extract_with_trafilatura", fake_extract)
+
+    result = fetch_mod.fetch_article("https://www.bestblogs.dev/article/x")
+    assert result.ok
+    assert result.strategy == "origin"
+    assert "完整正文" in result.text
+    assert any("原文站" in w for w in result.warnings)
+
+
+def test_extract_origin_urls_skips_schema_org():
+    from localagent.news.fetch import extract_origin_urls
+
+    html = """
+    <html><body>
+      <a href="https://schema.org">Schema</a>
+      <a href="https://mp.weixin.qq.com/s/abc123">阅读原文</a>
+    </body></html>
+    """
+    urls = extract_origin_urls(
+        html, page_url="https://www.bestblogs.dev/article/72ea7f2efd"
+    )
+    assert any("weixin" in u for u in urls)
+    assert not any("schema.org" in u for u in urls)
+
+
+def test_read_article_refetches_short_cache(isolated_data, monkeypatch):
+    from localagent.news.read import read_article
+    from localagent.news.store import Article, NewsStore
+    from localagent.summarize.document import SummarizeResult
+    from localagent import config
+
+    store = NewsStore()
+    art = Article(
+        id="n_shortcache",
+        source_id="t",
+        url="https://example.com/long-article",
+        title="Long",
+        rss_summary=(
+            "📌 一句话摘要 导语。 📝 详细摘要 这是较长的 RSS 详细摘要内容。"
+            " 📊 文章信息 字数：3000"
+        ),
+    )
+    store.upsert_article(art)
+    cache = config.NEWS_CACHE_DIR / f"{art.id}.md"
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(
+        "# Long\n\n来源: https://example.com/long-article\n\n短",
+        encoding="utf-8",
+    )
+
+    calls: list[str] = []
+
+    def fake_fetch(url, *, expected_word_count=None, origin_hints=None, timeout=45.0):
+        calls.append(url)
+        from localagent.news.fetch import FetchResult
+
+        return FetchResult(
+            url=url,
+            title="Long",
+            text=("正文内容。" * 100),
+            strategy="direct",
+        )
+
+    def fake_summarize(doc, use_llm=True, allow_long=False):
+        return SummarizeResult(
+            markdown=(
+                "## 总结（最多三句话）\n一句话。\n\n"
+                "## 结构化要点\n- **点**：x — 依据：〔§全文〕\n"
+            ),
+            path=cache,
+            filename=f"{art.id}.md",
+            char_count=len(doc.text or ""),
+            annotated_text=doc.text or "",
+            used_llm=False,
+        )
+
+    monkeypatch.setattr("localagent.news.read.fetch_article", fake_fetch)
+    monkeypatch.setattr("localagent.news.read.summarize_loaded", fake_summarize)
+    monkeypatch.setattr(
+        "localagent.summarize.session_index.index_document_session",
+        lambda *a, **k: 1,
+    )
+
+    result = read_article(art.id, use_llm=False, store=store)
+    assert not result.error
+    assert calls, "short cache should trigger refetch"
+    assert "缓存正文过短" in "；".join(result.warnings or [])
+    assert result.session_source_key == f"news:{art.id}"

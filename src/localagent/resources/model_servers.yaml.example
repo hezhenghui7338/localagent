@@ -24,6 +24,7 @@
   num_predict: 2048
   num_ctx: 8192
   keep_alive: 30m
+  # auto 首包超时（秒）；也可用 .env 的 LA_OLLAMA_CHAT_TIMEOUT 覆盖
   chat_timeout: 12
   chat_stream: true
 
@@ -33,10 +34,10 @@
 #   model: GLM-5.2
 #   timeout: 30
 
-- provider: minimax
-  base_url: https://api.minimax.io/v1
+- provider: openai
+  base_url: https://api.openai.com/v1
   api_key: ""
-  model: MiniMax-M3
+  model: gpt-4o-mini
   timeout: 120
 
 - provider: openrouter

@@ -58,12 +58,18 @@ class HybridRetriever:
         since: str | None = None,
         until: str | None = None,
         conversation_only: bool = False,
+        source_file: str | None = None,
     ) -> list[dict[str, Any]]:
         since_dt, until_dt = parse_range_bounds(since, until)
         origins = _CONVERSATION_ORIGINS if conversation_only else None
+        source_key = (source_file or "").strip() or None
         # Over-fetch dense hits then hard-filter so in-window docs are not crowded out.
-        fetch_k = top_k * 5 if (since_dt or until_dt or origins) else top_k
-        dense = self.chroma.query(query, top_k=fetch_k)
+        fetch_k = (
+            top_k * 5
+            if (since_dt or until_dt or origins or source_key)
+            else top_k
+        )
+        dense = self.chroma.query(query, top_k=fetch_k, source_file=source_key)
         if since_dt or until_dt or origins is not None:
             dense = [
                 hit
@@ -71,12 +77,20 @@ class HybridRetriever:
                 if (origins is None or str((hit.get("metadata") or {}).get("origin") or "") in origins)
                 and meta_in_range(hit.get("metadata"), since=since_dt, until=until_dt)
             ]
+        if source_key is not None:
+            dense = [
+                hit
+                for hit in dense
+                if str((hit.get("metadata") or {}).get("source_file") or "").strip()
+                == source_key
+            ]
         sparse = self.bm25.query(
             query,
             fetch_k,
             since=since_dt,
             until=until_dt,
             origins=origins,
+            source_file=source_key,
         )
         return reciprocal_rank_fusion([dense, sparse], top_k=top_k)
 

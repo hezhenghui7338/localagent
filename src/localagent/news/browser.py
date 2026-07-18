@@ -5,8 +5,7 @@ from __future__ import annotations
 import shutil
 from typing import Any
 
-from localagent.news.brief import format_skim_card
-from localagent.news.links import hyperlink
+from localagent.news.brief import format_article_detail, format_skim_card
 from localagent.news.mark import mark_article
 from localagent.news.nav import BriefNavState
 from localagent.news.open_url import open_in_browser
@@ -16,8 +15,8 @@ from localagent.ui.clipboard import copy_text
 
 
 HELP_TEXT = (
-    "键位: ↑↓/jk 切换  o/Enter 打开浏览器  s 速读  r 精读并深聊\n"
-    "      b 收藏  x 跳过  c 复制链接  ? 帮助  q/Esc 退出"
+    "键位: ↑↓/jk 切换  PgUp/PgDn/空格 滚动  o/Enter 打开浏览器\n"
+    "      s 速读  r 精读并深聊  b 收藏  x 跳过  c 复制链接  ? 帮助  q/Esc 退出"
 )
 
 
@@ -46,6 +45,7 @@ def _truncate(text: str, width: int) -> str:
 
 def render_browser_text(state: BriefNavState, *, plain_links: bool = False) -> str:
     """Pure text render of the browser UI (also used in tests)."""
+    del plain_links  # Detail panel keeps bare URL at the bottom; no title links.
     width = _term_width()
     day = state.day or "今日"
     lines: list[str] = [
@@ -77,18 +77,14 @@ def render_browser_text(state: BriefNavState, *, plain_links: bool = False) -> s
     if state.detail_mode == "skim" and state.skim_text:
         lines.append(state.skim_text.rstrip())
     else:
-        title_link = hyperlink(art.title or art.url, art.url, force_plain=plain_links)
-        lines.append(f"【当前】{title_link}")
-        summary = art.display_summary() or "（暂无摘要）"
-        if len(summary) > 280:
-            summary = summary[:279] + "…"
-        lines.append(f"一句话: {summary}")
-        reason = "；".join(cur.reasons[:3]) if cur.reasons else "候选"
-        lines.append(f"为何入选: {reason}")
-        if art.published_at:
-            lines.append(f"发布: {art.published_at[:10]}")
-        lines.append(f"id: {art.id}")
-        lines.append(f"原文: {art.url}")
+        lines.append(
+            format_article_detail(
+                art,
+                mode="summary",
+                reasons=list(cur.reasons) if cur.reasons else None,
+                rule_width=min(width, 60),
+            )
+        )
 
     if state.message:
         lines.append("")
@@ -101,17 +97,34 @@ def render_browser_text(state: BriefNavState, *, plain_links: bool = False) -> s
 def _build_formatted(state: BriefNavState) -> Any:
     from prompt_toolkit.formatted_text import FormattedText
 
-    # Prefer plain links inside prompt_toolkit (OSC 8 is unreliable here);
-    # users open via `o` / Enter. Dump mode still uses OSC 8.
+    # Title links are plain text; users open via `o` / Enter.
     text = render_browser_text(state, plain_links=True)
     fragments: list[tuple[str, str]] = []
+    after_title = False
+    oneliner_done = False
     for line in text.splitlines(keepends=True):
-        if line.startswith(">"):
+        bare = line.rstrip("\n")
+        if bare.startswith(">"):
             fragments.append(("class:selected", line))
-        elif line.startswith("· "):
+            after_title = False
+        elif bare.startswith("· "):
             fragments.append(("class:status", line))
-        elif line.startswith("今日简报") or line.startswith("键位"):
+            after_title = False
+        elif bare.startswith("今日简报") or bare.startswith("键位"):
             fragments.append(("class:header", line))
+            after_title = False
+        elif bare.startswith("【当前】") or bare.startswith("【速读】"):
+            fragments.append(("class:title", line))
+            after_title = True
+            oneliner_done = False
+        elif after_title and not oneliner_done and bare.strip():
+            fragments.append(("class:oneliner", line))
+            oneliner_done = True
+            after_title = False
+        elif bare in ("详细摘要", "主要观点", "金句"):
+            fragments.append(("class:section", line))
+        elif bare.startswith(("入选  ", "发布  ", "编号  ", "原文  ")):
+            fragments.append(("class:meta", line))
         else:
             fragments.append(("", line))
     return FormattedText(fragments)
@@ -124,6 +137,7 @@ def _run_one_session(
 ) -> str:
     """Run TUI until quit or read. In-app: navigate/open/skim/mark/copy/help."""
     from prompt_toolkit.application import Application
+    from prompt_toolkit.data_structures import Point
     from prompt_toolkit.key_binding import KeyBindings
     from prompt_toolkit.layout import Layout
     from prompt_toolkit.layout.containers import Window
@@ -131,11 +145,41 @@ def _run_one_session(
     from prompt_toolkit.styles import Style
 
     result_holder: dict[str, str] = {"action": "quit"}
+    scroll_row = [0]
+    line_count = [1]
+
+    class ScrollableFormattedTextControl(FormattedTextControl):
+        """Cursor row drives Window scroll so long briefs can PageDown."""
+
+        def create_content(self, width: int, height: int | None) -> Any:
+            content = super().create_content(width, height)
+            line_count[0] = max(1, content.line_count)
+            before = scroll_row[0]
+            scroll_row[0] = max(0, min(scroll_row[0], line_count[0] - 1))
+            if scroll_row[0] != before:
+                content = super().create_content(width, height)
+                line_count[0] = max(1, content.line_count)
+            return content
+
+        def move_cursor_down(self) -> None:
+            scroll_row[0] = min(scroll_row[0] + 1, max(0, line_count[0] - 1))
+
+        def move_cursor_up(self) -> None:
+            scroll_row[0] = max(0, scroll_row[0] - 1)
 
     def get_text() -> Any:
         return _build_formatted(state)
 
-    control = FormattedTextControl(get_text, focusable=True, show_cursor=False)
+    def get_cursor_position() -> Point:
+        y = max(0, min(scroll_row[0], max(0, line_count[0] - 1)))
+        return Point(x=0, y=y)
+
+    control = ScrollableFormattedTextControl(
+        get_text,
+        focusable=True,
+        show_cursor=False,
+        get_cursor_position=get_cursor_position,
+    )
     window = Window(content=control, wrap_lines=True)
     kb = KeyBindings()
 
@@ -147,11 +191,37 @@ def _run_one_session(
         item = state.current()
         return item.article if item else None
 
+    def _reset_scroll() -> None:
+        scroll_row[0] = 0
+        window.vertical_scroll = 0
+
+    def _page_down(event: Any) -> None:
+        info = window.render_info
+        if info is not None and info.displayed_lines:
+            scroll_row[0] = max(info.last_visible_line(), scroll_row[0] + 1)
+        else:
+            scroll_row[0] += 10
+        scroll_row[0] = max(0, min(scroll_row[0], max(0, line_count[0] - 1)))
+        event.app.invalidate()
+
+    def _page_up(event: Any) -> None:
+        info = window.render_info
+        if info is not None and info.displayed_lines:
+            scroll_row[0] = max(
+                0, min(info.first_visible_line(), scroll_row[0] - 1)
+            )
+        else:
+            scroll_row[0] = max(0, scroll_row[0] - 10)
+        # Re-anchor so the cursor row sits near the bottom (prior page).
+        window.vertical_scroll = 0
+        event.app.invalidate()
+
     @kb.add("up")
     @kb.add("k")
     @kb.add("p")
     def _up(event: Any) -> None:
         state.move(-1)
+        _reset_scroll()
         event.app.invalidate()
 
     @kb.add("down")
@@ -159,7 +229,19 @@ def _run_one_session(
     @kb.add("n")
     def _down(event: Any) -> None:
         state.move(1)
+        _reset_scroll()
         event.app.invalidate()
+
+    @kb.add("pagedown")
+    @kb.add("c-f")
+    @kb.add("space")
+    def _pgdn(event: Any) -> None:
+        _page_down(event)
+
+    @kb.add("pageup")
+    @kb.add("c-b")
+    def _pgup(event: Any) -> None:
+        _page_up(event)
 
     @kb.add("o")
     @kb.add("enter")
@@ -182,9 +264,14 @@ def _run_one_session(
             return
         store.set_status(art.id, "skimmed")
         refreshed = store.get(art.id) or art
+        cur = state.current()
         state.detail_mode = "skim"
-        state.skim_text = format_skim_card(refreshed, plain_links=False)
+        state.skim_text = format_skim_card(
+            refreshed,
+            reasons=list(cur.reasons) if cur and cur.reasons else None,
+        )
         state.message = "已显示速读卡 · 再按 ↑↓ 返回摘要"
+        _reset_scroll()
         event.app.invalidate()
 
     @kb.add("r")
@@ -208,6 +295,7 @@ def _run_one_session(
         _a, msg = mark_article(art.id, "skip", store=store)
         state.remove_current()
         state.message = msg
+        _reset_scroll()
         if state.empty:
             _exit("quit")
             return
@@ -240,12 +328,17 @@ def _run_one_session(
             "selected": "bold reverse",
             "status": "italic",
             "header": "bold",
+            "title": "bold",
+            "oneliner": "bold",
+            "section": "bold",
+            "meta": "italic ansibrightblack",
         }
     )
     app = Application(
         layout=Layout(window),
         key_bindings=kb,
         full_screen=False,
+        mouse_support=True,
         style=style,
     )
     app.run()
@@ -275,7 +368,7 @@ def run_news_browser(
 
     store = store or NewsStore()
     state = BriefNavState(items=list(ranked), day=day)
-    print("[news] 进入交互简报（↑↓ 切换 · o 打开 · r 精读深聊 · q 退出）")
+    print("[news] 进入交互简报（↑↓ 切换 · PgDn/空格 滚动 · o 打开 · r 精读深聊 · q 退出）")
     print()
 
     while True:
@@ -306,7 +399,7 @@ def run_news_browser(
             from localagent.news.read import read_article
             from localagent.ui.console import ActivityIndicator
 
-            with ActivityIndicator("抓取并总结原文…"):
+            with ActivityIndicator("news", "抓取并总结原文…"):
                 result = read_article(art.id, keep=False, plain_links=False, store=store)
             if result.error:
                 state.message = f"精读失败: {result.error}"

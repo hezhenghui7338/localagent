@@ -24,7 +24,7 @@ def run_la(
     cwd: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     base_env = os.environ.copy()
-    for key in ("MINIMAX_API_KEY", "OPENROUTER_API_KEY", "CURSOR_API_KEY", "TAVILY_API_KEY"):
+    for key in ("OPENAI_API_KEY", "OPENROUTER_API_KEY", "CURSOR_API_KEY", "TAVILY_API_KEY"):
         base_env.pop(key, None)
     if env:
         base_env.update(env)

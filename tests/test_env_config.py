@@ -34,10 +34,10 @@ def config_setup(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
           base_url: http://localhost:11434
           model: qwen3.5:4b
           timeout: 90
-        - provider: minimax
-          base_url: https://api.minimax.io/v1
-          api_key: old-minimax-key
-          model: MiniMax-M3
+        - provider: openai
+          base_url: https://api.openai.com/v1
+          api_key: old-openai-key
+          model: gpt-4o-mini
           timeout: 120
         - provider: openrouter
           base_url: https://openrouter.ai/api/v1
@@ -60,8 +60,8 @@ def config_setup(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
 def test_load_model_servers_from_yaml(config_setup):
     _, yaml_path = config_setup
     servers = load_model_servers_from_file(yaml_path)
-    assert [s.provider for s in servers] == ["ollama", "minimax", "openrouter"]
-    assert servers[1].api_key == "old-minimax-key"
+    assert [s.provider for s in servers] == ["ollama", "openai", "openrouter"]
+    assert servers[1].api_key == "old-openai-key"
 
 
 def test_write_model_servers_to_yaml(tmp_path: Path):
@@ -101,16 +101,16 @@ def test_add_model_server(config_setup):
     assert path == yaml_path
     assert was_update is False
     names = [s.provider for s in env_config.read_model_servers(env_path)]
-    assert names == ["ollama", "minimax", "openrouter", "aiping"]
+    assert names == ["ollama", "openai", "openrouter", "aiping"]
 
 
 def test_remove_model_server(config_setup):
     env_path, yaml_path = config_setup
-    path, existed = env_config.remove_model_server("minimax", env_path=env_path)
+    path, existed = env_config.remove_model_server("openai", env_path=env_path)
     assert existed is True
     assert path == yaml_path
     names = [s.provider for s in env_config.read_model_servers(env_path)]
-    assert "minimax" not in names
+    assert "openai" not in names
 
 
 def test_set_server_api_key(config_setup):
@@ -159,8 +159,8 @@ def test_cli_config_list(config_setup, capsys):
     assert rc == 0
     out = capsys.readouterr().out
     assert "model_servers.yaml" in out
-    assert "minimax" in out
-    assert "ollama→minimax→openrouter" in out
+    assert "openai" in out
+    assert "ollama→openai→openrouter" in out
 
 
 def test_cli_config_add_json(config_setup, capsys):
@@ -172,10 +172,10 @@ def test_cli_config_add_json(config_setup, capsys):
 
 
 def test_cli_config_remove(config_setup, capsys):
-    rc = main(["config", "remove", "minimax"])
+    rc = main(["config", "remove", "openai"])
     assert rc == 0
     servers = env_config.read_model_servers(config_setup[0])
-    assert all(s.provider != "minimax" for s in servers)
+    assert all(s.provider != "openai" for s in servers)
 
 
 def test_cli_config_set_key(config_setup, capsys):
@@ -189,11 +189,11 @@ def test_cli_config_set_key(config_setup, capsys):
 def test_cli_config_set_key_from_stdin(config_setup, monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", io.StringIO("stdin-key"))
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-    rc = main(["config", "set-key", "minimax", "-"])
+    rc = main(["config", "set-key", "openai", "-"])
     assert rc == 0
     servers = env_config.read_model_servers(config_setup[0])
-    minimax = next(s for s in servers if s.provider == "minimax")
-    assert minimax.api_key == "stdin-key"
+    openai = next(s for s in servers if s.provider == "openai")
+    assert openai.api_key == "stdin-key"
 
 
 def test_init_model_servers_config_reload_existing(config_setup, capsys):
@@ -238,13 +238,13 @@ def test_yaml_list_order_is_priority(config_setup):
     reordered = [
         next(s for s in servers if s.provider == "ollama"),
         next(s for s in servers if s.provider == "openrouter"),
-        next(s for s in servers if s.provider == "minimax"),
+        next(s for s in servers if s.provider == "openai"),
     ]
     write_model_servers_to_file(yaml_path, reordered)
     result = env_config.ensure_config(env_path=env_path)
-    assert [s.provider for s in config.MODEL_SERVERS] == ["ollama", "openrouter", "minimax"]
-    assert list(config.MODEL_PROVIDER_PRIORITY) == ["ollama", "openrouter", "minimax"]
-    assert list(result.priority_after) == ["ollama", "openrouter", "minimax"]
+    assert [s.provider for s in config.MODEL_SERVERS] == ["ollama", "openrouter", "openai"]
+    assert list(config.MODEL_PROVIDER_PRIORITY) == ["ollama", "openrouter", "openai"]
+    assert list(result.priority_after) == ["ollama", "openrouter", "openai"]
 
 
 def test_cli_config_list_reflects_yaml_order(config_setup, capsys):
@@ -253,13 +253,13 @@ def test_cli_config_list_reflects_yaml_order(config_setup, capsys):
     reordered = [
         next(s for s in servers if s.provider == "ollama"),
         next(s for s in servers if s.provider == "openrouter"),
-        next(s for s in servers if s.provider == "minimax"),
+        next(s for s in servers if s.provider == "openai"),
     ]
     write_model_servers_to_file(yaml_path, reordered)
     rc = main(["config", "list"])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "ollama→openrouter→minimax" in out
+    assert "ollama→openrouter→openai" in out
 
 
 def test_auto_bootstrap_uses_packaged_templates(tmp_path: Path, monkeypatch):
@@ -290,8 +290,8 @@ def test_auto_bootstrap_skips_when_yaml_exists(config_setup):
 def test_reload_model_servers_with_file(config_setup):
     _, yaml_path = config_setup
     config.reload_model_servers(config_file=str(yaml_path))
-    assert "minimax" in config.VALID_PROVIDERS
-    assert config.get_model_server("minimax").api_key == "old-minimax-key"
+    assert "openai" in config.VALID_PROVIDERS
+    assert config.get_model_server("openai").api_key == "old-openai-key"
 
 
 def test_apply_config_flags_provider_and_tavily(config_setup):

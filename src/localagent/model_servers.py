@@ -237,9 +237,9 @@ def default_model_servers() -> list[ModelServer]:
             chat_timeout=12.0,
         ),
         ModelServer(
-            provider="minimax",
-            base_url="https://api.minimax.io/v1",
-            model="MiniMax-M3",
+            provider="openai",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4o-mini",
             timeout=120.0,
         ),
         ModelServer(
@@ -273,8 +273,9 @@ def _env_str(key: str, default: str = "") -> str:
 
 
 def build_legacy_model_servers(project_root: str | None = None) -> list[ModelServer]:
-    """Construct servers from legacy MINIMAX_* / OLLAMA_* env vars."""
+    """Construct servers from legacy OPENAI_* / OLLAMA_* env vars."""
     root = project_root or _env_str("LA_PROJECT_ROOT") or "."
+    openai_timeout_default = _env_str("MINIMAX_TIMEOUT") or "120"
     servers: list[ModelServer] = [
         ModelServer(
             provider="ollama",
@@ -289,11 +290,15 @@ def build_legacy_model_servers(project_root: str | None = None) -> list[ModelSer
             chat_stream=_env_bool("OLLAMA_CHAT_STREAM", "1"),
         ),
         ModelServer(
-            provider="minimax",
-            base_url=_env_str("MINIMAX_BASE_URL", "https://api.minimax.io/v1"),
-            api_key=_env_str("MINIMAX_API_KEY"),
-            model=_env_str("MINIMAX_MODEL", "MiniMax-M3"),
-            timeout=_env_float("MINIMAX_TIMEOUT", "120"),
+            provider="openai",
+            base_url=(
+                _env_str("OPENAI_BASE_URL")
+                or _env_str("MINIMAX_BASE_URL")
+                or "https://api.openai.com/v1"
+            ),
+            api_key=_env_str("OPENAI_API_KEY") or _env_str("MINIMAX_API_KEY"),
+            model=_env_str("OPENAI_MODEL") or _env_str("MINIMAX_MODEL") or "gpt-4o-mini",
+            timeout=_env_float("OPENAI_TIMEOUT", openai_timeout_default),
         ),
         ModelServer(
             provider="openrouter",

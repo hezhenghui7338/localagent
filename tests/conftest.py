@@ -105,7 +105,7 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
     )
     monkeypatch.setattr(
         "localagent.knowledge.chroma_store.ChromaStore.query",
-        lambda self, query, top_k: [],
+        lambda self, query, top_k, source_file=None: [],
     )
     monkeypatch.setattr(
         "localagent.knowledge.chroma_store.ChromaStore.delete_by_source_file",

@@ -92,8 +92,25 @@ class DocumentChatREPL:
         self._shown_fallback_hint = False
         self._persist()
 
-    def _document_context(self) -> str:
-        return format_document_context(self.result)
+    def _document_context(self, user_input: str = "") -> str:
+        retrieval_block = ""
+        if self.result.uses_retrieval and self.result.session_source_key:
+            from localagent.summarize.session_index import (
+                format_retrieval_block,
+                retrieve_document_chunks,
+            )
+
+            hits = retrieve_document_chunks(
+                user_input or self.result.filename,
+                source_key=self.result.session_source_key,
+            )
+            retrieval_block = format_retrieval_block(
+                hits, source_key=self.result.session_source_key
+            )
+        return format_document_context(
+            self.result,
+            retrieval_block=retrieval_block,
+        )
 
     def _persist(self) -> None:
         upsert_session(
@@ -117,6 +134,11 @@ class DocumentChatREPL:
             f"（session={self.summarize_session_id}）"
         )
         print("[summarize] 可继续追问本文件；/help 查看命令，/exit 结束。")
+        if self.result.uses_retrieval:
+            print(
+                f"[summarize] 长文模式：按问题检索原文片段"
+                f"（index={self.result.session_source_key}）"
+            )
         if not self.result.kept:
             print(f"[summarize] 未收藏。会话内输入 /keep 可收藏到知识库。")
         else:
@@ -245,7 +267,7 @@ class DocumentChatREPL:
                     on_status=activity.update,
                     on_token=on_token,
                     on_tool_approve=on_tool_approve,
-                    document_context=self._document_context(),
+                    document_context=self._document_context(user_input),
                 )
                 response = result.response
                 provider_source = get_model_router().format_last_source()
@@ -322,6 +344,10 @@ def rebuild_result_from_disk(
     """Reload annotated text from disk; reuse cached summary markdown."""
     from localagent.ingest.loader import load_file as load_doc
     from localagent.summarize.document import _annotate_for_cite
+    from localagent.summarize.session_index import (
+        index_document_session,
+        summarize_source_key,
+    )
 
     doc = load_doc(path)
     if doc is None:
@@ -331,6 +357,11 @@ def rebuild_result_from_disk(
     if pages is None:
         raw_pages = doc.metadata.get("page_count")
         pages = raw_pages if isinstance(raw_pages, int) else None
+    key = summarize_source_key(path)
+    try:
+        index_document_session(key, annotated, title=path.name)
+    except Exception:
+        key = ""
     return SummarizeResult(
         markdown=summary_md or "## 总结（最多三句话）\n（无缓存速读卡）\n",
         path=path.resolve(),
@@ -341,4 +372,5 @@ def rebuild_result_from_disk(
         keep_target=Path(keep_target) if keep_target else None,
         used_llm=True,
         annotated_text=annotated,
+        session_source_key=key,
     )

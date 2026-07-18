@@ -1,13 +1,108 @@
-"""Format daily news brief markdown."""
+"""Format daily news brief markdown and article detail panels."""
 
 from __future__ import annotations
 
 from datetime import date
 
-from localagent.news.links import format_article_link_block, hyperlink
+from localagent.news.links import hyperlink
 from localagent.news.profile import NewsProfile, load_news_profile
 from localagent.news.rank import RankedArticle, rank_articles
 from localagent.news.store import Article, NewsStore
+
+
+def _truncate_chars(text: str, limit: int) -> str:
+    raw = (text or "").strip()
+    if limit <= 0 or len(raw) <= limit:
+        return raw
+    return raw[: limit - 1] + "…"
+
+
+def _indent_block(text: str, *, indent: str = "  ") -> list[str]:
+    raw = (text or "").strip()
+    if not raw:
+        return []
+    # Keep as single flowing paragraph; terminal wrap_lines handles width.
+    return [f"{indent}{raw}"]
+
+
+def format_article_detail(
+    article: Article,
+    *,
+    mode: str = "summary",
+    reasons: list[str] | None = None,
+    rule_width: int = 60,
+) -> str:
+    """Shared detail panel for interactive brief and skim card.
+
+    mode:
+      - summary: compact detail (truncated), fewer viewpoints
+      - skim: full detail + all viewpoints (notes indented)
+    """
+    is_skim = mode == "skim"
+    title = (article.title or article.id or "").strip() or article.url
+    prefix = "【速读】" if is_skim else "【当前】"
+    one = article.display_summary() or "（暂无摘要）"
+    detail = article.resolved_detail()
+    viewpoints = article.resolved_viewpoints()
+    notes = article.resolved_viewpoint_notes() if is_skim else []
+    quotes = article.resolved_quotes() if is_skim else []
+    meta = article.resolved_meta()
+
+    detail_limit = 0 if is_skim else 360
+    vp_limit = 0 if is_skim else 5
+    if detail_limit and detail:
+        detail = _truncate_chars(detail, detail_limit)
+    if vp_limit and viewpoints:
+        viewpoints = viewpoints[:vp_limit]
+        notes = notes[:vp_limit] if notes else []
+
+    lines: list[str] = [f"{prefix}{title}", "", one]
+
+    if detail:
+        lines.append("")
+        lines.append("详细摘要")
+        lines.extend(_indent_block(detail))
+
+    if viewpoints:
+        lines.append("")
+        lines.append("主要观点")
+        for i, claim in enumerate(viewpoints):
+            lines.append(f"  · {claim}")
+            if is_skim and i < len(notes):
+                note = (notes[i] or "").strip()
+                if note:
+                    lines.append(f"    {note}")
+
+    if quotes:
+        lines.append("")
+        lines.append("金句")
+        for q in quotes[:6]:
+            lines.append(f"  · {q}")
+
+    lines.append("")
+    lines.append("─" * max(20, min(rule_width, 60)))
+
+    if reasons:
+        lines.append(f"入选  {' · '.join(reasons[:3])}")
+    elif not is_skim:
+        lines.append("入选  候选")
+
+    pub_bits: list[str] = []
+    if article.published_at:
+        pub_bits.append(article.published_at[:10])
+    if meta.get("ai_score"):
+        pub_bits.append(f"AI初评 {meta['ai_score']}")
+    if meta.get("read_mins"):
+        pub_bits.append(f"{meta['read_mins']}分钟")
+    source = meta.get("source") or meta.get("author") or article.author
+    if source:
+        pub_bits.append(source)
+    if pub_bits:
+        lines.append(f"发布  {' · '.join(pub_bits)}")
+
+    lines.append(f"编号  {article.id}")
+    lines.append(f"原文  {article.url}")
+    return "\n".join(lines)
 
 
 def format_brief(
@@ -75,44 +170,12 @@ def build_brief(
     return text, ranked
 
 
-def format_skim_card(article: Article, *, plain_links: bool = False) -> str:
-    summary = article.display_summary() or "（暂无摘要）"
-    points = (article.structured_skim or "").strip()
-    lines = [
-        f"# 速读 · {article.title or article.id}",
-        "",
-        format_article_link_block(
-            title=article.title or "打开原文",
-            url=article.url,
-            plain=plain_links,
-        ),
-        "",
-        "## 一句话",
-        summary,
-        "",
-    ]
-    if points:
-        lines.extend(["## 结构化要点", points, ""])
-    else:
-        # Derive light bullets from rss summary sentences
-        sentences = [
-            s.strip()
-            for s in summary.replace("。", "。\n").splitlines()
-            if s.strip() and len(s.strip()) > 8
-        ][:5]
-        if sentences:
-            lines.append("## 要点（来自摘要）")
-            for s in sentences:
-                lines.append(f"- {s}")
-            lines.append("")
-    lines.extend(
-        [
-            f"id: `{article.id}`",
-            f"状态: {article.status}",
-            "",
-            "精读: `la news read " + article.id + "`",
-            f"原文: {article.url}",
-            "",
-        ]
-    )
-    return "\n".join(lines)
+def format_skim_card(
+    article: Article,
+    *,
+    plain_links: bool = False,
+    reasons: list[str] | None = None,
+) -> str:
+    """Skim card for CLI and interactive browser (shared layout with summary)."""
+    del plain_links  # URL is always bare at the bottom; no title link.
+    return format_article_detail(article, mode="skim", reasons=reasons)

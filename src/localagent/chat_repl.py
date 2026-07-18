@@ -55,10 +55,10 @@ class ChatREPL:
         )
         router = get_model_router()
         status = router.provider_status()
-        if self.provider == "minimax" and not status.get("minimax"):
+        if self.provider == "openai" and not status.get("openai"):
             print(
-                "[chat] 警告: minimax 未配置 api_key。"
-                " 请 LA config set-key minimax <key> 或在 LA 会话中 /config set-key minimax <key>。"
+                "[chat] 警告: openai 未配置 api_key。"
+                " 请 LA config set-key openai <key> 或在 LA 会话中 /config set-key openai <key>。"
             )
         cloud_ready = any(
             name != "ollama" and name != "cursor" and status.get(name)

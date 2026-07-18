@@ -126,8 +126,11 @@ def parse_feed(content: bytes | str, *, source_url: str = "") -> list[FeedItem]:
 def feed_items_to_articles(
     items: list[FeedItem], *, source_id: str = "bestblogs_rss"
 ) -> list[Article]:
+    from localagent.news.summary_parse import parse_rss_summary, viewpoints_to_skim_text
+
     articles: list[Article] = []
     for item in items:
+        parsed = parse_rss_summary(item.summary)
         articles.append(
             Article(
                 id=article_id_for_url(item.url),
@@ -137,6 +140,8 @@ def feed_items_to_articles(
                 author=item.author,
                 published_at=item.published_at,
                 rss_summary=item.summary,
+                one_liner=parsed.one_liner,
+                structured_skim=viewpoints_to_skim_text(parsed),
                 score_hint=item.score_hint,
                 status="new",
             )

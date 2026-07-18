@@ -233,6 +233,7 @@ def search_knowledge(
     since: str | None = None,
     until: str | None = None,
     conversation_only: bool = False,
+    source_file: str | None = None,
 ) -> str:
     hits = get_hybrid_retriever().retrieve(
         query,
@@ -240,6 +241,7 @@ def search_knowledge(
         since=since,
         until=until,
         conversation_only=conversation_only,
+        source_file=source_file,
     )
     if hits:
         from localagent.knowledge.time_filter import format_recorded_label
@@ -730,6 +732,8 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> str:
             sk_kwargs["since"] = arguments.get("since")
         if arguments.get("until"):
             sk_kwargs["until"] = arguments.get("until")
+        if arguments.get("source_file"):
+            sk_kwargs["source_file"] = arguments.get("source_file")
         return search_knowledge(arguments.get("query", ""), **sk_kwargs)
     if name == "web_search":
         return web_search(arguments.get("query", ""))

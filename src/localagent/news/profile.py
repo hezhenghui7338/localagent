@@ -3,11 +3,28 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
 from localagent import config
+
+
+def _resolve_daily_brief_size(data: dict[str, Any]) -> int:
+    """Env ``LA_NEWS_BRIEF_SIZE`` overrides a persisted profile value.
+
+    Profile is saved on mute/schedule/interests edits and used to freeze
+    ``daily_brief_size`` at first write; without this, later ``.env`` changes
+    would silently have no effect.
+    """
+    raw_env = os.environ.get("LA_NEWS_BRIEF_SIZE", "").strip()
+    if raw_env:
+        return int(raw_env)
+    raw = data.get("daily_brief_size")
+    if raw is not None and raw != "":
+        return int(raw)
+    return config.NEWS_BRIEF_SIZE
 
 
 @dataclass
@@ -20,7 +37,7 @@ class NewsProfile:
     )
     mute_keywords: list[str] = field(default_factory=lambda: ["招聘", "广告"])
     prefer_languages: list[str] = field(default_factory=lambda: ["zh", "en"])
-    daily_brief_size: int = 15
+    daily_brief_size: int = 30
     deep_read_suggest: int = 3
     auto_sync_enabled: bool = True
     auto_sync_hour: int = 8
@@ -40,9 +57,7 @@ class NewsProfile:
             prefer_languages=list(
                 data.get("prefer_languages") or defaults.prefer_languages
             ),
-            daily_brief_size=int(
-                data.get("daily_brief_size") or config.NEWS_BRIEF_SIZE
-            ),
+            daily_brief_size=_resolve_daily_brief_size(data),
             deep_read_suggest=int(data.get("deep_read_suggest") or 3),
             auto_sync_enabled=bool(
                 data.get("auto_sync_enabled", config.NEWS_AUTO_SYNC)

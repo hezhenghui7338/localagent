@@ -1,14 +1,7 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "localagent",
-  "compatibility_date": "2026-07-17",
-  "observability": {
-    "enabled": true
-  },
+  "compatibility_date": "2026-07-18",
   "assets": {
-    "directory": "website"
-  },
-  "compatibility_flags": [
-    "nodejs_compat"
-  ]
+    "directory": "./website"
+  }
 }

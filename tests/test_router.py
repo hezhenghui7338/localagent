@@ -278,14 +278,14 @@ def test_chat_auto_skips_ollama_after_slow_mark(monkeypatch):
     assert router.last_model == config.OPENROUTER_MODEL
 
 
-def test_chat_minimax_raises_clear_error_on_missing_model():
+def test_chat_openai_raises_clear_error_on_missing_model():
     from localagent.model_servers import ModelServer
 
     router = ModelRouter()
     server = ModelServer(
-        provider="minimax",
+        provider="openai",
         api_key="test-key",
-        base_url="https://api.minimax.io/v1",
+        base_url="https://api.openai.com/v1",
         model="bad-model",
         timeout=120,
     )
@@ -296,7 +296,7 @@ def test_chat_minimax_raises_clear_error_on_missing_model():
     with patch.object(router, "_server", return_value=server):
         with patch("localagent.models.router.httpx.Client") as client_cls:
             client_cls.return_value.__enter__.return_value.post.return_value = response
-            with pytest.raises(RuntimeError, match="minimax model 'bad-model' unavailable"):
+            with pytest.raises(RuntimeError, match="openai model 'bad-model' unavailable"):
                 router._chat_openai_compatible(
                     server=server,
                     messages=[ChatMessage(role="user", content="hi")],
@@ -421,23 +421,23 @@ def test_chat_falls_back_to_ollama_when_cursor_fails(monkeypatch):
     assert router.last_provider == "ollama"
 
 
-def test_format_model_hint_for_minimax():
+def test_format_model_hint_for_openai():
     from localagent.model_servers import ModelServer
 
     router = ModelRouter()
-    server = ModelServer(provider="minimax", model="MiniMax-M3")
+    server = ModelServer(provider="openai", model="gpt-4o-mini")
     with patch("localagent.models.router.config.get_model_server", return_value=server):
-        assert router.format_model_hint("minimax") == "MiniMax-M3"
+        assert router.format_model_hint("openai") == "gpt-4o-mini"
 
 
 def test_format_provider_hint(monkeypatch):
     monkeypatch.setattr(
         "localagent.models.router.config.MODEL_PROVIDER_PRIORITY",
-        ["ollama", "minimax", "openrouter", "cursor"],
+        ["ollama", "openai", "openrouter", "cursor"],
     )
     router = ModelRouter()
-    assert router.format_provider_hint("auto") == "auto(ollama→minimax→openrouter→cursor)"
-    assert router.format_provider_hint("openrouter") == "openrouter(ollama→minimax→cursor)"
+    assert router.format_provider_hint("auto") == "auto(ollama→openai→openrouter→cursor)"
+    assert router.format_provider_hint("openrouter") == "openrouter(ollama→openai→cursor)"
 
 
 def test_format_last_source():
