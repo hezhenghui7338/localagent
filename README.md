@@ -17,10 +17,10 @@
 
 ## Quick start
 
-Python 3.10+ · [pipx](https://pipx.pypa.io/) · current **v0.4.0**
+Python 3.10+ · [pipx](https://pipx.pypa.io/) · current **v0.5.0**
 
 ```bash
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.5.0"
 la
 ```
 
@@ -88,15 +88,15 @@ If GitHub is slow/blocked, use a proxy first (heavy deps; install can take a whi
 
 ```bash
 # pin a tag (recommended)
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.5.0"
 # or track default branch / use pip
 # pipx install "git+https://github.com/hezhenghui7338/localagent.git"
-# pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
+# pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.5.0"
 
 la --version
 # upgrade to a new tag: uninstall then reinstall
 pipx uninstall la-localagent
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.5.0"
 # if --force fails with “venv already exists”: UV_VENV_CLEAR=1 pipx install --force "…"
 # tracking default branch: pipx upgrade la-localagent
 ```
@@ -111,7 +111,7 @@ la config --provider ollama --base_url "http://localhost:11434" --model qwen3.5:
 # or: la config-example > my.json && la config my.json && la config list
 ```
 
-> After PyPI publish: `pipx install la-localagent==0.4.0`
+> After PyPI publish: `pipx install la-localagent==0.5.0`
 
 ### Developer install
 

@@ -17,10 +17,10 @@
 
 ## 快速开始
 
-Python 3.10+ · [pipx](https://pipx.pypa.io/) · 当前 **v0.4.0**
+Python 3.10+ · [pipx](https://pipx.pypa.io/) · 当前 **v0.5.0**
 
 ```bash
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.5.0"
 la
 ```
 
@@ -88,15 +88,15 @@ la
 
 ```bash
 # pin 版本（推荐）
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.5.0"
 # 或跟踪默认分支 / 用 pip
 # pipx install "git+https://github.com/hezhenghui7338/localagent.git"
-# pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
+# pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.5.0"
 
 la --version
 # 升级到新 tag：先卸再装
 pipx uninstall la-localagent
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.5.0"
 # --force 且报 venv 已存在时：UV_VENV_CLEAR=1 pipx install --force "…"
 # 跟踪默认分支：pipx upgrade la-localagent
 ```
@@ -111,7 +111,7 @@ la config --provider ollama --base_url "http://localhost:11434" --model qwen3.5:
 # 或：la config-example > my.json && la config my.json && la config list
 ```
 
-> PyPI 发布后：`pipx install la-localagent==0.4.0`
+> PyPI 发布后：`pipx install la-localagent==0.5.0`
 
 ### 开发者安装
 
@@ -601,7 +601,7 @@ src/localagent/
 发版时同步三处（缺一不可）：
 
 1. 改 `src/localagent/__init__.py` 里的 `__version__`（唯一版本源）
-2. 打并推送同号 tag：`git tag v0.4.0 && git push origin v0.4.0`
+2. 打并推送同号 tag：`git tag v0.5.0 && git push origin v0.5.0`
 3. 更新 README 中的 `@v…` / 当前版本说明
 
 GitHub Actions CI 跑 `uv run pytest`（单元+集成，含 STM；排除 `e2e` / `e2e_live`），另有独立 **e2e-offline** job（`pytest tests/e2e -m e2e`）。实机 Ollama 测试仅本机运行。
