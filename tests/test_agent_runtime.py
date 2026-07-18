@@ -171,7 +171,9 @@ def test_run_agent_turn_retries_truncated_tool_call(isolated_data):
     ) as shell:
         result = run_agent_turn("好,重新统计下业务代码行数", provider="ollama")
 
-    assert result.response == "业务代码合计约 3200 行。"
+    assert "业务代码合计约 3200 行。" in result.response
+    assert "【Action receipt】" in result.response
+    assert "run_shell: find src -name '*.py' | xargs wc -l" in result.response
     assert result.tool_calls == [
         {
             "name": "run_shell",
@@ -225,7 +227,9 @@ def test_run_agent_turn_retries_incomplete_synthesis(isolated_data):
     with patch("localagent.tools.run_shell", return_value="3200 total"):
         result = run_agent_turn("统计当前项目的代码行数", provider="ollama")
 
-    assert result.response == "业务代码合计约 3200 行。"
+    assert "业务代码合计约 3200 行。" in result.response
+    assert "【Action receipt】" in result.response
+    assert "run_shell: wc -l src/**/*.py" in result.response
     assert isolated_data["router"].chat.call_count == 3
 
 
@@ -805,7 +809,9 @@ def test_run_agent_turn_retries_when_file_write_claimed_without_tool(isolated_da
     ) as write:
         result = run_agent_turn("内容写:新内容", provider="ollama")
 
-    assert result.response == "文件已更新。"
+    assert "文件已更新。" in result.response
+    assert "【Action receipt】" in result.response
+    assert "write_file (overwrite): test.txt" in result.response
     assert result.tool_calls == [
         {"name": "write_file", "arguments": {"path": "test.txt", "content": "新内容"}}
     ]
@@ -829,7 +835,9 @@ def test_run_agent_turn_retries_append_hallucination(isolated_data):
     ) as write:
         result = run_agent_turn("追加内容:第二行内容是这样的,闲杂时间", provider="ollama")
 
-    assert result.response == "已追加第二行。"
+    assert "已追加第二行。" in result.response
+    assert "【Action receipt】" in result.response
+    assert "write_file (append): test.txt" in result.response
     assert result.tool_calls[0]["arguments"]["mode"] == "append"
     write.assert_called_once_with(
         "test.txt",
