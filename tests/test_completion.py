@@ -324,3 +324,23 @@ def test_ensure_shell_completion_silent(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert out == ""
     assert "compdef _la LA la" in (tmp_path / ".zshrc").read_text(encoding="utf-8")
+
+
+def test_complete_init_skips_non_bash_zsh(monkeypatch, capsys):
+    from localagent.cli import main
+
+    monkeypatch.delenv("SHELL", raising=False)
+    rc = main(["complete-init", "powershell"])
+    assert rc == 1
+    assert "暂不支持" in capsys.readouterr().out
+
+
+def test_install_shell_completion_skips_without_shell(tmp_path, monkeypatch):
+    from localagent.completion import install_shell_completion
+
+    monkeypatch.delenv("SHELL", raising=False)
+    monkeypatch.setattr("localagent.completion.Path.home", lambda: tmp_path)
+    hooks, rc_path = install_shell_completion()
+    assert hooks == []
+    assert rc_path is None
+    assert not (tmp_path / ".zshrc").exists()

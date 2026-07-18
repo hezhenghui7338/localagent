@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <rect width="128" height="128" rx="28" fill="#f0fdfa"/>
+  <!-- brief card -->
+  <rect x="24" y="36" width="80" height="64" rx="12" fill="#14b8a6"/>
+  <rect x="34" y="48" width="36" height="8" rx="4" fill="#f0fdfa"/>
+  <rect x="34" y="62" width="52" height="5" rx="2.5" fill="#0f766e"/>
+  <rect x="34" y="72" width="44" height="5" rx="2.5" fill="#0f766e"/>
+  <rect x="34" y="82" width="28" height="5" rx="2.5" fill="#67e8f9"/>
+  <!-- radar / sniff arcs -->
+  <circle cx="96" cy="40" r="8" fill="#38bdf8"/>
+  <path d="M88 28c10 2 18 10 20 20" stroke="#0f766e" stroke-width="4" stroke-linecap="round"/>
+  <path d="M84 22c16 2 28 14 30 30" stroke="#94a3b8" stroke-width="3" stroke-linecap="round"/>
+</svg>

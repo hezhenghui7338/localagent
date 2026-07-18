@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <rect width="128" height="128" rx="28" fill="#f0fdfa"/>
+  <!-- pen body -->
+  <path d="M78 24l26 26-52 52-10 4 4-10 52-52z" fill="#14b8a6"/>
+  <path d="M78 24l10 4-22 22-4-10L78 24z" fill="#67e8f9"/>
+  <path d="M42 90l-4 10 10-4-6-6z" fill="#334155"/>
+  <rect x="62" y="46" width="28" height="6" rx="2" transform="rotate(45 76 49)" fill="#0f766e"/>
+  <!-- sparkles -->
+  <circle cx="36" cy="40" r="5" fill="#38bdf8"/>
+  <circle cx="48" cy="28" r="3" fill="#67e8f9"/>
+  <circle cx="96" cy="88" r="4" fill="#67e8f9"/>
+  <path d="M30 56l3-8 3 8 8 3-8 3-3 8-3-8-8-3 8-3z" fill="#0f766e"/>
+</svg>

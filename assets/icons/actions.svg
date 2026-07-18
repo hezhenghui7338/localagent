@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <rect width="128" height="128" rx="28" fill="#f0fdfa"/>
+  <!-- terminal window -->
+  <rect x="22" y="30" width="84" height="68" rx="12" fill="#334155"/>
+  <circle cx="36" cy="44" r="4" fill="#94a3b8"/>
+  <circle cx="48" cy="44" r="4" fill="#14b8a6"/>
+  <circle cx="60" cy="44" r="4" fill="#67e8f9"/>
+  <rect x="32" y="58" width="40" height="6" rx="3" fill="#14b8a6"/>
+  <rect x="32" y="70" width="28" height="6" rx="3" fill="#0f766e"/>
+  <!-- check badge -->
+  <circle cx="92" cy="84" r="18" fill="#14b8a6"/>
+  <path d="M84 84l5 5 11-12" stroke="#f0fdfa" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- mini robot -->
+  <rect x="86" y="52" width="16" height="14" rx="4" fill="#f0fdfa"/>
+  <path d="M88 52l2-3h2l2 3" fill="#94a3b8"/>
+  <path d="M96 52l2-3h2l2 3" fill="#94a3b8"/>
+  <circle cx="91" cy="57" r="1.6" fill="#0f766e"/>
+  <circle cx="97" cy="57" r="1.6" fill="#0f766e"/>
+</svg>

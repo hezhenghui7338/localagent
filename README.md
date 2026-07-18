@@ -15,9 +15,9 @@
 
 > **Local AI that remembers and gets things done.**
 
-## Quick start
+## <img src="assets/icons/quick-start.svg" alt="" width="28" valign="middle"> Quick start
 
-Python 3.10+ · [pipx](https://pipx.pypa.io/) · current **v0.5.0**
+Python 3.10+ · macOS / Linux / Windows · [pipx](https://pipx.pypa.io/) · current **v0.5.0**
 
 ```bash
 pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.5.0"
@@ -25,18 +25,18 @@ la
 ```
 
 Have an API → `la config set-key openrouter sk-...` (or edit `~/.localagent/.env`)  
-No API → `la setup -y` (Ollama + `qwen3.5:4b`)
+No API → `la setup -y` (installs Ollama if needed and pulls a model matched to your RAM; ≥14GB → `qwen3.5:4b`)
 
 Daily side-paths: `la summarize <path>` · `la news brief` · `la polish`  
 Upgrade / dev / uninstall → [Install & upgrade](#install--upgrade)
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.10+ on **macOS, Linux, or Windows**
 - **At least one inference path**: a local model server (e.g. Ollama) **or** a cloud API (OpenRouter / OpenAI / Cursor, …)
-- **If you have no API**, [Ollama](https://ollama.com/) is recommended (default `qwen3.5:4b`; `la setup` can install — skippable)
+- **If you have no API**, [Ollama](https://ollama.com/) is recommended (`la setup` can install — skippable). Default chat model is chosen by system RAM (see [Ollama tips](#ollama-tips))
 
-## Features
+## <img src="assets/icons/features.svg" alt="" width="28" valign="middle"> Features
 
 Runs fully local by default; optional cloud and web. Details: [summarize · news · polish](#daily-essentials-summarize--news--polish).
 
@@ -76,13 +76,13 @@ Optional OpenRouter / Cursor / Tavily — **identity and data stay on your machi
 
 ### What we believe
 
-- AI is revolutionary — embrace it; hearing about it a thousand times beats nothing next to downloading LA and debugging it yourself  
-- “Read it a hundred times and meaning appears” does not happen by itself — you need practice  
+- LA is dedicated to high-quality, hands-on AI practice feedback  
+- “Read it a hundred times and meaning appears” does not happen by itself — understanding comes from practice  
 - LA only picks **low-hanging, mature** fruit; no uncontrolled, expensive, hard-to-own stacks  
-- LA does **one thing**: local AI that remembers and gets things done. Data stays local; the full loop runs offline. Networking and new tech are welcome — barriers are not  
-- Remove obstacles to using AI
+- LA does **one thing**: local AI that remembers you and gets things done. Data stays local; the full loop runs offline. Networking and new tech are welcome — barriers are not  
+- Lower the bar to using AI, rather than raising another one
 
-## Install & upgrade
+## <img src="assets/icons/install.svg" alt="" width="28" valign="middle"> Install & upgrade
 
 If GitHub is slow/blocked, use a proxy first (heavy deps; install can take a while).
 
@@ -101,15 +101,17 @@ pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.5.0"
 # tracking default branch: pipx upgrade la-localagent
 ```
 
-Versions: [Releases](https://github.com/hezhenghui7338/localagent/releases) / [Tags](https://github.com/hezhenghui7338/localagent/tags). First run creates `~/.localagent/`.
+Versions: [Releases](https://github.com/hezhenghui7338/localagent/releases) / [Tags](https://github.com/hezhenghui7338/localagent/tags). First run creates `~/.localagent/` (on Windows: `%USERPROFILE%\.localagent\`).
 
 ```bash
 la                 # = la chat
-la setup           # guided Ollama install (skippable)
+la setup           # guided Ollama install (skippable); picks model by RAM
 la setup -y
 la config --provider ollama --base_url "http://localhost:11434" --model qwen3.5:4b
 # or: la config-example > my.json && la config my.json && la config list
 ```
+
+**Windows:** use PowerShell or cmd after [pipx](https://pipx.pypa.io/) is on `PATH`. `la setup` installs Ollama via `winget` when available, otherwise opens [ollama.com/download](https://ollama.com/download). Restart the terminal after installing Ollama so `ollama` is on `PATH`. (WSL works as Linux; native Windows is the supported path.)
 
 > After PyPI publish: `pipx install la-localagent==0.5.0`
 
@@ -118,7 +120,7 @@ la config --provider ollama --base_url "http://localhost:11434" --model qwen3.5:
 ```bash
 git clone git@github.com:hezhenghui7338/localagent.git
 cd LocalAgent
-python3 -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 # or: uv sync --extra dev
 ```
@@ -135,7 +137,7 @@ ollama rm qwen3.5:4b           # optional: Ollama is separate and is not removed
 
 ## Feature highlights
 
-### Local First
+### <img src="assets/icons/local-first.svg" alt="" width="24" valign="middle"> Local First
 
 LocalAgent’s core path — **chat, memory write, memory recall, document retrieval, workspace awareness, Shell execution, audit stats** — can run on local Ollama alone, with no paid API. Identity and data stay on your machine.
 
@@ -158,7 +160,7 @@ ollama pull qwen3.5:4b
 LA chat --provider ollama
 ```
 
-### Actions Automated — Shell that actually acts
+### <img src="assets/icons/actions.svg" alt="" width="24" valign="middle"> Actions Automated — Shell that actually acts
 
 A typical chat only tells you to run `find … | wc -l` yourself. LocalAgent’s agent **calls `run_shell`**, executes in the workspace, and turns the output into an answer — fully local `qwen3.5:4b`, no cloud API.
 
@@ -184,7 +186,7 @@ Use cases: LOC counts, listing directories, Git logs, running tests/builds. Comm
 
 Three side-path commands built for **everyday** use — read a doc, skim a brief, polish a draft — without a long agent tool loop.
 
-#### 1. One-click summarize — 3-minute digest + document dialogue
+#### <img src="assets/icons/summarize.svg" alt="" width="24" valign="middle"> 1. One-click summarize — 3-minute digest + document dialogue
 
 ```bash
 la summarize ~/Documents/plan.pdf          # digest card → sum> dialogue
@@ -196,7 +198,7 @@ la summarize report.xlsx --keep            # also archive to KB
 - **Not kept by default**; `/keep` in `sum>` or pass `--keep`
 - Ask follow-ups in `sum>` (`/summary` re-show card, `/exit` leave)
 
-#### 2. News sniff — trusted sources → today's brief
+#### <img src="assets/icons/news.svg" alt="" width="24" valign="middle"> 2. News sniff — trusted sources → today's brief
 
 Default feed: [BestBlogs](https://www.bestblogs.dev/) AI RSS (override with `LA_NEWS_RSS_URL`):
 
@@ -211,7 +213,7 @@ Keys in the interactive brief: ↑↓ navigate · `o` open in browser · `s` ski
 
 Chat startup notifies when today's sync is ready.
 
-#### 3. One-click polish — rewrite ready to send
+#### <img src="assets/icons/polish.svg" alt="" width="24" valign="middle"> 3. One-click polish — rewrite ready to send
 
 ```bash
 la polish "nudge about the proposal"
@@ -245,7 +247,7 @@ open examples/walkthrough.zh-CN.md
 ```
 
 Full narrative and acceptance criteria: [docs/PRD.md](docs/PRD.md).
-### Memory Forever — remembers you end-to-end
+### <img src="assets/icons/memory-forever.svg" alt="" width="24" valign="middle"> Memory Forever — remembers you end-to-end
 
 Memory inputs include **ChatGPT history and LA live chats**. Personal documents use `LA rag` for Cold knowledge. The Warm layer is powered by the [Mem0](https://github.com/mem0ai/mem0) engine (`mem0ai` is a core dependency): **Retain → Recall → Reflect (search + LLM)**. The repo includes an “architecture decision evolution” narrative demo covering write, semantic recall, time awareness, tag browsing, and cross-memory reasoning:
 
@@ -316,7 +318,7 @@ Per-category table and reproduction steps: [benchmarks/locomo/README.md](benchma
 
 ### Shell completion
 
-Shell tab completion is installed automatically on the first `LA` run (writes `~/.zshrc` / `~/.bashrc` and hooks into `.venv/bin/activate`). After `source .venv/bin/activate` (or a new terminal), `LA memory` / `LA rag` + Tab suggests subcommands.
+On bash/zsh, shell tab completion is installed automatically on the first `LA` run (writes `~/.zshrc` / `~/.bashrc` and hooks into the venv activate scripts). PowerShell / cmd are skipped for now. After `source .venv/bin/activate` (or a new terminal), `LA memory` / `LA rag` + Tab suggests subcommands.
 
 To reinstall or repair manually:
 
@@ -327,11 +329,21 @@ source .venv/bin/activate   # or: source ~/.zshrc
 
 ### Ollama tips
 
-- Default model is `qwen3.5:4b`. If it is missing, LA reuses any installed chat model (preferring one already loaded in Ollama), and only prompts to pull the default when none are available
+- When no chat model is configured, `la setup` recommends one by **system RAM** (override with `OLLAMA_MODEL` / `LA_OLLAMA_MODEL` or `config/model_servers.yaml`):
+
+  | System RAM | Recommended model | Notes |
+  | --- | --- | --- |
+  | &lt; 6 GB | `qwen2.5:0.5b` (Mini) | Chat / basic memory; weak multi-tool Agent |
+  | 6–10 GB | `qwen2.5:1.5b` | Lightweight Q&A |
+  | 10–14 GB | `qwen2.5:3b` | Mid tier |
+  | ≥ 14 GB | `qwen3.5:4b` | Default quality tier |
+
+- If the recommended model is missing, LA reuses any installed chat model (preferring one already loaded in Ollama), and only prompts to pull when none are available
 - Qwen3 often emits many thinking tokens; LocalAgent defaults `OLLAMA_THINK=0` to disable thinking mode
 - When local Ollama is slow, `auto` falls back to the next provider (e.g. OpenRouter) after **12s** by default. Override with `LA_OLLAMA_CHAT_TIMEOUT=20` in `.env`, or `chat_timeout: 20` under ollama in `config/model_servers.yaml`; or switch manually with `/provider openrouter`
+- `la news schedule` is not supported on Windows yet — run `la news sync` manually (or use Task Scheduler)
 
-## Configuration
+## <img src="assets/icons/config.svg" alt="" width="28" valign="middle"> Configuration
 
 See [`.env.example`](.env.example). Common variables:
 
@@ -415,7 +427,7 @@ data/
     └── events.jsonl           # Tool decisions / guardrails
 ```
 
-## Architecture
+## <img src="assets/icons/architecture.svg" alt="" width="28" valign="middle"> Architecture
 
 Narrative arc: **fully local (zero-cost by default)** → **truly easy** → **smart multi-layer memory** → **external tools** → **RAG**.
 
@@ -596,7 +608,7 @@ pytest tests/e2e -m e2e
 pytest tests/e2e -m e2e_live
 ```
 
-## Security & privacy
+## <img src="assets/icons/security.svg" alt="" width="28" valign="middle"> Security & privacy
 
 - **Never commit** `.env` or runtime data under `data/`; both are gitignored
 - API keys live only in local `.env`

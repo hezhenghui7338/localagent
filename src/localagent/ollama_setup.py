@@ -8,15 +8,27 @@ import shutil
 import subprocess
 import sys
 import time
+import webbrowser
 from dataclasses import dataclass
 from typing import Any, Callable
 
 import httpx
 
 from localagent import config
+from localagent.hardware import (
+    DEFAULT_TIER_MODEL,
+    MINI_OLLAMA_MODEL,
+    format_ram_gb,
+    model_size_hint,
+    recommend_ollama_model,
+    tier_for_ram,
+    total_ram_bytes,
+)
 
-DEFAULT_OLLAMA_MODEL = "qwen3.5:4b"
+DEFAULT_OLLAMA_MODEL = DEFAULT_TIER_MODEL
 _INSTALL_SCRIPT = "https://ollama.com/install.sh"
+_OLLAMA_DOWNLOAD_URL = "https://ollama.com/download"
+_WINGET_OLLAMA_ID = "Ollama.Ollama"
 _EMBED_HINTS = ("embed", "bge", "nomic", "e5", "minilm", "mxbai")
 _COMPLETION_CAPS = frozenset({"completion", "tools", "vision"})
 
@@ -59,6 +71,68 @@ def default_ollama_model() -> str:
     if server and server.model:
         return server.model
     return config.OLLAMA_MODEL or DEFAULT_OLLAMA_MODEL
+
+
+def _env_explicit_ollama_model() -> str | None:
+    for key in ("LA_OLLAMA_MODEL", "OLLAMA_MODEL"):
+        value = os.getenv(key, "").strip()
+        if value:
+            return value
+    return None
+
+
+def _yaml_ollama_model() -> str | None:
+    """Return a user-chosen ollama.model from on-disk model_servers, if any.
+
+    The first-run bootstrap template always writes ``qwen3.5:4b``; treat that
+    bootstrap default as unset so RAM tiering can still apply.
+    """
+    try:
+        from localagent.model_servers import (
+            load_model_servers_from_file,
+            resolve_model_servers_path,
+        )
+
+        path = resolve_model_servers_path(project_root=config.PROJECT_ROOT)
+        if path is None or not path.is_file():
+            return None
+        for server in load_model_servers_from_file(path):
+            if server.provider != "ollama":
+                continue
+            model = server.model.strip()
+            if not model or model == DEFAULT_OLLAMA_MODEL:
+                return None
+            return model
+    except Exception:
+        return None
+    return None
+
+
+def resolve_preferred_ollama_model(
+    model: str | None = None,
+    *,
+    ram_bytes: int | None = None,
+) -> tuple[str, str]:
+    """Resolve the preferred chat model and why it was chosen.
+
+    Priority: explicit arg → LA_OLLAMA_MODEL / OLLAMA_MODEL env →
+    non-default on-disk model_servers.yaml → RAM tier recommendation.
+    """
+    explicit = (model or "").strip()
+    if explicit:
+        return explicit, "explicit"
+
+    env_model = _env_explicit_ollama_model()
+    if env_model:
+        return env_model, "env"
+
+    yaml_model = _yaml_ollama_model()
+    if yaml_model:
+        return yaml_model, "config"
+
+    detected = total_ram_bytes() if ram_bytes is None else ram_bytes
+    recommended = recommend_ollama_model(detected)
+    return recommended, "ram"
 
 
 def is_ollama_reachable(base_url: str | None = None, *, timeout: float = 2.0) -> bool:
@@ -235,8 +309,48 @@ def prompt_yes_no(question: str, *, default: bool = True) -> bool:
     return default
 
 
+def _open_ollama_download(*, log: Callable[[str], None] | None = None) -> None:
+    emit = log or (lambda msg: print(f"[ollama] {msg}"))
+    emit(f"请手动安装 Ollama: {_OLLAMA_DOWNLOAD_URL}")
+    emit("安装完成后请重开终端，再运行: la setup")
+    try:
+        webbrowser.open(_OLLAMA_DOWNLOAD_URL)
+    except Exception:
+        pass
+
+
+def _install_ollama_windows(*, log: Callable[[str], None]) -> None:
+    winget = shutil.which("winget")
+    if winget:
+        emit = log
+        emit(f"正在通过 winget 安装 Ollama（{_WINGET_OLLAMA_ID}）…")
+        try:
+            _run(
+                [
+                    winget,
+                    "install",
+                    "-e",
+                    "--id",
+                    _WINGET_OLLAMA_ID,
+                    "--accept-package-agreements",
+                    "--accept-source-agreements",
+                ]
+            )
+        except subprocess.CalledProcessError as exc:
+            emit(f"winget 安装失败（exit {exc.returncode}），改为手动安装引导…")
+            _open_ollama_download(log=emit)
+            raise RuntimeError(
+                f"winget 安装 Ollama 失败。请手动安装: {_OLLAMA_DOWNLOAD_URL}"
+            ) from exc
+        return
+    _open_ollama_download(log=log)
+    raise RuntimeError(
+        f"未找到 winget，请手动安装 Ollama: {_OLLAMA_DOWNLOAD_URL}"
+    )
+
+
 def install_ollama(*, log: Callable[[str], None] | None = None) -> None:
-    """Install Ollama via Homebrew (macOS) or the official install script."""
+    """Install Ollama via Homebrew, install.sh, or Windows winget."""
     emit = log or (lambda msg: print(f"[ollama] {msg}"))
     system = platform.system()
     if system == "Darwin" and shutil.which("brew"):
@@ -247,8 +361,11 @@ def install_ollama(*, log: Callable[[str], None] | None = None) -> None:
         emit("正在通过官方安装脚本安装 Ollama…")
         _run(["bash", "-c", f"curl -fsSL {_INSTALL_SCRIPT} | sh"])
         return
+    if system == "Windows":
+        _install_ollama_windows(log=emit)
+        return
     raise RuntimeError(
-        "当前系统暂不支持自动安装 Ollama，请手动安装: https://ollama.com/download"
+        f"当前系统暂不支持自动安装 Ollama，请手动安装: {_OLLAMA_DOWNLOAD_URL}"
     )
 
 
@@ -257,17 +374,25 @@ def start_ollama_serve(*, log: Callable[[str], None] | None = None) -> None:
     emit = log or (lambda msg: print(f"[ollama] {msg}"))
     binary = ollama_bin()
     if not binary:
-        raise RuntimeError("Ollama 未安装（which ollama 为空）。请安装: https://ollama.com/download")
+        raise RuntimeError(f"Ollama 未安装（which ollama 为空）。请安装: {_OLLAMA_DOWNLOAD_URL}")
     base = default_ollama_base_url()
     if is_ollama_reachable(base):
         return
-    emit(f"正在启动 ollama serve…（等待 API {base}）")
-    subprocess.Popen(  # noqa: S603
-        [binary, "serve"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    # Windows Ollama often already runs as a background app/service.
+    if platform.system() == "Windows":
+        emit(f"等待本机 Ollama 服务…（API {base}；若未启动请从开始菜单打开 Ollama）")
+    else:
+        emit(f"正在启动 ollama serve…（等待 API {base}）")
+    popen_kwargs: dict[str, Any] = {
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+    if platform.system() == "Windows":
+        # CREATE_NEW_PROCESS_GROUP — avoid tying serve to this console.
+        popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    else:
+        popen_kwargs["start_new_session"] = True
+    subprocess.Popen([binary, "serve"], **popen_kwargs)  # noqa: S603
     deadline = time.time() + 30
     last_emit = 0.0
     while time.time() < deadline:
@@ -279,6 +404,11 @@ def start_ollama_serve(*, log: Callable[[str], None] | None = None) -> None:
             emit(f"等待 ollama API… {int(elapsed)}s / 30s")
             last_emit = elapsed
         time.sleep(0.5)
+    if platform.system() == "Windows":
+        raise RuntimeError(
+            f"ollama API 超时（{base} 无响应）。请从开始菜单启动 Ollama，"
+            f"或手动运行: ollama serve。安装包: {_OLLAMA_DOWNLOAD_URL}"
+        )
     raise RuntimeError(
         f"ollama serve 启动超时（{base} 无响应）。请手动运行: ollama serve"
     )
@@ -290,7 +420,8 @@ def pull_model(model: str, *, log: Callable[[str], None] | None = None) -> None:
     if not binary:
         raise RuntimeError("Ollama 未安装")
     base = default_ollama_base_url()
-    emit(f"正在拉取模型 {model}（首次约 2.5GB；API {base}）…")
+    size = model_size_hint(model)
+    emit(f"正在拉取模型 {model}（首次约 {size}；API {base}）…")
     try:
         _run([binary, "pull", model])
     except subprocess.CalledProcessError as exc:
@@ -313,6 +444,34 @@ def _diagnose_hint(*, base_url: str, target: str) -> str:
     return " · ".join(bits)
 
 
+def _prompt_model_choice(
+    recommended: str,
+    *,
+    ram_bytes: int | None,
+    log: Callable[[str], None],
+) -> str:
+    """Interactive model pick when pulling a fresh default; Enter keeps recommendation."""
+    tier = tier_for_ram(ram_bytes)
+    log(
+        f"检测到系统内存 {format_ram_gb(ram_bytes)} → 推荐 {recommended}"
+        f"（{tier.label}，{tier.size_hint}）"
+    )
+    if tier.note:
+        log(tier.note)
+    if recommended == MINI_OLLAMA_MODEL:
+        log("Mini 档可跑通基础对话；复杂 Agent/多工具能力有限。")
+    if not sys.stdin.isatty():
+        return recommended
+    try:
+        answer = input(
+            f"拉取模型 [{recommended}]（回车确认；或输入其他标签，如 {MINI_OLLAMA_MODEL}）: "
+        ).strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return recommended
+    return answer or recommended
+
+
 def ensure_ollama_ready(
     model: str | None = None,
     *,
@@ -329,10 +488,18 @@ def ensure_ollama_ready(
     - ``assume_yes=True`` (e.g. ``la setup -y``): proceed without prompts.
     - ``prompt=False``: never install/pull automatically (detect only).
     - ``LA_SKIP_OLLAMA_SETUP=1``: skip entirely.
+    - When no model is configured, prefer a RAM-tier recommendation.
     """
     emit = log or (lambda msg: print(f"[ollama] {msg}"))
-    preferred = (model or default_ollama_model()).strip() or DEFAULT_OLLAMA_MODEL
+    ram = total_ram_bytes()
+    preferred, source = resolve_preferred_ollama_model(model, ram_bytes=ram)
+    preferred = preferred.strip() or DEFAULT_OLLAMA_MODEL
     target = preferred
+    if source == "ram":
+        emit(
+            f"检测到系统内存 {format_ram_gb(ram)} → 选用 {preferred}"
+            f"（{tier_for_ram(ram).label}，{model_size_hint(preferred)}）"
+        )
 
     if _env_skip():
         base = default_ollama_base_url()
@@ -372,7 +539,7 @@ def ensure_ollama_ready(
             emit("未检测到本机 Ollama。")
             emit(
                 "本地对话优先用本机已有 Ollama 模型；"
-                f"若无可用模型再拉取默认 {DEFAULT_OLLAMA_MODEL}。"
+                f"若无可用模型再按内存拉取推荐模型（当前推荐 {preferred}）。"
                 "只用云端（OpenRouter/Cursor 等）可跳过。"
             )
             should_install = prompt_yes_no("是否现在本地安装 Ollama？", default=True)
@@ -411,7 +578,14 @@ def ensure_ollama_ready(
                 installed=False,
                 installed_now=True,
                 model=target,
-                message="安装命令已执行，但仍未找到 ollama，请重开终端后再试",
+                message=(
+                    "安装命令已执行，但仍未找到 ollama，请重开终端后再试"
+                    + (
+                        f"（Windows 可从开始菜单启动 Ollama，或见 {_OLLAMA_DOWNLOAD_URL}）"
+                        if platform.system() == "Windows"
+                        else ""
+                    )
+                ),
             )
         emit("Ollama 安装完成")
 
@@ -444,16 +618,20 @@ def ensure_ollama_ready(
                     emit(f"已将 ollama.model 更新为 {adopted}")
 
     if served and not model_ready and pull:
+        pull_target = preferred
         should_pull = assume_yes
         available = list_completion_model_names()
         if not should_pull and prompt:
+            if source == "ram":
+                pull_target = _prompt_model_choice(preferred, ram_bytes=ram, log=emit)
             hint = (
-                f"未找到可用对话模型（配置为 {preferred}）"
+                f"未找到可用对话模型（推荐 {pull_target}）"
                 if not available
-                else f"未找到配置模型 {preferred}"
+                else f"未找到配置模型 {pull_target}"
             )
+            size = model_size_hint(pull_target)
             should_pull = prompt_yes_no(
-                f"{hint}，是否现在拉取 {preferred}？（约 2.5GB）",
+                f"{hint}，是否现在拉取 {pull_target}？（约 {size}）",
                 default=True,
             )
         elif not prompt and not assume_yes:
@@ -480,22 +658,24 @@ def ensure_ollama_ready(
                 declined=True,
                 skipped=True,
                 message=(
-                    f"已跳过拉取 {preferred}。可改用云端模型，"
-                    f"或稍后: la setup / ollama pull {preferred}"
+                    f"已跳过拉取 {pull_target}。可改用云端模型，"
+                    f"或稍后: la setup / ollama pull {pull_target}"
                 ),
             )
 
         try:
-            pull_model(preferred, log=emit)
+            pull_model(pull_target, log=emit)
             pulled_now = True
-            target = preferred
-            model_ready = has_model(preferred)
+            target = pull_target
+            model_ready = has_model(pull_target)
+            if model_ready and _persist_ollama_model(pull_target):
+                emit(f"已将 ollama.model 更新为 {pull_target}")
         except Exception as exc:
             return OllamaSetupResult(
                 installed=True,
                 installed_now=installed_now,
                 served=served,
-                model=preferred,
+                model=pull_target,
                 model_ready=False,
                 message=f"拉取模型失败: {exc}",
             )
@@ -506,8 +686,13 @@ def ensure_ollama_ready(
         else:
             msg = f"已就绪（模型 {target}）"
     elif not served:
+        serve_hint = (
+            "请从开始菜单启动 Ollama，或运行: ollama serve"
+            if platform.system() == "Windows"
+            else "请运行: ollama serve"
+        )
         msg = (
-            "Ollama 未响应，请运行: ollama serve。诊断: "
+            f"Ollama 未响应，{serve_hint}。诊断: "
             + _diagnose_hint(base_url=default_ollama_base_url(), target=preferred)
         )
     else:
