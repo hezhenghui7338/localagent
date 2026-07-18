@@ -125,20 +125,31 @@ def test_pdf_loader_page_markers(tmp_path: Path):
     assert result.page_count == 1
 
 
-def test_document_too_long(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_document_too_long_without_allow_long(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(config, "SUMMARIZE_SHORT_MAX_CHARS", 100)
     path = tmp_path / "long.txt"
     path.write_text("字" * 200, encoding="utf-8")
+    doc = load_file(path)
+    assert doc is not None
     with pytest.raises(DocumentTooLongError):
-        summarize_path(path, use_llm=False)
+        summarize_loaded(doc, use_llm=False, allow_long=False)
 
 
-def test_unsupported_suffix(tmp_path: Path):
-    path = tmp_path / "x.docx"
-    path.write_text("nope", encoding="utf-8")
-    with pytest.raises(Exception) as exc:
-        summarize_path(path, use_llm=False)
-    assert "不支持" in str(exc.value)
+def test_summarize_path_long_doc_indexes_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(config, "SUMMARIZE_SHORT_MAX_CHARS", 100)
+    monkeypatch.setattr(config, "SUMMARIZE_LLM_INPUT_CHARS", 80)
+    path = tmp_path / "long.txt"
+    # Enough text to exceed short max and trigger retrieval mode.
+    path.write_text(("段落内容。" * 40 + "\n\n") * 5, encoding="utf-8")
+    result = summarize_path(path, use_llm=False)
+    assert result.session_source_key.startswith("sum:")
+    assert result.char_count > config.SUMMARIZE_LLM_INPUT_CHARS
+    assert result.uses_retrieval is True
+    from localagent.summarize.document import format_document_context
+
+    block = format_document_context(result)
+    assert "速读卡" in block
+    assert "检索" in block or "未塞入全文" in block
 
 
 def test_format_document_context_includes_summary_and_source():
@@ -156,6 +167,39 @@ def test_format_document_context_includes_summary_and_source():
     assert "一句话" in block
     assert "hello world" in block
     assert "未入库" in block
+    assert "禁止建议用户再运行" in block
+
+
+def test_session_index_and_source_filter(isolated_data, tmp_path: Path):
+    from localagent.summarize.session_index import (
+        format_retrieval_block,
+        index_document_session,
+        retrieve_document_chunks,
+    )
+
+    key = "sum:test:abc123"
+    body = (
+        "## [§架构]\n知识与推理分离通过独立模块实现，知识库用检索，推理用 Transformer。\n\n"
+        "## [§评测]\n在科学任务上相对基线提升明显。\n"
+    )
+    n = index_document_session(key, body, title="demo")
+    assert n >= 1
+    hits = retrieve_document_chunks("知识与推理分离", source_key=key, top_k=3)
+    assert hits
+    assert all(
+        (h.get("metadata") or {}).get("source_file") == key for h in hits
+    )
+    block = format_retrieval_block(hits, source_key=key)
+    assert "当前文档检索结果" in block
+    assert "知识" in block or "推理" in block
+
+
+def test_unsupported_suffix(tmp_path: Path):
+    path = tmp_path / "x.docx"
+    path.write_text("nope", encoding="utf-8")
+    with pytest.raises(Exception) as exc:
+        summarize_path(path, use_llm=False)
+    assert "不支持" in str(exc.value)
 
 
 def test_should_enter_document_chat_respects_no_chat():

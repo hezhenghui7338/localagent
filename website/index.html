@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="LocalAgent — Your AI. Your Data. Your Machine. A fully local personal AI assistant."
+    />
+    <meta name="theme-color" content="#0a0a0c" />
+    <title>LocalAgent — Local personal AI</title>
+    <link rel="icon" href="assets/logo-icon.png" type="image/png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="bg-grid" aria-hidden="true"></div>
+    <div class="bg-glow" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand-mark" href="#top" aria-label="LocalAgent">
+        <img src="assets/logo-icon.png" alt="" width="36" height="36" />
+        <span>LocalAgent</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="#features" data-i18n="nav.features">Features</a>
+        <a href="#install" data-i18n="nav.install">Install</a>
+        <a href="#contact" data-i18n="nav.contact">Contact</a>
+        <a
+          class="nav-github"
+          href="https://github.com/hezhenghui7338/localagent"
+          target="_blank"
+          rel="noopener noreferrer"
+          >GitHub</a
+        >
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button type="button" data-lang="zh">中文</button>
+          <button type="button" data-lang="en" class="is-active">EN</button>
+        </div>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <img
+          class="hero-logo"
+          id="hero-logo"
+          src="assets/logo.png"
+          alt="LocalAgent"
+          width="420"
+          height="420"
+        />
+        <p class="hero-brand">LocalAgent</p>
+        <h1 class="hero-tagline" data-i18n="hero.tagline">
+          Your AI. Your Data. Your Machine.
+        </h1>
+        <p class="hero-lead" data-i18n="hero.lead">
+          One step to your local personal AI assistant — your compute, your
+          network, your tools; lasting memory that truly gets to know you.
+        </p>
+        <div class="hero-cta">
+          <a
+            class="btn btn-primary"
+            href="https://github.com/hezhenghui7338/localagent"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-i18n="hero.ctaGithub"
+            >View on GitHub</a
+          >
+          <a class="btn btn-ghost" href="#install" data-i18n="hero.ctaInstall"
+            >Quick install</a
+          >
+        </div>
+      </section>
+
+      <section id="features" class="section features">
+        <p class="section-eyebrow" data-i18n="features.eyebrow">Product design</p>
+        <h2 class="section-title" data-i18n="features.title">
+          Fully local. Knows you long-term.
+        </h2>
+        <p class="section-lead" data-i18n="features.lead">
+          Zero bill and zero account by default; identity and data stay on your
+          machine. Optional cloud and web — always with a pure local path.
+        </p>
+        <ul class="feature-list">
+          <li>
+            <h3 data-i18n="features.f1.title">Fully local</h3>
+            <p data-i18n="features.f1.body">
+              Chat, memory, retrieval, and tools can run on-device; local
+              compute by default, optional API boost.
+            </p>
+          </li>
+          <li>
+            <h3 data-i18n="features.f2.title">Truly easy</h3>
+            <p data-i18n="features.f2.body">
+              One-step install, ready to talk. Main path:
+              <code>la</code> · <code>la setup</code> · <code>la chat</code>.
+            </p>
+          </li>
+          <li>
+            <h3 data-i18n="features.f3.title">Layered long-term memory</h3>
+            <p data-i18n="features.f3.body">
+              Hot / Warm / Cold + Mem0: remembers you — and knows what to keep,
+              and when to step in.
+            </p>
+          </li>
+          <li>
+            <h3 data-i18n="features.f4.title">On-device tools</h3>
+            <p data-i18n="features.f4.body">
+              Local shell, file writes, workspace awareness; confirm before run,
+              block dangerous commands.
+            </p>
+          </li>
+          <li>
+            <h3 data-i18n="features.f5.title">Local RAG</h3>
+            <p data-i18n="features.f5.body">
+              Ingest documents into a knowledge base; deep-recall source text in
+              chat.
+            </p>
+          </li>
+          <li>
+            <h3 data-i18n="features.f6.title">Daily essentials</h3>
+            <p data-i18n="features.f6.body">
+              <code>la summarize</code> · <code>la news</code> ·
+              <code>la polish</code> — docs, briefing, and copy in one shot.
+            </p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="install" class="section install">
+        <p class="section-eyebrow" data-i18n="install.eyebrow">Quick start</p>
+        <h2 class="section-title" data-i18n="install.title">
+          One command, then chat
+        </h2>
+        <p class="section-lead" data-i18n="install.lead">
+          Needs Python 3.10+ and pipx. Current version v0.4.0.
+        </p>
+        <div class="code-block">
+          <pre><code id="install-cmd">pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.4.0"
+la</code></pre>
+          <button
+            type="button"
+            class="btn-copy"
+            id="copy-install"
+            data-i18n="install.copy"
+          >
+            Copy
+          </button>
+        </div>
+        <p class="install-hint" data-i18n="install.hint">
+          Have an API → set your key. No API → <code>la setup -y</code> for
+          Ollama.
+        </p>
+        <p class="install-more">
+          <a
+            href="https://github.com/hezhenghui7338/localagent#readme"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-i18n="install.docs"
+            >Full docs &amp; upgrade notes →</a
+          >
+        </p>
+      </section>
+
+      <section id="contact" class="section contact">
+        <p class="section-eyebrow" data-i18n="contact.eyebrow">Contact</p>
+        <h2 class="section-title" data-i18n="contact.title">Say hello</h2>
+        <p class="section-lead" data-i18n="contact.lead">
+          Questions, ideas, or collaboration — email us or open an Issue.
+        </p>
+        <ul class="contact-list">
+          <li>
+            <span class="contact-label" data-i18n="contact.emailLabel"
+              >Email</span
+            >
+            <a href="mailto:zhenghui7338@gmail.com">zhenghui7338@gmail.com</a>
+          </li>
+          <li>
+            <span class="contact-label">GitHub</span>
+            <a
+              href="https://github.com/hezhenghui7338/localagent"
+              target="_blank"
+              rel="noopener noreferrer"
+              >github.com/hezhenghui7338/localagent</a
+            >
+          </li>
+        </ul>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        <span data-i18n="footer.line">LocalAgent · MIT · v0.4.0</span>
+        ·
+        <a
+          href="https://github.com/hezhenghui7338/localagent"
+          target="_blank"
+          rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </p>
+    </footer>
+
+    <script src="script.js" defer></script>
+  </body>
+</html>

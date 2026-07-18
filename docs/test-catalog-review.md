@@ -177,7 +177,7 @@ pytest tests/e2e/ -m e2e_live     # 实机 Ollama（本机）
 - **意图**：覆盖: load model servers from yaml
 - **输入**：参数: config_setup
 - **方法**：unit
-- **校验**：`[s.provider for s in servers] == ['ollama', 'minimax', 'openrouter']; servers[1].api_key == 'old-minimax-key'`
+- **校验**：`[s.provider for s in servers] == ['ollama', 'openai', 'openrouter']; servers[1].api_key == 'old-openai-key'`
 - **位置**：`test_env_config.py:60-64` · 意图由函数名推断
 
 #### 2. `test_write_model_servers_to_yaml`
@@ -209,7 +209,7 @@ pytest tests/e2e/ -m e2e_live     # 实机 Ollama（本机）
 - **意图**：覆盖: add model server
 - **输入**：参数: config_setup
 - **方法**：unit
-- **校验**：`path == yaml_path; was_update is False; names == ['ollama', 'minimax', 'openrouter', 'aiping']`
+- **校验**：`path == yaml_path; was_update is False; names == ['ollama', 'openai', 'openrouter', 'aiping']`
 - **位置**：`test_env_config.py:91-104` · 意图由函数名推断
 
 #### 6. `test_remove_model_server`
@@ -217,7 +217,7 @@ pytest tests/e2e/ -m e2e_live     # 实机 Ollama（本机）
 - **意图**：覆盖: remove model server
 - **输入**：参数: config_setup
 - **方法**：unit
-- **校验**：`existed is True; path == yaml_path; 'minimax' not in names`
+- **校验**：`existed is True; path == yaml_path; 'openai' not in names`
 - **位置**：`test_env_config.py:107-113` · 意图由函数名推断
 
 #### 7. `test_set_server_api_key`
@@ -257,7 +257,7 @@ pytest tests/e2e/ -m e2e_live     # 实机 Ollama（本机）
 - **意图**：覆盖: cli config list
 - **输入**：参数: config_setup; 夹具: capsys
 - **方法**：CLI/subprocess + stdout
-- **校验**：`rc == 0; 'model_servers.yaml' in out; 'minimax' in out; 'ollama→minimax→openrouter' in out`
+- **校验**：`rc == 0; 'model_servers.yaml' in out; 'openai' in out; 'ollama→openai→openrouter' in out`
 - **位置**：`test_env_config.py:157-163` · 意图由函数名推断
 
 #### 12. `test_cli_config_add_json`
@@ -273,7 +273,7 @@ pytest tests/e2e/ -m e2e_live     # 实机 Ollama（本机）
 - **意图**：覆盖: cli config remove
 - **输入**：参数: config_setup; 夹具: capsys
 - **方法**：CLI/subprocess + stdout
-- **校验**：`rc == 0; all((s.provider != 'minimax' for s in servers))`
+- **校验**：`rc == 0; all((s.provider != 'openai' for s in servers))`
 - **位置**：`test_env_config.py:174-178` · 意图由函数名推断
 
 #### 14. `test_cli_config_set_key`
@@ -289,7 +289,7 @@ pytest tests/e2e/ -m e2e_live     # 实机 Ollama（本机）
 - **意图**：覆盖: cli config set key from stdin
 - **输入**：参数: config_setup; 夹具: monkeypatch, capsys
 - **方法**：monkeypatch + CLI/subprocess + stdout
-- **校验**：`rc == 0; minimax.api_key == 'stdin-key'`
+- **校验**：`rc == 0; openai.api_key == 'stdin-key'`
 - **位置**：`test_env_config.py:189-196` · 意图由函数名推断
 
 #### 16. `test_init_model_servers_config_reload_existing`
@@ -321,7 +321,7 @@ pytest tests/e2e/ -m e2e_live     # 实机 Ollama（本机）
 - **意图**：覆盖: yaml list order is priority
 - **输入**：参数: config_setup
 - **方法**：unit
-- **校验**：`[s.provider for s in config.MODEL_SERVERS] == ['ollama', 'openrouter', 'minimax']; list(config.MODEL_PROVIDER_PRIORITY) == ['ollama', 'openrouter', 'minimax']; list(result.priority_after) == ['ollama', 'openrouter', 'minimax']`
+- **校验**：`[s.provider for s in config.MODEL_SERVERS] == ['ollama', 'openrouter', 'openai']; list(config.MODEL_PROVIDER_PRIORITY) == ['ollama', 'openrouter', 'openai']; list(result.priority_after) == ['ollama', 'openrouter', 'openai']`
 - **位置**：`test_env_config.py:235-247` · 意图由函数名推断
 
 #### 20. `test_cli_config_list_reflects_yaml_order`
@@ -329,7 +329,7 @@ pytest tests/e2e/ -m e2e_live     # 实机 Ollama（本机）
 - **意图**：覆盖: cli config list reflects yaml order
 - **输入**：参数: config_setup; 夹具: capsys
 - **方法**：CLI/subprocess + stdout
-- **校验**：`rc == 0; 'ollama→openrouter→minimax' in out`
+- **校验**：`rc == 0; 'ollama→openrouter→openai' in out`
 - **位置**：`test_env_config.py:250-262` · 意图由函数名推断
 
 #### 21. `test_auto_bootstrap_uses_packaged_templates`
@@ -353,7 +353,7 @@ pytest tests/e2e/ -m e2e_live     # 实机 Ollama（本机）
 - **意图**：覆盖: reload model servers with file
 - **输入**：参数: config_setup
 - **方法**：unit
-- **校验**：`'minimax' in config.VALID_PROVIDERS; config.get_model_server('minimax').api_key == 'old-minimax-key'`
+- **校验**：`'openai' in config.VALID_PROVIDERS; config.get_model_server('openai').api_key == 'old-openai-key'`
 - **位置**：`test_env_config.py:290-294` · 意图由函数名推断
 
 #### 24. `test_apply_config_flags_provider_and_tavily`
@@ -589,9 +589,9 @@ pytest tests/e2e/ -m e2e_live     # 实机 Ollama（本机）
 - **校验**：`reply == 'ok'; router.last_provider == 'openrouter'; router.last_model == config.OPENROUTER_MODEL`
 - **位置**：`test_router.py:239-261` · 意图由函数名推断
 
-#### 15. `test_chat_minimax_raises_clear_error_on_missing_model`
+#### 15. `test_chat_openai_raises_clear_error_on_missing_model`
 
-- **意图**：覆盖: chat minimax raises clear error on missing model
+- **意图**：覆盖: chat openai raises clear error on missing model
 - **输入**：无外部夹具
 - **方法**：mock + raises
 - **校验**：`(隐式/副作用校验)`
@@ -637,12 +637,12 @@ pytest tests/e2e/ -m e2e_live     # 实机 Ollama（本机）
 - **校验**：`reply == 'ollama fallback'; router.last_provider == 'ollama'`
 - **位置**：`test_router.py:383-404` · 意图由函数名推断
 
-#### 21. `test_format_model_hint_for_minimax`
+#### 21. `test_format_model_hint_for_openai`
 
-- **意图**：覆盖: format model hint for minimax
+- **意图**：覆盖: format model hint for openai
 - **输入**：无外部夹具
 - **方法**：mock
-- **校验**：`router.format_model_hint('minimax') == 'MiniMax-M3'`
+- **校验**：`router.format_model_hint('openai') == 'gpt-4o-mini'`
 - **位置**：`test_router.py:407-413` · 意图由函数名推断
 
 #### 22. `test_format_provider_hint`
@@ -650,7 +650,7 @@ pytest tests/e2e/ -m e2e_live     # 实机 Ollama（本机）
 - **意图**：覆盖: format provider hint
 - **输入**：夹具: monkeypatch
 - **方法**：monkeypatch
-- **校验**：`router.format_provider_hint('auto') == 'auto(ollama→minimax→openrouter→cursor)'; router.format_provider_hint('openrouter') == 'openrouter(ollama→minimax→cursor)'`
+- **校验**：`router.format_provider_hint('auto') == 'auto(ollama→openai→openrouter→cursor)'; router.format_provider_hint('openrouter') == 'openrouter(ollama→openai→cursor)'`
 - **位置**：`test_router.py:416-423` · 意图由函数名推断
 
 #### 23. `test_format_last_source`

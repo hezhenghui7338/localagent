@@ -119,6 +119,8 @@ DEFAULT_USER_ID = "default_user"
 # One-click summarize: short-doc path (chars of annotated text).
 SUMMARIZE_SHORT_MAX_CHARS = _env_int("LA_SUMMARIZE_SHORT_MAX_CHARS", "12000")
 SUMMARIZE_LLM_INPUT_CHARS = _env_int("LA_SUMMARIZE_LLM_INPUT_CHARS", "10000")
+# Document deep-chat: retrieve this many Cold chunks when body exceeds prompt stuffing.
+DOC_SESSION_RETRIEVE_TOP_K = _env_int("LA_DOC_SESSION_RETRIEVE_TOP_K", "8")
 
 # --- News sniff (BestBlogs RSS → daily brief → deep read) ---
 DEFAULT_NEWS_RSS_URL = (
@@ -131,10 +133,14 @@ NEWS_SYNC_STATE_FILE = NEWS_DIR / "sync_state.json"
 NEWS_SYNC_LOG_FILE = NEWS_DIR / "sync.log"
 NEWS_CACHE_DIR = NEWS_DIR / "cache"
 NEWS_RSS_URL = _env("LA_NEWS_RSS_URL", DEFAULT_NEWS_RSS_URL) or DEFAULT_NEWS_RSS_URL
-NEWS_BRIEF_SIZE = _env_int("LA_NEWS_BRIEF_SIZE", "15")
+NEWS_BRIEF_SIZE = _env_int("LA_NEWS_BRIEF_SIZE", "30")
 NEWS_AUTO_SYNC = _env_bool("LA_NEWS_AUTO_SYNC", "1")
 NEWS_AUTO_SYNC_HOUR = _env_int("LA_NEWS_AUTO_SYNC_HOUR", "8")
 NEWS_AUTO_SYNC_MINUTE = _env_int("LA_NEWS_AUTO_SYNC_MINUTE", "0")
+# Fetch quality: reject stubs shorter than this (chars of extracted body).
+NEWS_FETCH_MIN_CHARS = _env_int("LA_NEWS_FETCH_MIN_CHARS", "500")
+# Optional Jina Reader HTTP fallback for JS-heavy pages (no browser dependency).
+NEWS_FETCH_USE_JINA = _env_bool("LA_NEWS_FETCH_USE_JINA", "1")
 # Phase 2 reserved
 BESTBLOGS_API_KEY = _env("LA_BESTBLOGS_API_KEY")
 NEWS_OPENAPI = _env_bool("LA_NEWS_OPENAPI", "0")
@@ -223,8 +229,8 @@ def reload_model_servers(
     global MODEL_SERVERS, MODEL_PROVIDER_PRIORITY, MODEL_SERVERS_BY_NAME, VALID_PROVIDERS
     global LA_MODEL_SERVERS_RAW, LA_MODEL_SERVERS_FILE, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_THINK
     global OLLAMA_NUM_PREDICT, OLLAMA_NUM_CTX, OLLAMA_KEEP_ALIVE, OLLAMA_TIMEOUT
-    global OLLAMA_CHAT_TIMEOUT, OLLAMA_CHAT_STREAM, MINIMAX_API_KEY, MINIMAX_MODEL
-    global MINIMAX_BASE_URL, MINIMAX_TIMEOUT, OPENROUTER_API_KEY, OPENROUTER_MODEL
+    global OLLAMA_CHAT_TIMEOUT, OLLAMA_CHAT_STREAM, OPENAI_API_KEY, OPENAI_MODEL
+    global OPENAI_BASE_URL, OPENAI_TIMEOUT, OPENROUTER_API_KEY, OPENROUTER_MODEL
     global OPENROUTER_BASE_URL, CURSOR_API_KEY, CURSOR_MODEL, CURSOR_CWD, CURSOR_MAX_RETRIES
 
     if raw_json is not None:
@@ -260,7 +266,7 @@ def _sync_legacy_shortcuts() -> None:
     """Keep legacy module attrs in sync for gradual migration."""
     global OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_THINK, OLLAMA_NUM_PREDICT, OLLAMA_NUM_CTX
     global OLLAMA_KEEP_ALIVE, OLLAMA_TIMEOUT, OLLAMA_CHAT_TIMEOUT, OLLAMA_CHAT_STREAM
-    global MINIMAX_API_KEY, MINIMAX_MODEL, MINIMAX_BASE_URL, MINIMAX_TIMEOUT
+    global OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL, OPENAI_TIMEOUT
     global OPENROUTER_API_KEY, OPENROUTER_MODEL, OPENROUTER_BASE_URL
     global CURSOR_API_KEY, CURSOR_MODEL, CURSOR_CWD, CURSOR_MAX_RETRIES
 
@@ -275,11 +281,29 @@ def _sync_legacy_shortcuts() -> None:
     OLLAMA_CHAT_TIMEOUT = ollama.chat_timeout if ollama else _env_float("LA_OLLAMA_CHAT_TIMEOUT", "12")
     OLLAMA_CHAT_STREAM = ollama.chat_stream if ollama else _env_bool("OLLAMA_CHAT_STREAM", "1")
 
-    minimax = get_model_server("minimax")
-    MINIMAX_API_KEY = minimax.api_key if minimax else _env("MINIMAX_API_KEY")
-    MINIMAX_MODEL = minimax.model if minimax else _env("MINIMAX_MODEL", "MiniMax-M3")
-    MINIMAX_BASE_URL = minimax.base_url if minimax else _env("MINIMAX_BASE_URL", "https://api.minimax.io/v1")
-    MINIMAX_TIMEOUT = minimax.timeout if minimax else _env_float("MINIMAX_TIMEOUT", "120")
+    openai = get_model_server("openai")
+    OPENAI_API_KEY = (
+        openai.api_key if openai else (_env("OPENAI_API_KEY") or _env("MINIMAX_API_KEY"))
+    )
+    OPENAI_MODEL = (
+        openai.model
+        if openai
+        else (_env("OPENAI_MODEL") or _env("MINIMAX_MODEL") or "gpt-4o-mini")
+    )
+    OPENAI_BASE_URL = (
+        openai.base_url
+        if openai
+        else (
+            _env("OPENAI_BASE_URL")
+            or _env("MINIMAX_BASE_URL")
+            or "https://api.openai.com/v1"
+        )
+    )
+    OPENAI_TIMEOUT = (
+        openai.timeout
+        if openai
+        else _env_float("OPENAI_TIMEOUT", _env("MINIMAX_TIMEOUT") or "120")
+    )
 
     openrouter = get_model_server("openrouter")
     OPENROUTER_API_KEY = openrouter.api_key if openrouter else _env("OPENROUTER_API_KEY")

@@ -30,7 +30,8 @@ STANDALONE_KEYS: dict[str, str] = {
 PROVIDER_API_KEY_ENV: dict[str, str] = {
     "OPENROUTER_API_KEY": "openrouter",
     "CURSOR_API_KEY": "cursor",
-    "MINIMAX_API_KEY": "minimax",
+    "OPENAI_API_KEY": "openai",
+    "MINIMAX_API_KEY": "openai",  # legacy alias
     "AIPING_API_KEY": "aiping",
 }
 
@@ -672,7 +673,7 @@ def apply_simple_config(
     Recognized keys:
     - provider / base_url / model / api_key / timeout — upsert that provider
     - TAVILY_API_KEY / LA_MEM0_LLM_API_KEY (or tavily / mem0)
-    - OPENROUTER_API_KEY / CURSOR_API_KEY / MINIMAX_API_KEY / AIPING_API_KEY
+    - OPENROUTER_API_KEY / CURSOR_API_KEY / OPENAI_API_KEY / AIPING_API_KEY
     - servers: optional list of full ModelServer objects
     """
     if not isinstance(data, dict):
@@ -794,7 +795,7 @@ def apply_config_flags(
     tavily_api_key: str | None = None,
     openrouter_api_key: str | None = None,
     cursor_api_key: str | None = None,
-    minimax_api_key: str | None = None,
+    openai_api_key: str | None = None,
     env_path: Path | None = None,
 ) -> SimpleConfigResult:
     data: dict[str, object] = {}
@@ -814,8 +815,8 @@ def apply_config_flags(
         data["OPENROUTER_API_KEY"] = openrouter_api_key
     if cursor_api_key is not None:
         data["CURSOR_API_KEY"] = cursor_api_key
-    if minimax_api_key is not None:
-        data["MINIMAX_API_KEY"] = minimax_api_key
+    if openai_api_key is not None:
+        data["OPENAI_API_KEY"] = openai_api_key
     return apply_simple_config(data, env_path=env_path)
 
 

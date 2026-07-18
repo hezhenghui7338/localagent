@@ -19,7 +19,7 @@ pytestmark = pytest.mark.e2e
 
 def _run_safety_script(script: str, *, env: dict[str, str], timeout: int = 60) -> subprocess.CompletedProcess[str]:
     base = os.environ.copy()
-    for key in ("MINIMAX_API_KEY", "OPENROUTER_API_KEY", "CURSOR_API_KEY", "TAVILY_API_KEY"):
+    for key in ("OPENAI_API_KEY", "OPENROUTER_API_KEY", "CURSOR_API_KEY", "TAVILY_API_KEY"):
         base.pop(key, None)
     base.update(env)
     base["PYTHONPATH"] = str(PROJECT_ROOT / "src") + os.pathsep + base.get("PYTHONPATH", "")

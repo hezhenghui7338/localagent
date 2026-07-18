@@ -108,14 +108,33 @@ class ChromaStore:
                 metadatas=metadatas[i : i + batch],
             )
 
-    def query(self, query: str, top_k: int) -> list[dict[str, Any]]:
+    def query(
+        self,
+        query: str,
+        top_k: int,
+        *,
+        source_file: str | None = None,
+    ) -> list[dict[str, Any]]:
         if not self._available or self._collection is None or self._collection.count() == 0:
             return []
-        res = self._collection.query(
-            query_texts=[query],
-            n_results=min(top_k, self._collection.count()),
-            include=["documents", "metadatas", "distances"],
-        )
+        where = None
+        key = (source_file or "").strip()
+        if key:
+            where = {"source_file": key}
+        kwargs: dict[str, Any] = {
+            "query_texts": [query],
+            "n_results": min(top_k, self._collection.count()),
+            "include": ["documents", "metadatas", "distances"],
+        }
+        if where is not None:
+            kwargs["where"] = where
+        try:
+            res = self._collection.query(**kwargs)
+        except Exception:
+            # Empty where-match can raise on some Chroma versions; treat as no hits.
+            if where is not None:
+                return []
+            raise
         hits = []
         ids = res.get("ids", [[]])[0]
         docs = res.get("documents", [[]])[0]

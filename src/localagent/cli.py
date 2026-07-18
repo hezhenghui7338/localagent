@@ -1365,7 +1365,7 @@ def _has_simple_config_flags(args: argparse.Namespace) -> bool:
             "tavily_api_key",
             "openrouter_api_key",
             "cursor_api_key",
-            "minimax_api_key",
+            "openai_api_key",
         )
     )
 
@@ -1405,10 +1405,10 @@ def _add_simple_config_flags(parser: argparse.ArgumentParser) -> None:
         help="Cursor API Key",
     )
     parser.add_argument(
-        "--MINIMAX_API_KEY",
-        "--minimax-api-key",
-        dest="minimax_api_key",
-        help="MiniMax API Key",
+        "--OPENAI_API_KEY",
+        "--openai-api-key",
+        dest="openai_api_key",
+        help="OpenAI API Key",
     )
 
 
@@ -1495,7 +1495,7 @@ def cmd_config(args: argparse.Namespace) -> int:
                 tavily_api_key=getattr(args, "tavily_api_key", None),
                 openrouter_api_key=getattr(args, "openrouter_api_key", None),
                 cursor_api_key=getattr(args, "cursor_api_key", None),
-                minimax_api_key=getattr(args, "minimax_api_key", None),
+                openai_api_key=getattr(args, "openai_api_key", None),
                 env_path=env_path,
             )
         except (ValueError, FileNotFoundError) as exc:
@@ -2108,10 +2108,10 @@ def build_parser() -> argparse.ArgumentParser:
             help="Cursor API Key",
         )
         parser.add_argument(
-            "--MINIMAX_API_KEY",
-            "--minimax-api-key",
-            dest="minimax_api_key",
-            help="MiniMax API Key",
+            "--OPENAI_API_KEY",
+            "--openai-api-key",
+            dest="openai_api_key",
+            help="OpenAI API Key",
         )
 
     _add_simple_config_flags(p_config)
@@ -2157,7 +2157,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_config_add.set_defaults(func=cmd_config)
 
     p_config_remove = config_sub.add_parser("remove", help="<provider>  从列表删除一条模型服务")
-    p_config_remove.add_argument("provider", help="provider 名称，如 minimax / aiping")
+    p_config_remove.add_argument("provider", help="provider 名称，如 openai / aiping")
     p_config_remove.set_defaults(func=cmd_config)
 
     p_config_set_key = config_sub.add_parser(

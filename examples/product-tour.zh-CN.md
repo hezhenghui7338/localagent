@@ -90,7 +90,7 @@ cat > /tmp/la-hello.json <<'EOF'
   "LA_SEARXNG_URL": "",
   "OPENROUTER_API_KEY": "",
   "CURSOR_API_KEY": "",
-  "MINIMAX_API_KEY": ""
+  "OPENAI_API_KEY": ""
 }
 EOF
 la config /tmp/la-hello.json

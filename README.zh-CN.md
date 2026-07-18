@@ -7,6 +7,7 @@
 </p>
 
 <p align="center">
+  <a href="https://localagent.zhenghui7338.workers.dev/">官网</a> ·
   <a href="./README.md">English</a> · <b>中文</b>
 </p>
 
@@ -32,7 +33,7 @@ la
 ## 要求
 
 - Python 3.10+
-- **至少一种模型算力**：自有 API（OpenRouter / MiniMax / Cursor 等）**或** 本机模型服务
+- **至少一种模型算力**：自有 API（OpenRouter / OpenAI / Cursor 等）**或** 本机模型服务
 - **没有 API 时推荐**：[Ollama](https://ollama.com/)，默认 `qwen3.5:4b`（`la setup` 可装，可跳过）
 
 ## 特性
@@ -346,7 +347,7 @@ source .venv/bin/activate   # 或: source ~/.zshrc
 
 - 默认模型 `qwen3.5:4b`；若未安装，LA 会改用本机已有对话模型（优先已加载到内存的），仅在没有任何可用模型时才提示拉取默认模型
 - Qwen3 系列默认生成大量 thinking token，LocalAgent 默认 `OLLAMA_THINK=0` 关闭思考模式
-- 本地 Ollama 较慢时，`auto` 模式会在 12 秒内降级到 OpenRouter；也可在 chat 中输入 `/provider openrouter` 手动切换
+- 本地 Ollama 较慢时，`auto` 模式默认 **12 秒**内降级到下一优先级（如 OpenRouter）。可改：`.env` 里 `LA_OLLAMA_CHAT_TIMEOUT=20`，或 `config/model_servers.yaml` 里 ollama 的 `chat_timeout: 20`；也可在 chat 中 `/provider openrouter` 手动切换
 
 ## 配置
 
@@ -355,12 +356,13 @@ source .venv/bin/activate   # 或: source ~/.zshrc
 | 变量                                      | 说明                                               |
 | --------------------------------------- | ------------------------------------------------ |
 | `OLLAMA_BASE_URL` / `OLLAMA_MODEL`      | 本地 Ollama 地址与模型                                  |
-| `MINIMAX_API_KEY` / `MINIMAX_MODEL`     | MiniMax 直连（OpenAI 兼容 API）                        |
+| `OPENAI_API_KEY` / `OPENAI_MODEL`       | OpenAI 直连（或任意兼容端点，见 `model_servers.yaml`） |
 | `OPENROUTER_API_KEY` / `CURSOR_API_KEY` | 其他云端模型降级                                         |
 | `TAVILY_API_KEY`                        | 可选；配置后 `auto` 优先用 Tavily 联网搜索           |
 | `LA_WEB_SEARCH_PROVIDER`                | 联网后端：`auto`（默认）/ `ddgs` / `tavily` / `searxng` |
 | `LA_SEARXNG_URL`                        | 可选；自托管 SearXNG 地址（如 `http://localhost:8080`） |
-| `LA_MODEL_PROVIDER_PRIORITY`            | auto 模式优先级，默认 `ollama,minimax,openrouter,cursor` |
+| `LA_OLLAMA_CHAT_TIMEOUT`                | auto 下本地 Ollama 首包超时秒数（默认 `12`，超时则降级） |
+| `LA_MODEL_PROVIDER_PRIORITY`            | auto 模式优先级，默认 `ollama,openai,openrouter,cursor` |
 | `LA_WORKSPACE`                          | 工作区根目录（Git / 文件 / 待办 / shell 命令上下文）              |
 | `LA_SHELL_TIMEOUT` / `LA_SHELL_MAX_OUTPUT` | Agent `run_shell` 超时秒数与输出截断上限（默认 30s / 12000 字符） |
 | `LA_TOOL_APPROVAL`                      | 工具执行前用户确认：`always`（默认，每次）/ `dangerous`（仅危险）/ `off` |
@@ -579,7 +581,7 @@ Mem0 / JSON 存储                      Reflect（多跳检索 + LLM）
 
 ### 模型路由
 
-`ModelRouter` 统一 **Ollama**（默认本地）、**MiniMax**、**OpenRouter**、**Cursor**。`auto` 模式按 `LA_MODEL_PROVIDER_PRIORITY` 降级。模型只是算力供应商；会话、记忆与审计数据由 LocalAgent 落盘保管。
+`ModelRouter` 统一 **Ollama**（默认本地）、**OpenAI**、**OpenRouter**、**Cursor**。`auto` 模式按 `LA_MODEL_PROVIDER_PRIORITY` 降级。模型只是算力供应商；会话、记忆与审计数据由 LocalAgent 落盘保管。
 
 ### 源码模块一览
 

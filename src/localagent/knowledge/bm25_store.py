@@ -83,11 +83,16 @@ class BM25Store:
         since: datetime | None = None,
         until: datetime | None = None,
         origins: frozenset[str] | None = None,
+        source_file: str | None = None,
     ) -> list[int]:
         from localagent.knowledge.time_filter import meta_in_range
 
         indices: list[int] = []
+        source_key = (source_file or "").strip() or None
         for i, meta in enumerate(self.metas):
+            if source_key is not None:
+                if str(meta.get("source_file") or "").strip() != source_key:
+                    continue
             if origins is not None:
                 origin = str(meta.get("origin") or "").strip()
                 if origin not in origins:
@@ -106,14 +111,20 @@ class BM25Store:
         since: datetime | None = None,
         until: datetime | None = None,
         origins: frozenset[str] | None = None,
+        source_file: str | None = None,
     ) -> list[dict]:
         if self.bm25 is None or not self.chunk_ids:
             return []
         import numpy as np
 
         scores = np.asarray(self.bm25.get_scores(tokenize(query)), dtype=float)
-        if since or until or origins is not None:
-            allowed = self._candidate_indices(since=since, until=until, origins=origins)
+        if since or until or origins is not None or source_file:
+            allowed = self._candidate_indices(
+                since=since,
+                until=until,
+                origins=origins,
+                source_file=source_file,
+            )
             if not allowed:
                 return []
             masked = np.full(len(scores), -np.inf)

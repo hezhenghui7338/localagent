@@ -94,8 +94,49 @@ class Article:
     synced_at: str = ""
     updated_at: str = ""
 
+    def _parsed_summary(self):
+        from localagent.news.summary_parse import parse_rss_summary
+
+        return parse_rss_summary(self.rss_summary or "")
+
     def display_summary(self) -> str:
-        return (self.one_liner or self.rss_summary or "").strip()
+        """One-liner only (never the full RSS blob)."""
+        if (self.one_liner or "").strip():
+            return self.one_liner.strip()
+        parsed = self._parsed_summary()
+        if parsed.one_liner:
+            return parsed.one_liner
+        return ""
+
+    def resolved_detail(self) -> str:
+        parsed = self._parsed_summary()
+        if parsed.detail:
+            return parsed.detail
+        return ""
+
+    def resolved_viewpoints(self) -> list[str]:
+        if (self.structured_skim or "").strip():
+            lines: list[str] = []
+            for raw in self.structured_skim.splitlines():
+                s = raw.strip()
+                if not s:
+                    continue
+                if s.startswith(("·", "-", "*")):
+                    s = s.lstrip("·-* ").strip()
+                if s and not s.startswith(" "):
+                    lines.append(s)
+            if lines:
+                return lines
+        return list(self._parsed_summary().viewpoints)
+
+    def resolved_viewpoint_notes(self) -> list[str]:
+        return list(self._parsed_summary().viewpoint_notes)
+
+    def resolved_quotes(self) -> list[str]:
+        return list(self._parsed_summary().quotes)
+
+    def resolved_meta(self) -> dict[str, str]:
+        return dict(self._parsed_summary().meta)
 
 
 class NewsStore:
@@ -133,6 +174,8 @@ class NewsStore:
                         author = COALESCE(NULLIF(?, ''), author),
                         published_at = COALESCE(NULLIF(?, ''), published_at),
                         rss_summary = COALESCE(NULLIF(?, ''), rss_summary),
+                        one_liner = COALESCE(NULLIF(?, ''), one_liner),
+                        structured_skim = COALESCE(NULLIF(?, ''), structured_skim),
                         score_hint = COALESCE(?, score_hint),
                         synced_at = ?,
                         updated_at = ?
@@ -143,6 +186,8 @@ class NewsStore:
                         article.author,
                         article.published_at,
                         article.rss_summary,
+                        article.one_liner,
+                        article.structured_skim,
                         article.score_hint,
                         now,
                         now,

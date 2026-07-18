@@ -35,7 +35,7 @@ class SummarizeError(ValueError):
 
 
 class DocumentTooLongError(SummarizeError):
-    """Document exceeds short-path limit (long path not yet enabled)."""
+    """Document exceeds short-path card limit when long-path/RAG is disabled."""
 
 
 @dataclass
@@ -50,9 +50,17 @@ class SummarizeResult:
     used_llm: bool = False
     warnings: list[str] = field(default_factory=list)
     annotated_text: str = ""
+    session_source_key: str = ""
 
     def render(self) -> str:
         return self.markdown
+
+    @property
+    def uses_retrieval(self) -> bool:
+        """Prefer scoped RAG when body exceeds prompt-stuffing budget or key is set for long docs."""
+        if not (self.session_source_key or "").strip():
+            return False
+        return self.char_count > config.SUMMARIZE_LLM_INPUT_CHARS
 
 
 def _suffix_ok(path: Path) -> bool:
@@ -107,7 +115,8 @@ def _prompt(annotated: str, *, filename: str) -> str:
         "3. 索引必须来自原文中的 [§…] / [p.…] 标记，禁止编造页码或章节。\n"
         "4. 找不到依据的要点宁可省略，也不要瞎写索引。\n"
         "5. 「需要注意」仅在有局限/免责/反方观点时写；否则整节省略。\n"
-        "6. 「你可以接着问」给 2～3 个短问题。\n"
+        "6. 「你可以接着问」给 2～3 个短问题，且必须是原文已覆盖、可继续追问的点；"
+        "原文只有导语/摘要时请整节省略该段，禁止编造机制/架构细节类问题。\n"
         "7. 只输出 Markdown，不要前言后语。\n\n"
         "输出模板：\n"
         "## 总结（最多三句话）\n"
@@ -259,20 +268,28 @@ def summarize_loaded(
     doc: LoadedDoc,
     *,
     use_llm: bool = True,
+    allow_long: bool = False,
 ) -> SummarizeResult:
     annotated = _annotate_for_cite(doc)
     char_count = len(annotated)
-    if char_count > config.SUMMARIZE_SHORT_MAX_CHARS:
+    warnings: list[str] = []
+    if char_count > config.SUMMARIZE_SHORT_MAX_CHARS and not allow_long:
         raise DocumentTooLongError(
             f"文档约 {char_count} 字，超出短总结上限（{config.SUMMARIZE_SHORT_MAX_CHARS}）。"
             "请拆成章节后重试，或提高 LA_SUMMARIZE_SHORT_MAX_CHARS。"
         )
+    if char_count > config.SUMMARIZE_SHORT_MAX_CHARS and allow_long:
+        warnings.append(
+            f"文档约 {char_count} 字，速读卡基于截断输入；深聊将按片段检索全文"
+        )
+        annotated_for_card = annotated[: config.SUMMARIZE_LLM_INPUT_CHARS]
+    else:
+        annotated_for_card = annotated
 
-    warnings: list[str] = []
     used_llm = False
     markdown: str | None = None
     if use_llm:
-        markdown = _llm_summarize(annotated, filename=doc.filename)
+        markdown = _llm_summarize(annotated_for_card, filename=doc.filename)
         if markdown:
             used_llm = True
             # Soft retry once if points lack citations
@@ -290,7 +307,7 @@ def summarize_loaded(
                 missing = sum(1 for line in point_lines if not citation_ok(line))
                 if point_lines and missing >= max(1, len(point_lines) // 2):
                     retry = _llm_summarize(
-                        annotated
+                        annotated_for_card
                         + "\n\n【重试】上轮要点缺少 〔§…|p.…〕索引，请重写并确保每条都有索引。",
                         filename=doc.filename,
                     )
@@ -298,7 +315,7 @@ def summarize_loaded(
                         markdown = retry
 
     if not markdown:
-        markdown = _heuristic_summary(annotated, filename=doc.filename)
+        markdown = _heuristic_summary(annotated_for_card, filename=doc.filename)
         warnings.append("模型摘要不可用，已使用本地启发式摘要")
 
     markdown, cite_warnings = ensure_citations(markdown)
@@ -343,7 +360,19 @@ def summarize_path(
             f"无法读取文件内容（空文件、扫描版 PDF 无文本层，或解析失败）: {source}"
         )
 
-    result = summarize_loaded(doc, use_llm=use_llm)
+    result = summarize_loaded(doc, use_llm=use_llm, allow_long=True)
+
+    try:
+        from localagent.summarize.session_index import (
+            index_document_session,
+            summarize_source_key,
+        )
+
+        key = summarize_source_key(source)
+        index_document_session(key, result.annotated_text, title=result.filename)
+        result.session_source_key = key
+    except Exception as exc:  # pragma: no cover
+        result.warnings.append(f"会话向量化跳过: {exc}")
 
     if keep:
         from localagent.ingest.add_file import add_file
@@ -382,32 +411,63 @@ def summarize_document_tool(path: str, *, keep: bool = False, cwd: str | None = 
     return "\n".join(parts)
 
 
-def format_document_context(result: SummarizeResult, *, max_chars: int | None = None) -> str:
-    """Build a system-prompt block for document-focused follow-up chat."""
+def format_document_context(
+    result: SummarizeResult,
+    *,
+    max_chars: int | None = None,
+    retrieval_block: str = "",
+    include_full_body: bool | None = None,
+) -> str:
+    """Build a system-prompt block for document-focused follow-up chat.
+
+    Short docs: stuff annotated body. Long / RAG sessions: card + retrieval hits.
+    """
     limit = max_chars if max_chars is not None else config.SUMMARIZE_LLM_INPUT_CHARS
     body = (result.annotated_text or "").strip()
-    if len(body) > limit:
+    use_full = include_full_body
+    if use_full is None:
+        use_full = not result.uses_retrieval
+    if use_full and len(body) > limit:
         body = body[: limit - 1] + "…"
     kept_line = (
         f"已入库 → {result.keep_target}"
         if result.kept and result.keep_target
         else "未入库（默认；用户明确要求时可用会话内 /keep）"
     )
-    return "\n".join(
+    rules = (
+        "规则: 你已在文档对话中，围绕本文件深入解答；"
+        "禁止建议用户再运行 la summarize / 进入文档对话；"
+        "不要主动追问是否入库；用户说入库/进知识库时告知可用 /keep；"
+        "若检索/原文未覆盖细节，如实说明依据不足，禁止编造，也禁止为此调用 reflect_memory。"
+    )
+    parts = [
+        "[当前文档 · 聚焦会话（已预加载，请优先据此回答；引用时用 〔§…|p.…〕）]",
+        f"文件: {result.path}",
+        f"入库状态: {kept_line}",
+    ]
+    if result.session_source_key:
+        parts.append(f"会话索引: {result.session_source_key}")
+    parts.extend(
         [
-            "[当前文档 · 聚焦会话（已预加载，请优先据此回答；引用时用 〔§…|p.…〕）]",
-            f"文件: {result.path}",
-            f"入库状态: {kept_line}",
-            "规则: 围绕本文件深入解答；不要主动追问是否入库；"
-            "用户说入库/进知识库时告知可用 /keep。",
+            rules,
             "",
             "## 速读卡",
             result.markdown.strip(),
-            "",
-            "## 原文（含索引标记）",
-            body or "（无原文文本）",
         ]
     )
+    if retrieval_block.strip():
+        parts.extend(["", retrieval_block.strip()])
+    elif use_full:
+        parts.extend(["", "## 原文（含索引标记）", body or "（无原文文本）"])
+    else:
+        parts.extend(
+            [
+                "",
+                "## 原文",
+                "（正文较长，本轮未塞入全文；请依据上方检索片段与速读卡回答）",
+            ]
+        )
+    return "\n".join(parts)
 
 
 def not_kept_hint_if_asked(user_message: str) -> str | None:

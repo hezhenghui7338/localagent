@@ -7,6 +7,7 @@
 </p>
 
 <p align="center">
+  <a href="https://localagent.zhenghui7338.workers.dev/">Website</a> ·
   <b>English</b> · <a href="./README.zh-CN.md">中文</a>
 </p>
 
@@ -32,7 +33,7 @@ Upgrade / dev / uninstall → [Install & upgrade](#install--upgrade)
 ## Requirements
 
 - Python 3.10+
-- **At least one model backend**: your own API (OpenRouter / MiniMax / Cursor, …) **or** a local model server
+- **At least one model backend**: your own API (OpenRouter / OpenAI / Cursor, …) **or** a local model server
 - **If you have no API**, [Ollama](https://ollama.com/) is recommended (default `qwen3.5:4b`; `la setup` can install — skippable)
 
 ## Features
@@ -333,7 +334,7 @@ source .venv/bin/activate   # or: source ~/.zshrc
 
 - Default model is `qwen3.5:4b`. If it is missing, LA reuses any installed chat model (preferring one already loaded in Ollama), and only prompts to pull the default when none are available
 - Qwen3 often emits many thinking tokens; LocalAgent defaults `OLLAMA_THINK=0` to disable thinking mode
-- When local Ollama is slow, `auto` falls back to OpenRouter within ~12s; or switch manually in chat with `/provider openrouter`
+- When local Ollama is slow, `auto` falls back to the next provider (e.g. OpenRouter) after **12s** by default. Override with `LA_OLLAMA_CHAT_TIMEOUT=20` in `.env`, or `chat_timeout: 20` under ollama in `config/model_servers.yaml`; or switch manually with `/provider openrouter`
 
 ## Configuration
 
@@ -342,12 +343,13 @@ See [`.env.example`](.env.example). Common variables:
 | Variable | Description |
 | --- | --- |
 | `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | Local Ollama URL and model |
-| `MINIMAX_API_KEY` / `MINIMAX_MODEL` | MiniMax direct (OpenAI-compatible API) |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` | OpenAI direct (or any compatible endpoint via `model_servers.yaml`) |
 | `OPENROUTER_API_KEY` / `CURSOR_API_KEY` | Other cloud fallbacks |
 | `TAVILY_API_KEY` | Optional; when set, `auto` prefers Tavily for web search |
 | `LA_WEB_SEARCH_PROVIDER` | Web backend: `auto` (default) / `ddgs` / `tavily` / `searxng` |
 | `LA_SEARXNG_URL` | Optional self-hosted SearXNG URL (e.g. `http://localhost:8080`) |
-| `LA_MODEL_PROVIDER_PRIORITY` | `auto` priority; default `ollama,minimax,openrouter,cursor` |
+| `LA_OLLAMA_CHAT_TIMEOUT` | Local Ollama first-byte timeout in `auto` (default `12`; then fall back) |
+| `LA_MODEL_PROVIDER_PRIORITY` | `auto` priority; default `ollama,openai,openrouter,cursor` |
 | `LA_WORKSPACE` | Workspace root (Git / files / todos / shell context) |
 | `LA_SHELL_TIMEOUT` / `LA_SHELL_MAX_OUTPUT` | Agent `run_shell` timeout (s) and output cap (default 30s / 12000 chars) |
 | `LA_TOOL_APPROVAL` | Approve before tools run: `always` (default) / `dangerous` / `off` |
@@ -564,7 +566,7 @@ Side-effect tools are gated (`always` / `dangerous` / `off`). Extreme commands (
 
 ### Model routing
 
-`ModelRouter` unifies **Ollama** (default local), **MiniMax**, **OpenRouter**, and **Cursor**. In `auto` mode it follows `LA_MODEL_PROVIDER_PRIORITY` and falls back when a path is slow or unavailable. Models are compute providers; LocalAgent owns sessions, memory, and audit data on disk.
+`ModelRouter` unifies **Ollama** (default local), **OpenAI**, **OpenRouter**, and **Cursor**. In `auto` mode it follows `LA_MODEL_PROVIDER_PRIORITY` and falls back when a path is slow or unavailable. Models are compute providers; LocalAgent owns sessions, memory, and audit data on disk.
 
 ### Module map (source)
 

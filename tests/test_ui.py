@@ -177,3 +177,36 @@ def test_chat_repl_prints_welcome(capsys, monkeypatch, tmp_path: Path):
     assert "LocalAgent v" in out
     assert "项目状态" in out
     assert "s-welcome" in out
+
+
+def test_activity_indicator_call_sites_have_two_args():
+    """Guard against ActivityIndicator/spinner(message-only) regressions."""
+    import ast
+
+    root = Path(__file__).resolve().parents[1] / "src" / "localagent"
+    bad: list[str] = []
+    for path in sorted(root.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            name = ""
+            if isinstance(node.func, ast.Name):
+                name = node.func.id
+            elif isinstance(node.func, ast.Attribute):
+                name = node.func.attr
+            if name not in ("ActivityIndicator", "spinner"):
+                continue
+            pos = len(node.args)
+            kw = {k.arg for k in node.keywords if k.arg}
+            if pos >= 2:
+                continue
+            if pos == 0 and {"prefix", "message"} <= kw:
+                continue
+            if pos == 1 and "message" in kw:
+                continue
+            if pos == 1 and "prefix" in kw:
+                continue
+            rel = path.relative_to(root.parent.parent)
+            bad.append(f"{rel}:{node.lineno} {name}(...)" )
+    assert not bad, "ActivityIndicator/spinner need (prefix, message):\n" + "\n".join(bad)
