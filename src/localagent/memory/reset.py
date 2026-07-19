@@ -15,8 +15,8 @@ from localagent.memory.store import get_memory_store, reset_memory_store_singlet
 
 # metadata.source values grouped by LA memory reset / ingest origin
 SOURCE_GROUPS: dict[str, frozenset[str]] = {
-    "chat": frozenset({"chat", "rememorize-chat", "chat_explicit"}),
-    "file": frozenset({"ingest"}),
+    "chat": frozenset({"chat", "rememorize-chat", "chat_explicit", "chat_summary"}),
+    "file": frozenset({"ingest", "ingest_summary", "manual_add"}),
     "chatgpt": frozenset({"import-chatgpt", "import-chatgpt-memory"}),
 }
 

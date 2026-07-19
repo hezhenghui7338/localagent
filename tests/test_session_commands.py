@@ -27,7 +27,7 @@ def test_is_session_command_slash_and_colon():
 
 
 def test_normalize_session_argv_aliases_and_quotes():
-    assert normalize_session_argv('/add "hello world"') == ["memory", "add", "hello world"]
+    assert normalize_session_argv('/add "hello world"') == ["ingest", "text", "hello world"]
     assert normalize_session_argv(":p ollama") == ["provider", "ollama"]
     assert normalize_session_argv("/q") == ["q"]
     assert normalize_session_argv("/h") == ["help"]
@@ -331,5 +331,5 @@ def test_outer_cli_still_dispatches_add(isolated_data, capsys):
         with patch("localagent.env_config.ensure_config"):
             from localagent.cli import main
 
-            rc = main(["memory", "add", "outer channel memory"])
+            rc = main(["ingest", "text", "outer channel memory"])
     assert rc == 0

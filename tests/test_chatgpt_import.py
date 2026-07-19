@@ -231,10 +231,10 @@ def test_cli_import_chatgpt(isolated_data, tmp_path: Path, capsys):
 
     reset_chatgpt_import_index()
     before = get_memory_store().count()
-    rc = main(["memory", "ingest", "chatgpt", str(export_path)])
+    rc = main(["ingest", "chatgpt", str(export_path)])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "import-chatgpt" in out or "memory ingest chatgpt" in out or "已写入" in out or "files=" in out
+    assert "import-chatgpt" in out or "ingest chatgpt" in out or "已写入" in out or "files=" in out or "warm=" in out
     assert "imported=1" in out
     assert "用户计划在2026年系统学习 Rust 语言" in out
     assert get_memory_store().count() == before + 1
@@ -248,14 +248,14 @@ def test_cli_import_chatgpt_real_sample(isolated_data, capsys):
     reset_chatgpt_import_index()
     isolated_data["router"].extract_memories.return_value = [ExtractedMemory(text="用户关注 AI 视频工具")]
 
-    rc = main(["memory", "ingest", "chatgpt", str(sample)])
+    rc = main(["ingest", "chatgpt", str(sample)])
     assert rc == 0
     out = capsys.readouterr().out
     assert "conversations=100" in out
     assert "imported=100" in out
     assert get_memory_store().count() == 100
 
-    rc = main(["memory", "ingest", "chatgpt", str(sample)])
+    rc = main(["ingest", "chatgpt", str(sample)])
     out = capsys.readouterr().out
     assert "dup=100" in out
 
@@ -377,10 +377,10 @@ def test_cli_import_chatgpt_memory_file(isolated_data, tmp_path: Path, capsys):
 
     reset_chatgpt_import_index()
     before = get_memory_store().count()
-    rc = main(["memory", "ingest", "chatgpt", str(export_path)])
+    rc = main(["ingest", "chatgpt", str(export_path)])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "import-chatgpt" in out or "memory ingest chatgpt" in out or "已写入" in out or "files=" in out
+    assert "import-chatgpt" in out or "ingest chatgpt" in out or "已写入" in out or "files=" in out or "warm=" in out
     assert "memories=1" in out
     assert get_memory_store().count() == before + 1
 
@@ -421,7 +421,7 @@ def test_cli_import_chatgpt_with_file_flag(isolated_data, tmp_path: Path, capsys
     isolated_data["router"].extract_memories.return_value = [ExtractedMemory(text="--file 参数导入测试")]
 
     reset_chatgpt_import_index()
-    rc = main(["memory", "ingest", "chatgpt", "--file", str(export_path)])
+    rc = main(["ingest", "chatgpt", "--file", str(export_path)])
     assert rc == 0
     out = capsys.readouterr().out
     assert "imported=1" in out
@@ -440,15 +440,15 @@ def test_cli_import_chatgpt_file_force_reimports(isolated_data, tmp_path: Path, 
 
     reset_chatgpt_import_index()
     before = get_memory_store().count()
-    rc = main(["memory", "ingest", "chatgpt", "--file", str(export_path)])
+    rc = main(["ingest", "chatgpt", "--file", str(export_path)])
     assert rc == 0
     assert get_memory_store().count() == before + 1
 
-    rc = main(["memory", "ingest", "chatgpt", "--file", str(export_path)])
+    rc = main(["ingest", "chatgpt", "--file", str(export_path)])
     out = capsys.readouterr().out
     assert "dup=1" in out
 
-    rc = main(["memory", "ingest", "chatgpt", "--file", str(export_path), "--force"])
+    rc = main(["ingest", "chatgpt", "--file", str(export_path), "--force"])
     out = capsys.readouterr().out
     assert "imported=1" in out
     assert get_memory_store().count() == before + 2

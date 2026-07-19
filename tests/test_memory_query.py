@@ -23,7 +23,7 @@ def _add_with_tags(text: str, tags: list[str], created_at: str) -> None:
 
 
 def test_query_memories_semantic_match():
-    main(["memory", "add", "2026年7月决定使用 Hindsight 作为记忆引擎"])
+    main(["ingest", "text", "2026年7月决定使用 Hindsight 作为记忆引擎"])
     hits = query_memories(query="Hindsight", sort="relevance", limit=5)
     assert hits
     assert any("Hindsight" in hit["text"] for hit in hits)
@@ -67,7 +67,7 @@ def test_list_memory_tags():
 
 
 def test_cli_memories_browse(capsys):
-    main(["memory", "add", "2026年7月决定使用 Hindsight 作为记忆引擎"])
+    main(["ingest", "text", "2026年7月决定使用 Hindsight 作为记忆引擎"])
     rc = main(["memory", "query", "--limit", "5"])
     assert rc == 0
     out = capsys.readouterr().out
@@ -76,7 +76,7 @@ def test_cli_memories_browse(capsys):
 
 
 def test_cli_memories_semantic_query(capsys):
-    main(["memory", "add", "我喜欢这首诗:才行积雪上,又踏熏风花草路"])
+    main(["ingest", "text", "我喜欢这首诗:才行积雪上,又踏熏风花草路"])
     rc = main(["memory", "query", "诗歌", "--sort", "relevance"])
     assert rc == 0
     out = capsys.readouterr().out
@@ -92,7 +92,7 @@ def test_cli_memories_list_tags(capsys):
 
 
 def test_cli_memories_json_output(capsys):
-    main(["memory", "add", "JSON 输出测试记忆内容"])
+    main(["ingest", "text", "JSON 输出测试记忆内容"])
     capsys.readouterr()
     rc = main(["memory", "query", "--json", "--limit", "3"])
     assert rc == 0

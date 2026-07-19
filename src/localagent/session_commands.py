@@ -38,7 +38,7 @@ _ALIASES: dict[str, str] = {
 
 # 会话内快捷入口 → 顶层/子命令（reflect 已是一级命令，不在此列）
 _SESSION_MEMORY_SHORTCUTS: dict[str, tuple[str, ...]] = {
-    "add": ("memory", "add"),
+    "add": ("ingest", "text"),
     "search": ("memory", "search"),
     "forget": ("memory", "forget"),
     "reflect": ("memory", "reflect"),
@@ -192,6 +192,7 @@ def print_session_help() -> None:
     print()
     print("会话内命令（进入 LA / LA chat 后，以 / 开头；: 为兼容别名）：")
     print("  /help, /h              显示本帮助")
+    print("  /status                今日信号 + 数据层（Hot/Warm/Cold/Aware）")
     print("  /provider, /p [name]   查看或切换模型路径")
     print("  /model [name|N]        查看/翻页/切换当前路径模型（写入配置）")
     print("                          翻页: next|prev|page N；序号为本页 1–10")
@@ -204,7 +205,29 @@ def print_session_help() -> None:
     print("  /q, /quit, /exit       退出对话")
     print()
     print("外层 LA <command> 与会话内 /<command> 等价（/chat 除外）。")
-    print("会话快捷方式：/add → /memory add，/search → /memory search，/forget → /memory forget。")
+    print("会话快捷方式：/add → /ingest text，/search → /memory search，/forget → /memory forget。")
+
+
+def _normalize_ingest_argv(argv: list[str]) -> list[str]:
+    """Allow ``LA ingest doc -b <path>`` by moving path before optionals.
+
+    argparse cannot place ``nargs='*'`` positionals after flags; reorder so
+    the path sits immediately after the source token.
+    """
+    if not argv or argv[0] != "ingest" or len(argv) < 3:
+        return argv
+    out = list(argv)
+    for flag in ("-b", "--background"):
+        try:
+            i = out.index(flag)
+        except ValueError:
+            continue
+        if i + 1 < len(out) and not out[i + 1].startswith("-"):
+            path = out.pop(i + 1)
+            # After: ingest <source> … — insert path right after source
+            out.insert(2, path)
+            break
+    return out
 
 
 def dispatch_cli_argv(argv: list[str], *, allow_chat: bool = True) -> int:
@@ -223,6 +246,7 @@ def dispatch_cli_argv(argv: list[str], *, allow_chat: bool = True) -> int:
             return 1
 
     argv = _normalize_config_argv(argv)
+    argv = _normalize_ingest_argv(argv)
 
     if not allow_chat and argv[0] == "chat":
         print("[LA] 已在对话中，无需 /chat。输入问题开始聊天，或 /help 查看命令。")

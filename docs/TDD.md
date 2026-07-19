@@ -10,7 +10,7 @@
 | **Memory Forever** | Hot / Warm / Cold + pending | `memory/*` · `knowledge/*` · `pending/*` · `ingest/*` |
 | **Actions Automated** | 工具循环 · 旁路 · 定时 · 回执 · 确认门 | `agent/runtime.py` · `tools/*` · `summarize/` · `news/` · `writing/` · `status/` · `audit/` |
 
-Actions 三档：旁路快捷（summarize / news / polish）· Agent 工具循环（`run_shell` / `write_file` + Action receipt + session approve-once）· 定时（`news schedule`）+ Daily Actions 表面（`la status` / 欢迎横幅）。
+Actions 三档：旁路快捷（summarize / news / polish）· Agent 工具循环（`run_shell` / `write_file` + Action receipt + session approve-once）· 定时（`news schedule`）+ Daily Actions / 数据层表面（`la status`·`/status` / 欢迎横幅）。
 
 ## 1. 架构
 
@@ -62,17 +62,20 @@ src/localagent/
 │   ├── bm25_store.py
 │   ├── hybrid.py
 │   └── indexer.py
-├── ingest/                # rag add / rag ingest / pipeline (Cold only); PDF loader
+├── ingest/                # unified LA ingest engine (persist→Cold→Warm→Hot) + doc pipeline
 ├── summarize/             # la summarize：短路径卡片 + DocumentChatREPL（sum>）
 ├── news/                  # 新闻嗅探：RSS sync / brief TUI / read / schedule / notify
 ├── writing/               # la polish：场景润色 + 剪贴板
 ├── pending/               # 记忆写入确认门
-├── status/                # Daily Actions（la status / 横幅信号）
+├── status/                # Daily Actions + 数据层（la status / 横幅摘要）
+├── aware/                 # 本机感知：传感器 tick · Episode · aware> 注入
 ├── persist/               # conversations jsonl + sessions.db
 ├── workspace/             # git / recent files / todos
 ├── audit/                 # usage log, security scan, reports
 └── tools/                 # approval · action_receipt · shell · … + news_*
 ```
+
+**Aware 浏览器语义**：`selected tab ≠ viewing`。打开标签里的选中页只表示「仍选中」；`dwell` / `browser.active` 仅在该浏览器为 OS frontmost（正在看）时累加；后台选中发 `browser.selected`，不涨时长。
 
 ## 3. 数据目录
 

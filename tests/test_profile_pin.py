@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from argparse import Namespace
-
-from localagent.cli import cmd_add
+from localagent.cli import main
 from localagent.memory.core_profile import load_core_profile
 from localagent.memory.profile_pin import (
     apply_profile_updates,
@@ -62,8 +60,8 @@ def test_save_facts_pins_profile(isolated_data):
     assert profile.preferences.get("家庭") == "有2个儿子"
 
 
-def test_cmd_add_pins_profile(isolated_data):
-    rc = cmd_add(Namespace(text="记住：我居住在深圳，职业是软件工程师"))
+def test_ingest_text_pins_profile(isolated_data):
+    rc = main(["ingest", "text", "记住：我居住在深圳，职业是软件工程师"])
     assert rc == 0
     profile = load_core_profile()
     assert profile.preferences.get("居住地") == "深圳"

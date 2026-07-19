@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Literal
 
 from localagent import config
@@ -179,6 +180,51 @@ def index_conversation_cold(
     return get_knowledge_indexer().index_chunks(filename=source_key, chunks=chunks)
 
 
+def index_chatgpt_saved_memories_cold(
+    memories: list[Any],
+    *,
+    archive_path: str,
+) -> int:
+    """Index ChatGPT saved-memory export texts into Cold (origin=chatgpt)."""
+    if not config.COLD_CONVERSATION:
+        return 0
+    lines: list[str] = ["# ChatGPT saved memories", ""]
+    count = 0
+    for mem in memories:
+        content = str(getattr(mem, "content", "") or "").strip()
+        if not content:
+            continue
+        enabled = getattr(mem, "enabled", True)
+        if enabled is False:
+            continue
+        mid = str(getattr(mem, "memory_id", "") or count)
+        lines.append(f"## Memory {mid}")
+        lines.append("")
+        lines.append(content)
+        lines.append("")
+        count += 1
+    if count == 0:
+        return 0
+
+    body = "\n".join(lines).strip() + "\n"
+    # Stable key per archive file so rebuild replaces cleanly
+    stem = Path(archive_path).stem if archive_path else "memories"
+    source_key = cold_source_key("chatgpt", f"memories:{stem}")
+    base = {
+        "origin": "chatgpt",
+        "conversation_id": f"memories:{stem}",
+        "archive_path": archive_path,
+        "title": f"ChatGPT memories ({stem})",
+        "chunk_kind": "body",
+    }
+    rag_chunks = chunk_for_rag(body, filename=source_key)
+    chunks: list[TextChunk] = []
+    for chunk in rag_chunks:
+        chunk.metadata = _sanitize_meta({**(chunk.metadata or {}), **base})
+        chunks.append(chunk)
+    return get_knowledge_indexer().index_chunks(filename=source_key, chunks=chunks)
+
+
 def remove_conversation_cold(origin: ConversationOrigin | str, conversation_id: str) -> int:
     """Remove Cold chunks for one conversation."""
     key = cold_source_key(origin, conversation_id)
@@ -245,6 +291,20 @@ def reindex_conversation_archives(*, force: bool = True) -> dict[str, int]:
 
                 raw = json.loads(path.read_text(encoding="utf-8"))
                 kind = detect_chatgpt_export_kind(raw, filename=path.name)
+                if kind == "memories":
+                    from localagent.persist.chatgpt_memories import load_memories_file
+
+                    memories = load_memories_file(path)
+                    n = index_chatgpt_saved_memories_cold(
+                        memories,
+                        archive_path=path.name,
+                    )
+                    if n:
+                        stats["chatgpt"] += 1
+                        stats["chunks"] += n
+                    else:
+                        stats["skipped"] += 1
+                    continue
                 if kind != "conversations":
                     continue
                 for conversation in load_conversations_file(path):

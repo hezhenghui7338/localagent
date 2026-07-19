@@ -17,15 +17,15 @@
 
 ## <img src="assets/icons/quick-start.svg" alt="" width="28" valign="middle"> Quick start
 
-Python 3.10+ · macOS / Linux / Windows · [pipx](https://pipx.pypa.io/) · current **v0.5.0**
+Python 3.10+ · macOS / Linux / Windows · [pipx](https://pipx.pypa.io/) · current **v0.6.0**
 
 ```bash
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.5.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.6.0"
 la
 ```
 
 Have an API → `la config set-key openrouter sk-...` (or edit `~/.localagent/.env`)  
-No API → `la setup -y` (installs Ollama if needed and pulls a model matched to your RAM; ≥14GB → `qwen3.5:4b`)
+No API → `la setup -y` (installs Ollama if needed and pulls a Qwen3.5 model matched to your RAM; ≥10GB → `qwen3.5:4b`, ≥18GB → `qwen3.5:9b`)
 
 Daily side-paths: `la summarize <path>` · `la news brief` · `la polish`  
 Upgrade / dev / uninstall → [Install & upgrade](#install--upgrade)
@@ -45,8 +45,8 @@ Primary targets are **desktop/laptop personal machines** with local Ollama. OS m
 | **P0** | **macOS (Apple Silicon)** | M1–M4, 16GB+ | Best local experience; unified memory + Ollama |
 | **P0** | **Windows 10/11 native** | Laptops/desktops, 8–32GB | `la setup` via winget or [ollama.com/download](https://ollama.com/download) |
 | **P0** | **Linux x86_64** (Ubuntu/Debian first) | Dev boxes, mini PCs | Closest to CI; install script path |
-| **P1** | Low-RAM (any OS) | 4–8GB total | Mini tier `qwen2.5:0.5b` — chat works; weak multi-tool Agent |
-| **P1** | Mid/high RAM (any OS) | ≥14GB | Default quality tier `qwen3.5:4b` |
+| **P1** | Low-RAM (any OS) | 4–8GB total | Mini tier `qwen3.5:0.8b` — chat works; weak multi-tool Agent |
+| **P1** | Mid/high RAM (any OS) | ≥10GB | Default `qwen3.5:4b`; ≥18GB → `qwen3.5:9b` |
 | **P2** | WSL2 | Windows + Linux userland | Treated as Linux; no separate installer |
 | **P2** | macOS Intel | Older Intel Macs | Supported to run; not a polish priority |
 | **P2** | Linux aarch64 | ARM boards / some cloud hosts | Best-effort; wheels / Ollama vary |
@@ -68,14 +68,15 @@ Runs fully local by default; optional cloud and web. Details: [summarize · news
 | Install once and chat | `la` / `la setup` · [Install & upgrade](#install--upgrade) |
 | Hack on the source / run tests | [Developer install](#developer-install) |
 | Use my own API keys | [Configuration](#configuration) · `la config` |
-| Be remembered across sessions | Hot / Warm / Cold + Mem0; import ChatGPT via `LA memory ingest chatgpt` · [Product tour §3–4](examples/product-tour.md) |
-| Put docs in a KB and recall deeply | `LA rag add` / `rag search` · [Product tour §5](examples/product-tour.md) |
+| Be remembered across sessions | Hot / Warm / Cold + Mem0; import ChatGPT via `LA ingest chatgpt` · [Product tour §3–4](examples/product-tour.md) |
+| Put docs in a KB and recall deeply | `LA ingest doc` / `rag search` · [Product tour §5](examples/product-tour.md) |
 | **Summarize** a doc (`sum>` dialogue by default) | `la summarize <path>`; `/keep` or `--keep` to archive; `--no-chat` for digest-only |
 | **News sniff** / daily brief | `la news sync` → `la news brief` (TTY ↑↓ / `o` open / `r` deep-read); `la news schedule on` |
+| **Aware** (opt-in machine sensing) | `la aware` (current state + last 3h → `aware>`) · `grant apps` focus/Now Playing + estimated input-active minutes (no key content) · episodes/insights · inject into `la chat` when relevant |
 | **Polish** copy (clipboard by default) | `la polish` / `/polish` · `--scene` / `--tone` / `--no-copy` |
 | Search the web | ddgs by default; `LA chat` or `/deepsearch` · [Product tour §6](examples/product-tour.md) |
 | Local Shell / write files (dangerous ops blocked) | `run_shell` / `write_file`; approve before execute · [Actions](#actions-automated--shell-that-actually-acts) |
-| See today’s action signals | `la status` |
+| See today’s signals and data layers | `la status` / `/status` |
 | See tokens / cost | `LA audit` · [Product tour §8](examples/product-tour.md) |
 | Switch models | Ollama / OpenRouter / Cursor; `auto` falls back by priority |
 
@@ -83,7 +84,7 @@ Runs fully local by default; optional cloud and web. Details: [summarize · news
 
 1. **Local First** — zero-bill / zero-account default: chat, memory, retrieval, and tools run on-device; three-command main path (`la` · `la setup` · `la chat`); optional cloud/network — identity, memory, and audit **archives** stay on-device (not uploaded); cloud chat or web search sends that turn’s content to the provider  
 2. **Memory Forever** — Hot / Warm / Cold + Mem0 across sessions; knows what to keep, what to drop, and when to step in; local RAG + ChatGPT import; switch models, keep identity  
-3. **Actions Automated** — Shell / write_file / workspace; `la summarize` · `la news` · `la polish`; scheduled brief; confirm before side effects, block danger, show a receipt when done; `la status` for today’s signals  
+3. **Actions Automated** — Shell / write_file / workspace; `la summarize` · `la news` · `la polish`; scheduled brief; confirm before side effects, block danger, show a receipt when done; `la status` / `/status` for today’s signals and data layers  
 
 | Typical local chat | LocalAgent |
 | --- | --- |
@@ -111,15 +112,15 @@ If GitHub is slow/blocked, use a proxy first (heavy deps; install can take a whi
 
 ```bash
 # pin a tag (recommended)
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.5.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.6.0"
 # or track default branch / use pip
 # pipx install "git+https://github.com/hezhenghui7338/localagent.git"
-# pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.5.0"
+# pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.6.0"
 
 la --version
 # upgrade to a new tag: uninstall then reinstall
 pipx uninstall la-localagent
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.5.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.6.0"
 # if --force fails with “venv already exists”: UV_VENV_CLEAR=1 pipx install --force "…"
 # tracking default branch: pipx upgrade la-localagent
 ```
@@ -136,7 +137,7 @@ la config --provider ollama --base_url "http://localhost:11434" --model qwen3.5:
 
 **Windows:** use PowerShell or cmd after [pipx](https://pipx.pypa.io/) is on `PATH`. `la setup` installs Ollama via `winget` when available, otherwise opens [ollama.com/download](https://ollama.com/download). Restart the terminal after installing Ollama so `ollama` is on `PATH`. (WSL works as Linux; native Windows is the supported path.)
 
-> After PyPI publish: `pipx install la-localagent==0.5.0`
+> After PyPI publish: `pipx install la-localagent==0.6.0`
 
 ### Developer install
 
@@ -167,8 +168,8 @@ LocalAgent’s core path — **chat, memory write, memory recall, document retri
 | Capability | Needs cloud API? | Notes |
 | --- | --- | --- |
 | Chat `LA chat` | No | Default `qwen3.5:4b`, runs on your machine |
-| Single memory `LA memory add` | No | Local model extracts title/tags |
-| Doc import `LA rag add` | No | Cold knowledge index only; no memory extraction |
+| Single memory `LA ingest text` | No | Local model extracts title/tags |
+| Doc import `LA ingest doc` | No | Cold required; long docs may write Warm summary |
 | Memory/knowledge search `LA memory search` | No | BM25 + Chroma locally |
 | Workspace `LA workspace` | No | Reads local Git / files / TODOs |
 | Agent commands `run_shell` | No | Local 4B model calls shell and summarizes |
@@ -250,8 +251,8 @@ The repo includes a **product tour** (user-story driven, full I/O, ~30 min) and 
 
 | # | Scenario | Command |
 | --- | --- | --- |
-| 1 | Write & recall a single memory | `LA memory add` → `LA memory search` |
-| 2 | Import & recall a Markdown file | `LA rag add` → `LA rag search` |
+| 1 | Write & recall a single memory | `LA ingest text` → `LA memory search` |
+| 2 | Import & recall a Markdown file | `LA ingest doc` → `LA rag search` |
 | 3 | **Summarize** a local doc | `la summarize <path>` → `sum>` |
 | 4 | **News sniff** daily brief | `la news sync` → `la news brief` |
 | 5 | **Polish** email / Moments draft | `la polish "draft"` / `/polish` |
@@ -289,7 +290,7 @@ Demo highlights:
 
 | Step | Command | Shows |
 |------|---------|-------|
-| Write evolution chain | `LA memory add` × 4 | Retain + auto title/tags/event time |
+| Write evolution chain | `LA ingest text` × 4 | Retain + auto title/tags/event time |
 | Semantic recall | `LA memory search "memory engine choice"` | Mem0 semantic recall |
 | Time awareness | `LA memory search "May 2026 decision"` | Re-rank by event time |
 | Tag browse | `LA memory query --tag decision` | Structured query |
@@ -356,10 +357,10 @@ source .venv/bin/activate   # or: source ~/.zshrc
 
   | System RAM | Recommended model | Notes |
   | --- | --- | --- |
-  | &lt; 6 GB | `qwen2.5:0.5b` (Mini) | Chat / basic memory; weak multi-tool Agent |
-  | 6–10 GB | `qwen2.5:1.5b` | Lightweight Q&A |
-  | 10–14 GB | `qwen2.5:3b` | Mid tier |
-  | ≥ 14 GB | `qwen3.5:4b` | Default quality tier |
+  | &lt; 6 GB | `qwen3.5:0.8b` (Mini) | Chat / basic memory; weak multi-tool Agent |
+  | 6–10 GB | `qwen3.5:2b` | Lightweight Q&A |
+  | 10–18 GB | `qwen3.5:4b` | Default quality tier |
+  | ≥ 18 GB | `qwen3.5:9b` | High-RAM quality tier |
 
 - If the recommended model is missing, LA reuses any installed chat model (preferring one already loaded in Ollama), and only prompts to pull when none are available
 - Qwen3 often emits many thinking tokens; LocalAgent defaults `OLLAMA_THINK=0` to disable thinking mode
@@ -391,7 +392,7 @@ See [`.env.example`](.env.example). Common variables:
 
 ## Commands
 
-Daily use is chat-first. Outer commands and in-session `/command` share the same paths (e.g. `/memory add` ≡ `LA memory add`). Session-only shortcuts: `/add` → `memory add`, `/search` → `memory search` (`/chat` is rejected inside the session).
+Daily use is chat-first. Outer commands and in-session `/command` share the same paths (e.g. `/ingest text` ≡ `LA ingest text`). Session-only shortcuts: `/add` → `ingest text`, `/search` → `memory search` (`/chat` is rejected inside the session).
 
 ```bash
 $ LA -h
@@ -408,17 +409,18 @@ Main path:
   la config …      Local-only or bring-your-own API
 
 Everyday:
-  LA memory add|search|pending|approve|reject|forget
-  LA memory ingest chatgpt <path>   # Import ChatGPT export
-  LA rag add|search                 # Documents → Cold KB
+  LA ingest text|chat|chatgpt|doc|kb|all   # Unified persist → Cold → Warm → Hot
+  LA memory search|pending|approve|reject|forget
+  LA rag search                            # Cold retrieval
   la summarize <path>               # One-click summarize → doc dialogue
   la news sync|brief|schedule       # News sniff / daily brief
+  la aware [--detail] [--since 1w] | tick | grant   # Opt-in sensing (smart summary / --detail)
   la polish "draft"                 # One-click polish (copies primary)
   LA audit                          # Spend / safety report
 
 Maintenance (advanced):
-  memory ingest chat|all · query · reflect · status · reindex · reset · graph
-  rag ingest|rebuild|reset · tasks · workspace · logs · websearch
+  ingest rebuild|reset|status · memory query|reflect|reindex|graph
+  rag reset · tasks · workspace · logs · websearch
   news skim|read|mark|interests|status|sources
 ```
 
@@ -504,12 +506,12 @@ Agent loop
 | Layer | Store | Role | Written by |
 | --- | --- | --- | --- |
 | **Hot** | `core_profile.json` | Always-on identity / pinned facts | Profile pin / explicit core updates |
-| **Warm** | Mem0 (default) or JSON `memory_store` (+ optional SQLite relation graph) | Long-term conversational **facts** | ChatGPT / LA chat extract · `memory add` / `retain_memory` |
-| **Cold** | Chroma + BM25 (+ RRF) | Searchable source material (docs, conversation archives) | `LA rag add` / `rag ingest` (kb/) · `memory ingest chat|chatgpt` / session exit (summary + body chunks) |
+| **Warm** | Mem0 (default) or JSON `memory_store` (+ optional SQLite relation graph) | Long-term conversational **facts** | ChatGPT / LA chat extract · `LA ingest text` / `retain_memory` |
+| **Cold** | Chroma + BM25 (+ RRF) | Searchable source material (docs, conversation archives) | `LA ingest doc` / `LA ingest kb` · `LA ingest chat|chatgpt` / session exit (summary + body chunks) |
 
 Warm holds durable facts about *you*. Cold holds **retrievable originals**: personal documents plus LA/ChatGPT transcripts (with a summary chunk for large chats). Warm extract failure no longer discards the transcript — Cold still indexes it. Use `LA rag search` / `search_knowledge` for archive text; `LA memory search` for facts.
 
-`LA rag rebuild` re-indexes `kb/` **and** conversation archives into Cold. `LA memory reset chat|chatgpt` also removes the matching Cold conversation chunks.
+`LA ingest rebuild` re-indexes `kb/` **and** conversation archives into Cold. `LA memory reset chat|chatgpt` also removes the matching Cold conversation chunks.
 
 #### Optional Warm relation graph (off by default)
 
@@ -607,7 +609,7 @@ src/localagent/
 ├── models/          # ModelRouter (local → cloud fallback)
 ├── memory/          # Hot profile · Warm backends · recall/reflect/consolidate
 ├── knowledge/       # Cold Chroma + BM25 + RRF
-├── ingest/          # rag add/ingest pipeline (Cold only)
+├── ingest/          # unified LA ingest engine (persist→Cold→Warm→Hot)
 ├── tools/           # Agent tools + approval
 ├── workspace/       # Git / recent files / todos
 ├── persist/         # conversations · sessions · ChatGPT archives
@@ -626,14 +628,21 @@ On each release, sync all of the following (missing any one drifts user-facing v
 4. Sync website (`website/index.html`, `website/script.js`, `website/demos/scenes.json`) and both `examples/product-tour*.md`
 5. If setup demo MP4s embed the install line, re-render via `website/demos/render.sh` (step demo uses `scenes.json`)
 
-GitHub Actions CI runs `uv run pytest` (unit + integration, including STM; excludes `e2e` / `e2e_live`) and a separate **e2e-offline** job (`pytest tests/e2e -m e2e`). Live Ollama tests stay local-only.
+GitHub Actions CI runs `uv run pytest` (unit + integration, including STM; excludes `e2e` / `e2e_live`; **pytest-xdist** `-n auto`) and a separate **e2e-offline** job (parallel e2e, then serial `test_la_perf` duration budgets). Live Ollama tests stay local-only.
 
 ```bash
-# Unit + integration tests (temp dirs; no Ollama required; includes STM)
+# Unit + integration tests (temp dirs; no Ollama required; includes STM; parallel by default)
+# Ends with a unit vs e2e per-file summary (pass counts + module blurb)
 pytest
+pytest -n0   # serial (debug a single test / avoid worker noise)
+pytest --no-suite-summary   # disable the per-file suite summary
 
 # End-to-end: subprocess LA commands (also run in CI e2e-offline job)
 pytest tests/e2e -m e2e
+pytest tests/e2e/test_la_perf.py -m e2e -n0   # duration budgets; prefer serial
+
+# Run everything (unit + e2e; overrides default marker filter)
+pytest -m ""
 
 # Live Ollama chat (needs a pulled chat model locally)
 pytest tests/e2e -m e2e_live

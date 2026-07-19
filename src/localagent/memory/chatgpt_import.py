@@ -420,6 +420,15 @@ def import_chatgpt_memories_file(
     source_file = path.name
     total = len(memories)
 
+    # Cold first: index saved-memory texts even when Warm extract/save is empty
+    try:
+        from localagent.ingest.conversation_cold import index_chatgpt_saved_memories_cold
+
+        cold_n = index_chatgpt_saved_memories_cold(memories, archive_path=source_file)
+        summary.cold_chunks += cold_n
+    except Exception as exc:
+        summary.errors.append(f"{path.name}: cold index failed: {exc}")
+
     if reporter is not None:
         reporter.update(
             ProgressEvent(

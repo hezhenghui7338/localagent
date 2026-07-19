@@ -112,7 +112,8 @@ SUMMARIZE_SESSIONS_DIR = DATA_DIR / "summarize_sessions"
 SUMMARIZE_SESSIONS_INDEX = SUMMARIZE_SESSIONS_DIR / "index.json"
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
-# Text / tabular / PDF for RAG + one-click summarize (images still via VL).
+# Text / tabular / PDF for RAG + one-click summarize.
+# Images stay in SUPPORTED_SUFFIXES but only load when LA_VL_ENABLED=1.
 SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt", ".xlsx", ".pdf"} | IMAGE_SUFFIXES
 SUMMARIZE_SUFFIXES = {".md", ".markdown", ".txt", ".xlsx", ".pdf"}
 DEFAULT_USER_ID = "default_user"
@@ -145,8 +146,71 @@ NEWS_FETCH_USE_JINA = _env_bool("LA_NEWS_FETCH_USE_JINA", "1")
 BESTBLOGS_API_KEY = _env("LA_BESTBLOGS_API_KEY")
 NEWS_OPENAPI = _env_bool("LA_NEWS_OPENAPI", "0")
 
-# --- Vision (image → text for Cold RAG; separate from chat OLLAMA_MODEL) ---
-VL_ENABLED = _env_bool("LA_VL_ENABLED", "1")
+# --- Aware (opt-in local world sensors → events / whitelist actions) ---
+AWARE_DIR = Path(_env("LA_AWARE_DIR")) if _env("LA_AWARE_DIR") else DATA_DIR / "aware"
+AWARE_PROFILE_FILE = AWARE_DIR / "profile.json"
+AWARE_CURSORS_FILE = AWARE_DIR / "cursors.json"
+AWARE_EVENTS_FILE = AWARE_DIR / "events.jsonl"
+AWARE_INPUT_ACTIVITY_FILE = AWARE_DIR / "input_activity.json"
+AWARE_INPUT_ACTIVITY_KEEP_DAYS = _env_int("LA_AWARE_INPUT_ACTIVITY_KEEP_DAYS", "30")
+AWARE_SUGGESTIONS_FILE = AWARE_DIR / "suggestions.json"
+AWARE_EPISODES_FILE = AWARE_DIR / "episodes.jsonl"
+AWARE_SESSIONS_DIR = AWARE_DIR / "sessions"
+AWARE_NOW_DIR = AWARE_DIR / "now"
+AWARE_TICK_LOG_FILE = AWARE_DIR / "tick.log"
+AWARE_TICK_INTERVAL_MINUTES = _env_int("LA_AWARE_TICK_INTERVAL_MINUTES", "15")
+AWARE_TICK_LOCK_FILE = AWARE_DIR / "tick.lock"
+AWARE_ACTIVE_HOURS_WELLNESS = _env_int("LA_AWARE_ACTIVE_HOURS_WELLNESS", "10")
+AWARE_EPISODES_MAX_BYTES = _env_int("LA_AWARE_EPISODES_MAX_BYTES", str(3 * 1024 * 1024))
+# Hard budgets so periodic ticks cannot freeze the host.
+AWARE_FS_MAX_SCAN_FILES = _env_int("LA_AWARE_FS_MAX_SCAN_FILES", "5000")
+AWARE_FS_MAX_DEPTH = _env_int("LA_AWARE_FS_MAX_DEPTH", "8")
+AWARE_TICK_DEADLINE_SEC = _env_float("LA_AWARE_TICK_DEADLINE_SEC", "20")
+AWARE_BROWSER_DB_MAX_BYTES = _env_int("LA_AWARE_BROWSER_DB_MAX_BYTES", str(64 * 1024 * 1024))
+AWARE_HISTORY_MAX_BYTES = _env_int("LA_AWARE_HISTORY_MAX_BYTES", str(8 * 1024 * 1024))
+AWARE_EVENTS_MAX_BYTES = _env_int("LA_AWARE_EVENTS_MAX_BYTES", str(5 * 1024 * 1024))
+# Document-like suffixes that may become suggestions (never auto-ingest into kb/Cold).
+AWARE_SUGGEST_SUFFIXES = {
+    ".pdf",
+    ".md",
+    ".markdown",
+    ".txt",
+    ".docx",
+    ".doc",
+    ".rtf",
+    ".html",
+    ".htm",
+    ".csv",
+}
+AWARE_NOISE_SUFFIXES = {
+    ".crdownload",
+    ".tmp",
+    ".part",
+    ".download",
+    ".dmg",
+    ".pkg",
+    ".zip",
+    ".rar",
+    ".7z",
+    ".exe",
+    ".msi",
+    ".iso",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".mp4",
+    ".mov",
+    ".mkv",
+    ".mp3",
+    ".wav",
+    ".icloud",
+}
+AWARE_SUGGEST_PER_TICK = _env_int("LA_AWARE_SUGGEST_PER_TICK", "10")
+
+# --- Vision (image → text for Cold RAG; off by default — temporarily unsupported) ---
+VL_ENABLED = _env_bool("LA_VL_ENABLED", "0")
 VL_MODEL = _env("LA_VL_MODEL", "qwen3-vl:4b") or "qwen3-vl:4b"
 VL_TIMEOUT = _env_float("LA_VL_TIMEOUT", "120")
 VL_NUM_PREDICT = _env_int("LA_VL_NUM_PREDICT", "1024")
@@ -182,6 +246,12 @@ def mem0_history_db() -> Path:
 
 # --- Workspace ---
 LA_WORKSPACE = _env("LA_WORKSPACE")
+WORKSPACE_DIR = DATA_DIR / "workspace"
+WORKSPACE_TASKS_FILE = WORKSPACE_DIR / "tasks.json"
+WORKSPACE_TASK_TTL_DAYS = _env_int("LA_WORKSPACE_TASK_TTL_DAYS", "7")
+WORKSPACE_TASK_AGENT_DAILY_LIMIT = _env_int("LA_WORKSPACE_TASK_AGENT_DAILY_LIMIT", "3")
+WORKSPACE_TASK_MIN_TITLE_LEN = _env_int("LA_WORKSPACE_TASK_MIN_TITLE_LEN", "2")
+WORKSPACE_TASK_MIN_RATIONALE_LEN = _env_int("LA_WORKSPACE_TASK_MIN_RATIONALE_LEN", "8")
 
 # --- Agent shell tool ---
 SHELL_TIMEOUT = _env_float("LA_SHELL_TIMEOUT", "30")
@@ -472,5 +542,9 @@ def ensure_data_dirs() -> None:
         NEWS_DIR,
         NEWS_CACHE_DIR,
         SUMMARIZE_SESSIONS_DIR,
+        AWARE_DIR,
+        AWARE_NOW_DIR,
+        AWARE_SESSIONS_DIR,
+        WORKSPACE_DIR,
     ):
         path.mkdir(parents=True, exist_ok=True)

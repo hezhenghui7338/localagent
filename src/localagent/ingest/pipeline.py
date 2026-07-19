@@ -191,10 +191,17 @@ def _retain_warm_summaries(doc: LoadedDoc, *, reporter: ProgressReporter | None 
     backend = get_memory_backend()
     saved = 0
     total = len(facts)
+    texts: list[str] = []
     for index, item in enumerate(facts, start=1):
-        fact_id = backend.retain(str(item["text"]), metadata=dict(item.get("metadata") or {}))
+        fact_text = str(item["text"])
+        fact_id = backend.retain(fact_text, metadata=dict(item.get("metadata") or {}))
         if fact_id:
             saved += 1
+            texts.append(fact_text)
         _report("summarize", f"摘要入库 {index}/{total}", current=index, total=total)
+    if texts:
+        from localagent.memory.profile_pin import pin_facts_to_profile
+
+        pin_facts_to_profile(texts)
     _report("summarize", f"Warm 摘要完成: {saved} facts")
     return saved

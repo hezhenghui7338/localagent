@@ -46,7 +46,7 @@ def test_journey_chatgpt_cold_before_warm(la_env, tmp_path: Path):
         encoding="utf-8",
     )
     result = run_la(
-        ["memory", "ingest", "chatgpt", str(export)],
+        ["ingest", "chatgpt", str(export)],
         env=la_env,
         timeout=180,
     )
@@ -74,7 +74,7 @@ def test_journey_chat_ingest_cold_searchable(la_env, la_data_dir: Path):
         ],
     )
     result = run_la(
-        ["memory", "ingest", "chat", "--session", sid],
+        ["ingest", "chat", "--session", sid],
         env=la_env,
         timeout=120,
     )
@@ -91,7 +91,7 @@ def test_journey_rag_does_not_create_warm(la_env, tmp_path: Path):
     """Story 6 / pillar 5: rag add indexes Cold only — Warm count unchanged."""
     before = warm_count(la_env)
     doc = write_kb_doc(tmp_path, "notes.md", f"# Notes\n\nRAG 文档不应产生 Warm：{COLD_MARKER}\n")
-    add = run_la(["rag", "add", str(doc)], env=la_env, timeout=120)
+    add = run_la(["ingest", "doc", str(doc)], env=la_env, timeout=120)
     assert add.returncode == 0
     assert warm_count(la_env) == before
 
@@ -114,7 +114,7 @@ def test_journey_reset_chatgpt_clears_cold_archive(la_env, tmp_path: Path):
         encoding="utf-8",
     )
     ingest = run_la(
-        ["memory", "ingest", "chatgpt", str(export)],
+        ["ingest", "chatgpt", str(export)],
         env=la_env,
         timeout=180,
     )

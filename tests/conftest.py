@@ -7,6 +7,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+# Per-file unit/e2e suite summary at session end (works with xdist).
+pytest_plugins = ["suite_summary"]
+
 from localagent.ingest.sync_index import reset_sync_index_singleton
 from localagent.knowledge.hybrid import reset_hybrid_retriever
 from localagent.knowledge.indexer import reset_knowledge_indexer
@@ -58,6 +61,8 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
         "NEWS_SYNC_STATE_FILE": data_dir / "news" / "sync_state.json",
         "NEWS_SYNC_LOG_FILE": data_dir / "news" / "sync.log",
         "NEWS_CACHE_DIR": data_dir / "news" / "cache",
+        "WORKSPACE_DIR": data_dir / "workspace",
+        "WORKSPACE_TASKS_FILE": data_dir / "workspace" / "tasks.json",
     }
     for key, val in paths.items():
         monkeypatch.setattr(f"localagent.config.{key}", val)

@@ -82,9 +82,8 @@ def test_e2e_zsh_la_memory_tab_candidates():
     assert lines == ["memory"], lines
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="complete-init e2e writes ~/.zshrc on dev machine")
 def test_e2e_complete_init_writes_block(tmp_path: Path):
-    """Run complete-init in isolation (non-macOS CI only)."""
+    """Run complete-init with HOME isolated to tmp_path (never touches real ~/.zshrc)."""
     home = tmp_path / "home"
     home.mkdir()
     zshrc = home / ".zshrc"

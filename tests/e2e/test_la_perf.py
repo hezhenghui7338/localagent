@@ -22,7 +22,11 @@ from helpers import (
     write_kb_doc,
 )
 
-pytestmark = pytest.mark.e2e
+pytestmark = [
+    pytest.mark.e2e,
+    pytest.mark.serial,
+    pytest.mark.xdist_group("serial"),
+]
 
 
 def _budget(args: list[str]) -> float:
@@ -77,10 +81,10 @@ def test_perf_daily_status(la_env):
 
 
 def test_perf_memory_add(la_env):
-    args = ["memory", "add", "2026年7月决定使用 Mem0 作为记忆引擎"]
+    args = ["ingest", "text", "2026年7月决定使用 Mem0 作为记忆引擎"]
     result = run_la(args, env=la_env, budget=_budget(args), timeout=30)
     assert result.returncode == 0
-    assert "已写入记忆" in result.stdout
+    assert "已写入记忆" in result.stdout or "Warm +" in result.stdout or "warm=1" in result.stdout
 
 
 def test_perf_memory_search_hit(la_env):
@@ -105,7 +109,7 @@ def test_perf_rag_add_small(la_env, tmp_path: Path):
         "perf.md",
         "# Perf\n\nLocalAgent Cold RAG 小文件索引性能测试标记 PERF_RAG_TOKEN\n",
     )
-    args = ["rag", "add", str(doc)]
+    args = ["ingest", "doc", str(doc)]
     result = run_la(args, env=la_env, budget=_budget(args), timeout=45)
     assert result.returncode == 0
 
@@ -116,7 +120,7 @@ def test_perf_rag_search(la_env, tmp_path: Path):
         "perf-search.md",
         "# Perf Search\n\nCold 检索标记 PERF_SEARCH_TOKEN_XYZ\n",
     )
-    assert run_la(["rag", "add", str(doc)], env=la_env, timeout=45).returncode == 0
+    assert run_la(["ingest", "doc", str(doc)], env=la_env, timeout=45).returncode == 0
     args = ["rag", "search", "PERF_SEARCH_TOKEN_XYZ"]
     result = run_la(args, env=la_env, budget=_budget(args), timeout=30)
     assert result.returncode == 0
@@ -197,7 +201,13 @@ def test_perf_summarize_heuristic(la_env, tmp_path: Path):
 
 
 def test_perf_polish_offline(la_env):
-    pytest.skip("polish 改写依赖模型 JSON，无稳定离线硬失败路径")
+    """Offline contract: empty polish prints usage and exits quickly (no model call)."""
+    args = ["polish"]
+    result = run_la(args, env=la_env, budget=_budget(args), timeout=20)
+    assert result.returncode == 1
+    out = (result.stdout + result.stderr).lower()
+    assert "用法" in result.stdout or "usage" in out
+    assert "polish" in out
 
 
 # --- P2: batch / background ---
@@ -209,7 +219,7 @@ def test_perf_rag_bg_task(la_env, tmp_path: Path):
         "bg.md",
         "# Background\n\n后台 ingest 性能标记 PERF_BG_TOKEN\n",
     )
-    enqueue_args = ["rag", "add", "--background", str(doc)]
+    enqueue_args = ["ingest", "doc", "--background", str(doc)]
     queued = run_la(
         enqueue_args,
         env=la_env,
@@ -244,7 +254,7 @@ def test_perf_memory_ingest_chat(la_env, la_data_dir: Path):
             },
         ],
     )
-    args = ["memory", "ingest", "chat", "--session", sid]
+    args = ["ingest", "chat", "--session", sid]
     result = run_la(args, env=la_env, budget=_budget(args), timeout=60)
     assert result.returncode == 0
     assert "已保存" in result.stdout or "未提取" in result.stdout or "cold" in result.stdout.lower()
@@ -259,8 +269,8 @@ def test_perf_memory_reindex(la_env):
 
 def test_perf_rag_rebuild(la_env, tmp_path: Path):
     doc = write_kb_doc(tmp_path, "rebuild.md", "# Rebuild\n\n小库重建标记 PERF_REBUILD\n")
-    assert run_la(["rag", "add", str(doc)], env=la_env, timeout=45).returncode == 0
-    args = ["rag", "rebuild"]
+    assert run_la(["ingest", "doc", str(doc)], env=la_env, timeout=45).returncode == 0
+    args = ["ingest", "rebuild"]
     result = run_la(args, env=la_env, budget=_budget(args), timeout=45)
     assert result.returncode == 0
 
@@ -270,10 +280,10 @@ def test_duration_budgets_table_covers_perf_prefixes():
     samples = [
         ["--help"],
         ["memory", "status"],
-        ["rag", "add", "/tmp/x.md"],
-        ["rag", "add", "--background", "/tmp/x.md"],
+        ["ingest", "doc", "/tmp/x.md"],
+        ["ingest", "doc", "--background", "/tmp/x.md"],
         ["audit", "--report", "/tmp/a.html"],
-        ["memory", "ingest", "chat", "--session", "s"],
+        ["ingest", "chat", "--session", "s"],
     ]
     for args in samples:
         assert lookup_duration_budget(args) is not None, args

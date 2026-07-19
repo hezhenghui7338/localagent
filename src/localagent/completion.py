@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from localagent import config
+from localagent.aware.timewin import parse_since as _parse_aware_since
 
 _FILE_SENTINEL = "__LA_FILE__"
 _TASK_ACTIONS = ("delete", "pause", "resume", "restart", "logs", "list", "show")
@@ -295,6 +296,40 @@ def _complete_rag(parser: argparse.ArgumentParser, tokens: list[str], current: s
     return _completing_option(rag_tail, current, rag_parser)
 
 
+_INGEST_SOURCES = [
+    "status",
+    "chat",
+    "chatgpt",
+    "doc",
+    "kb",
+    "text",
+    "all",
+    "rebuild",
+    "reset",
+    "aware",
+    "news",
+    "summarize",
+    "polish",
+]
+
+
+def _complete_ingest(parser: argparse.ArgumentParser, tokens: list[str], current: str) -> list[str]:
+    if not tokens:
+        return _prefix_match(_INGEST_SOURCES, current)
+    if _wants_option_completion(tokens, current, parser) or current.startswith("-"):
+        return _completing_option(tokens, current, parser)
+    source = tokens[0]
+    if source not in _INGEST_SOURCES:
+        return _prefix_match(_INGEST_SOURCES, current)
+    if tokens[-1] in ("--file", "--dir"):
+        return _expand_path(current)
+    if source == "reset" and len(tokens) == 1:
+        return _prefix_match(["chat", "chatgpt", "doc", "kb", "text", "all"], current)
+    if source in ("doc", "chatgpt", "news", "summarize") and len(tokens) == 1 and not current.startswith("-"):
+        return _expand_path(current)
+    return _completing_option(tokens[1:], current, parser)
+
+
 def _complete_config(parser: argparse.ArgumentParser, tokens: list[str], current: str) -> list[str]:
     """``config`` has both top-level flags and nested actions."""
     subs = _get_subparsers(parser)
@@ -309,6 +344,126 @@ def _complete_config(parser: argparse.ArgumentParser, tokens: list[str], current
             return hits
         return names
     return _complete_parser(parser, tokens, current)
+
+
+_AWARE_SOURCES = (
+    "all",
+    "fs",
+    "git",
+    "terminal",
+    "browser",
+    "apps",
+    "wechat",
+    "calendar",
+    "email",
+)
+_AWARE_SINCE = ("3h", "1d", "1w", "1m", "1y", "2d", "7d")
+_AWARE_ACTIONS = (
+    "status",
+    "grant",
+    "ungrant",
+    "paths",
+    "schedule",
+    "tick",
+    "suggestion",
+    "events",
+)
+
+
+def _granted_aware_sources() -> list[str]:
+    try:
+        from localagent.aware.profile import load_profile
+        from localagent.aware.types import IMPLEMENTED_SOURCES
+
+        profile = load_profile()
+        granted = [s for s in IMPLEMENTED_SOURCES if profile.is_granted(s)]
+        return ["all", *sorted(granted)] if granted else ["all", *_AWARE_SOURCES[1:5]]
+    except Exception:
+        return list(_AWARE_SOURCES)
+
+
+def _complete_aware(parser: argparse.ArgumentParser, tokens: list[str], current: str) -> list[str]:
+    """Tab completion for ``la aware`` (view flags + nested actions)."""
+    subs = _get_subparsers(parser)
+    # Top-level flags on bare `la aware`
+    if tokens and tokens[0].startswith("-"):
+        if tokens[0] == "--detail":
+            return _complete_aware(parser, tokens[1:], current)
+        if tokens[0] == "--since":
+            if len(tokens) == 1:
+                return _prefix_match(list(_AWARE_SINCE), current)
+            # Free-form <N>h|d|w|m|y (suggestions are only hints, not an allow-list).
+            try:
+                _parse_aware_since(tokens[1])
+                consumed = True
+            except ValueError:
+                consumed = False
+            rest = tokens[2:] if consumed else tokens[1:]
+            return _complete_aware(parser, rest, current)
+        if tokens[0] == "--source":
+            if len(tokens) == 1:
+                return _prefix_match(["fs", "git", "terminal", "browser", "all"], current)
+            rest = tokens[2:] if tokens[1] in _AWARE_SOURCES else tokens[1:]
+            return _complete_aware(parser, rest, current)
+
+    if not tokens:
+        names = sorted(set(list(subs) + list(_AWARE_ACTIONS)))
+        flags = ["--since", "--source", "--detail", "--no-chat"]
+        if current.startswith("-"):
+            return _prefix_match(flags, current)
+        if not current:
+            return names + flags
+        return _prefix_match(names, current)
+
+    action = tokens[0]
+    tail = tokens[1:]
+    if action not in subs:
+        if current or action not in _AWARE_ACTIONS:
+            return _prefix_match(sorted(subs), current)
+        return _prefix_match(sorted(subs), current)
+
+    sub = subs[action]
+    if _wants_option_completion(tail, current, sub) or current.startswith("-"):
+        hits = _completing_option(tail, current, sub)
+        if action == "events" and tail and tail[-1] == "--source":
+            return _prefix_match(["fs", "git", "terminal", "browser", "apps"], current)
+        if action == "tick" and tail and tail[-1] == "--source":
+            return _prefix_match(["fs", "git", "terminal", "browser", "apps"], current)
+        return hits
+
+    if action == "grant":
+        return _prefix_match(list(_AWARE_SOURCES), current)
+    if action == "ungrant":
+        return _prefix_match(_granted_aware_sources(), current)
+    if action == "schedule" and not tail:
+        return _prefix_match(["on", "off", "status"], current)
+    if action == "paths":
+        path_subs = _get_subparsers(sub)
+        if not tail:
+            return _prefix_match(sorted(path_subs) or ["list", "add", "rm"], current)
+        if tail[0] in ("add", "rm"):
+            return _expand_path(current)
+        return _prefix_match(sorted(path_subs), current)
+    if action == "suggestion":
+        sug_subs = _get_subparsers(sub)
+        sug_names = sorted(sug_subs) or ["list", "approve", "reject"]
+        if not tail:
+            return _prefix_match(sug_names, current)
+        sug_cmd = tail[0]
+        if sug_cmd not in sug_subs:
+            return _prefix_match(sug_names, current)
+        if sug_cmd in ("approve", "reject") and len(tail) == 1:
+            try:
+                from localagent.aware.suggestion import suggestion_ids
+
+                ids = ["all", *suggestion_ids()]
+            except Exception:
+                ids = ["all"]
+            return _prefix_match(ids, current)
+        return _completing_option(tail[1:], current, sug_subs[sug_cmd])
+    if action == "events" and not tail:
+        return _prefix_match(["--source", "--since-hours", "--limit", "--raw"], current)
+    return _completing_option(tail, current, sub)
 
 
 def suggest_completions(words: list[str], parser: argparse.ArgumentParser | None = None) -> list[str]:
@@ -351,8 +506,12 @@ def suggest_completions(words: list[str], parser: argparse.ArgumentParser | None
         return _complete_memory(sub, tail, current)
     if cmd == "rag":
         return _complete_rag(sub, tail, current)
+    if cmd == "ingest":
+        return _complete_ingest(sub, tail, current)
     if cmd == "config":
         return _complete_config(sub, tail, current)
+    if cmd == "aware":
+        return _complete_aware(sub, tail, current)
     return _complete_parser(sub, tail, current)
 
 

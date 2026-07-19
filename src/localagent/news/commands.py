@@ -38,22 +38,8 @@ def cmd_news(args: argparse.Namespace) -> int:
     return fn(args)
 
 
-def _cmd_sync(args: argparse.Namespace) -> int:
-    url = getattr(args, "url", None) or None
-    result = sync_news(rss_url=url)
-    if not result.ok:
-        print(f"[news] sync 失败: {result.error}")
-        return 1
-    print(
-        f"[news] sync 完成: 拉取 {result.fetched} 条"
-        f"（新增 {result.inserted}，更新 {result.updated}）"
-    )
-    print(f"[news] 源: {result.source_url}")
-    print("[news] 查看: la news brief")
-    return 0
-
-
-def _cmd_brief(args: argparse.Namespace) -> int:
+def _open_brief(args: argparse.Namespace, *, no_ui: bool | None = None) -> int:
+    """Build today's brief and enter the interactive browser when on a TTY."""
     import sys
 
     from localagent.news.browser import run_news_browser, should_enter_news_browser
@@ -61,7 +47,8 @@ def _cmd_brief(args: argparse.Namespace) -> int:
     day = getattr(args, "date", None) or date.today().isoformat()
     limit = getattr(args, "limit", None)
     plain = bool(getattr(args, "plain", False))
-    no_ui = bool(getattr(args, "no_ui", False))
+    if no_ui is None:
+        no_ui = bool(getattr(args, "no_ui", False))
     text, ranked = build_brief(
         since_date=day,
         limit=limit,
@@ -77,6 +64,34 @@ def _cmd_brief(args: argparse.Namespace) -> int:
 
     print(text, end="" if text.endswith("\n") else "\n")
     return 0
+
+
+def _cmd_sync(args: argparse.Namespace) -> int:
+    url = getattr(args, "url", None) or None
+    result = sync_news(rss_url=url)
+    if not result.ok:
+        print(f"[news] sync 失败: {result.error}")
+        return 1
+    print(
+        f"[news] sync 完成: 拉取 {result.fetched} 条"
+        f"（新增 {result.inserted}，更新 {result.updated}）"
+    )
+    print(f"[news] 源: {result.source_url}")
+
+    # TTY（含会话内 /news sync）：同步后直接进简报，避免操作链路断开。
+    # 定时任务 / 管道等非 TTY 仍只打印结果；--no-ui 可显式跳过交互。
+    from localagent.news.browser import should_enter_news_browser
+
+    no_ui = bool(getattr(args, "no_ui", False))
+    if should_enter_news_browser(no_ui=no_ui):
+        return _open_brief(args, no_ui=False)
+
+    print("[news] 查看: la news brief")
+    return 0
+
+
+def _cmd_brief(args: argparse.Namespace) -> int:
+    return _open_brief(args)
 
 
 def _cmd_skim(args: argparse.Namespace) -> int:

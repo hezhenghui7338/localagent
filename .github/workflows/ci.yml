@@ -40,7 +40,20 @@ jobs:
       - name: Install (dev)
         run: uv sync --extra dev
       - name: Offline subprocess e2e
-        run: uv run pytest tests/e2e -m e2e -q
+        run: uv run pytest tests/e2e -m e2e -q --ignore=tests/e2e/test_la_perf.py
+        env:
+          LA_MEMORY_APPROVAL_AUTO: "1"
+          LA_MEMORY_APPROVAL_REQUIRED: "0"
+          LA_SKIP_OLLAMA_SETUP: "1"
+          LA_MEMORY_BACKEND: json
+          LA_NEO4J: "0"
+          LA_MEMORY_GRAPH: "0"
+          LA_MEMORY_RERANK: "0"
+          LA_MEM0_EMBEDDER_PROVIDER: hash
+          LA_INGEST_USE_LLM: "0"
+          LA_PROFILE_PIN_LLM: "0"
+      - name: Offline e2e duration budgets (serial)
+        run: uv run pytest tests/e2e/test_la_perf.py -m e2e -q -n0
         env:
           LA_MEMORY_APPROVAL_AUTO: "1"
           LA_MEMORY_APPROVAL_REQUIRED: "0"

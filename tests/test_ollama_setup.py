@@ -187,11 +187,11 @@ def test_resolve_preferred_priority(monkeypatch):
     )
     monkeypatch.setattr(
         "localagent.ollama_setup.recommend_ollama_model",
-        lambda ram_bytes=None: "qwen2.5:0.5b",
+        lambda ram_bytes=None: "qwen3.5:0.8b",
     )
 
     model, source = resolve_preferred_ollama_model(None, ram_bytes=4 * (1024**3))
-    assert model == "qwen2.5:0.5b"
+    assert model == "qwen3.5:0.8b"
     assert source == "ram"
 
     model, source = resolve_preferred_ollama_model("custom:7b")
@@ -230,10 +230,10 @@ def test_yaml_bootstrap_default_does_not_block_ram(monkeypatch, tmp_path):
     assert _yaml_ollama_model() is None
 
     cfg.write_text(
-        "- provider: ollama\n  base_url: http://localhost:11434\n  model: qwen2.5:0.5b\n",
+        "- provider: ollama\n  base_url: http://localhost:11434\n  model: qwen3.5:0.8b\n",
         encoding="utf-8",
     )
-    assert _yaml_ollama_model() == "qwen2.5:0.5b"
+    assert _yaml_ollama_model() == "qwen3.5:0.8b"
 
 
 def test_ensure_ollama_ready_ram_tier_assume_yes(monkeypatch):
@@ -274,9 +274,9 @@ def test_ensure_ollama_ready_ram_tier_assume_yes(monkeypatch):
     )
 
     result = ensure_ollama_ready(assume_yes=True)
-    assert calls == ["qwen2.5:0.5b"]
+    assert calls == ["qwen3.5:0.8b"]
     assert result.pulled_now is True
-    assert result.model == "qwen2.5:0.5b"
+    assert result.model == "qwen3.5:0.8b"
 
 
 def test_install_ollama_windows_winget(monkeypatch):
