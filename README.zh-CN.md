@@ -13,7 +13,7 @@
 
 # <img src="assets/logo-icon.png" alt="LA" width="36" valign="middle"> LocalAgent
 
-> **本地优先。真记得你。把事办完。**
+> **本地优先，真记得你，把事办完。**
 
 ## <img src="assets/icons/quick-start.svg" alt="" width="28" valign="middle"> 快速开始
 
