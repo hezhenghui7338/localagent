@@ -1834,7 +1834,11 @@ def test_render_now_compact_omits_background_tab_title(
 ) -> None:
     from localagent.aware.browser_tabs import BrowserNow
     from localagent.aware.digest import _render_now_compact
+    from localagent.i18n import reset_lang_cache
 
+    # Compact browser now-line uses i18n; pin zh so CI English locales match asserts.
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     monkeypatch.setattr(
         "localagent.aware.digest.collect_open_tabs",
         lambda: [
