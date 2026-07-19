@@ -194,7 +194,11 @@ def test_run_agent_turn_empty_reply_gets_fallback(isolated_data):
     assert isolated_data["router"].chat.call_count == 3
 
 
-def test_run_agent_turn_hints_ollama_cold_start(isolated_data):
+def test_run_agent_turn_hints_ollama_cold_start(isolated_data, monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     statuses: list[str] = []
     isolated_data["router"].should_hint_ollama_cold_start.return_value = True
     isolated_data["router"].chat.return_value = "你好"

@@ -28,7 +28,11 @@ def test_enrich_heuristic_summarizes_long_text():
     assert result.searchable_text
 
 
-def test_format_memory_hit_readable_card():
+def test_format_memory_hit_readable_card(monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     hit = {
         "id": "abc12345-0000-0000-0000-000000000000",
         "text": "2026年7月决定使用 Hindsight 作为记忆引擎",
@@ -52,7 +56,11 @@ def test_format_memory_hit_readable_card():
     assert "id: abc12345" in rendered
 
 
-def test_format_memory_hits_header():
+def test_format_memory_hits_header(monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     hits = [
         {
             "id": "x",
@@ -68,6 +76,10 @@ def test_format_memory_hits_header():
     assert "查询: 测试" in rendered
 
 
-def test_enrich_memory_fallback_for_empty():
+def test_enrich_memory_fallback_for_empty(monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     result = enrich_memory("   ")
     assert result.title == "空记忆"
