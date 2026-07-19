@@ -27,7 +27,7 @@ la
 Have an API → `la config set-key openrouter sk-...` (or edit `~/.localagent/.env`)  
 No API → `la setup -y` (installs Ollama if needed and pulls a Qwen3.5 model matched to your RAM; ≥10GB → `qwen3.5:4b`, ≥18GB → `qwen3.5:9b`)
 
-Daily side-paths: `la summarize <path>` · `la news brief` · `la polish`  
+Daily side-paths: `la summarize <path>` · `la news brief` · `la polish` · `la aware`  
 Upgrade / dev / uninstall → [Install & upgrade](#install--upgrade)
 
 ## Requirements
@@ -61,7 +61,7 @@ Primary targets are **desktop/laptop personal machines** with local Ollama. OS m
 
 ## <img src="assets/icons/features.svg" alt="" width="28" valign="middle"> Features
 
-Runs fully local by default; optional cloud and web. Details: [summarize · news · polish](#daily-essentials-summarize--news--polish).
+Runs fully local by default; optional cloud and web. Details: [summarize · news · polish · aware](#daily-essentials-summarize--news--polish--aware).
 
 | I want to… | How |
 | --- | --- |
@@ -72,7 +72,7 @@ Runs fully local by default; optional cloud and web. Details: [summarize · news
 | Put docs in a KB and recall deeply | `LA ingest doc` / `rag search` · [Product tour §5](examples/product-tour.md) |
 | **Summarize** a doc (`sum>` dialogue by default) | `la summarize <path>`; `/keep` or `--keep` to archive; `--no-chat` for digest-only |
 | **News sniff** / daily brief | `la news sync` → `la news brief` (TTY ↑↓ / `o` open / `r` deep-read); `la news schedule on` |
-| **Aware** (opt-in machine sensing) | `la aware` (current state + last 3h → `aware>`) · `grant apps` focus/Now Playing + estimated input-active minutes (no key content) · episodes/insights · inject into `la chat` when relevant |
+| **Aware** (opt-in machine sensing) | `la aware` · [Aware](#4-aware--opt-in-machine-sensing) · grant → tick → suggestion → `aware>` · inject into `la chat` when relevant |
 | **Polish** copy (clipboard by default) | `la polish` / `/polish` · `--scene` / `--tone` / `--no-copy` |
 | Search the web | ddgs by default; `LA chat` or `/deepsearch` · [Product tour §6](examples/product-tour.md) |
 | Local Shell / write files (dangerous ops blocked) | `run_shell` / `write_file`; approve before execute · [Actions](#actions-automated--shell-that-actually-acts) |
@@ -84,7 +84,7 @@ Runs fully local by default; optional cloud and web. Details: [summarize · news
 
 1. **Local First** — zero-bill / zero-account default: chat, memory, retrieval, and tools run on-device; three-command main path (`la` · `la setup` · `la chat`); optional cloud/network — identity, memory, and audit **archives** stay on-device (not uploaded); cloud chat or web search sends that turn’s content to the provider  
 2. **Memory Forever** — Hot / Warm / Cold + Mem0 across sessions; knows what to keep, what to drop, and when to step in; local RAG + ChatGPT import; switch models, keep identity  
-3. **Actions Automated** — Shell / write_file / workspace; `la summarize` · `la news` · `la polish`; scheduled brief; confirm before side effects, block danger, show a receipt when done; `la status` / `/status` for today’s signals and data layers  
+3. **Actions Automated** — Shell / write_file / workspace; `la summarize` · `la news` · `la polish` · `la aware`; scheduled brief; confirm before side effects, block danger, show a receipt when done; `la status` / `/status` for today’s signals and data layers  
 
 | Typical local chat | LocalAgent |
 | --- | --- |
@@ -206,9 +206,9 @@ In the current project (`/Users/hzh/code/LocalAgent`), main language files (Pyth
 
 Use cases: LOC counts, listing directories, Git logs, running tests/builds. Commands run in the workspace (`LA_WORKSPACE` or cwd); default timeout 30s. **Every shell/file write asks for approval by default**; `rm` / `sudo` / force-git and similar get an extra warning. Set `LA_TOOL_APPROVAL=dangerous` to only gate risky ops, or `off` to disable (not recommended).
 
-### Daily essentials: summarize · news · polish
+### Daily essentials: summarize · news · polish · aware
 
-Three side-path commands built for **everyday** use — read a doc, skim a brief, polish a draft — without a long agent tool loop.
+Side-path commands built for **everyday** use — read a doc, skim a brief, polish a draft, sense your machine (opt-in) — without a long agent tool loop.
 
 #### <img src="assets/icons/summarize.svg" alt="" width="24" valign="middle"> 1. One-click summarize — 3-minute digest + document dialogue
 
@@ -247,6 +247,24 @@ la polish --no-copy --file draft.txt
 
 In-session: `/polish --scene email …`. Primary rewrite is copied to the clipboard by default; press `2`/`3` to copy an alternate. Resume mode never invents numbers not in the draft.
 
+#### <img src="assets/icons/aware.svg" alt="" width="24" valign="middle"> 4. Aware — opt-in machine sensing
+
+Sense what you were doing on this machine (files, git, terminal, browser, foreground apps) — **only after you grant sources**. Episodes power `aware>` and can inject into `la chat` when relevant. **Nothing is auto-written to Cold / `kb/`.**
+
+```bash
+la aware status
+la aware grant fs terminal browser apps -y   # per-source opt-in; omit -y to confirm sensitive sources
+la aware tick --no-chat                      # one collection pass → episodes / suggestions
+la aware suggestion                          # approve|reject (whitelist: ingest / summarize only)
+la aware                                     # smart summary (now + last 3h) → aware>
+la aware --detail --since 3h                 # per-source detail
+```
+
+- **Opt-in by source** — default off; `ungrant` stops that source. Implemented: `fs` · `git` · `terminal` · `browser` · `apps` (wechat / calendar / email are stubs)
+- **Suggestion ≠ archive** — indexable files become suggestions; `approve` runs only whitelist commands (`la ingest doc|text`, `la summarize`). Insights/wellness are ack-only
+- **Privacy** — no screen recording, no keystroke content; browser **selected ≠ viewing** (dwell only when the browser is frontmost); apps estimate input-active minutes per app, not key streams
+- Optional: `la aware schedule on --interval 15` for periodic ticks; data under `data/aware/`
+
 The repo includes a **product tour** (user-story driven, full I/O, ~30 min) and a shorter walkthrough:
 
 | # | Scenario | Command |
@@ -256,10 +274,11 @@ The repo includes a **product tour** (user-story driven, full I/O, ~30 min) and 
 | 3 | **Summarize** a local doc | `la summarize <path>` → `sum>` |
 | 4 | **News sniff** daily brief | `la news sync` → `la news brief` |
 | 5 | **Polish** email / Moments draft | `la polish "draft"` / `/polish` |
-| 6 | Search recent news online | `LA chat` or `/deepsearch` |
-| 7 | **Fully local** qwen3.5:4b | `LA chat --provider ollama` |
-| 8 | Agent runs terminal commands | `LA chat` → “count project LOC” |
-| 9 | Audit report (Ollama $0) | `LA audit --since 7d` |
+| 6 | **Aware** — what changed this afternoon | `la aware grant …` → `tick` → `la aware` |
+| 7 | Search recent news online | `LA chat` or `/deepsearch` |
+| 8 | **Fully local** qwen3.5:4b | `LA chat --provider ollama` |
+| 9 | Agent runs terminal commands | `LA chat` → “count project LOC” |
+| 10 | Audit report (Ollama $0) | `LA audit --since 7d` |
 
 ```bash
 # Full product tour (recommended): user stories · complete input/output
@@ -414,7 +433,8 @@ Everyday:
   LA rag search                            # Cold retrieval
   la summarize <path>               # One-click summarize → doc dialogue
   la news sync|brief|schedule       # News sniff / daily brief
-  la aware [--detail] [--since 1w] | tick | grant   # Opt-in sensing (smart summary / --detail)
+  la aware [status|grant|ungrant|tick|schedule|suggestion|paths|events]
+                                # Opt-in sensing → aware>; --detail / --since / --no-chat
   la polish "draft"                 # One-click polish (copies primary)
   LA audit                          # Spend / safety report
 
@@ -437,6 +457,7 @@ data/
 ├── kb/                        # Symlinked personal files
 ├── core_profile.json          # Hot-layer core facts
 ├── news/                      # News sniff: articles.sqlite · profile · sync_state · cache/
+├── aware/                     # Opt-in sensing: events · episodes · suggestions · profile
 ├── sync_index.json            # Indexed file registry
 ├── conversations/             # Chat archives
 ├── chatGPTdata/               # ChatGPT export archive
@@ -610,6 +631,7 @@ src/localagent/
 ├── memory/          # Hot profile · Warm backends · recall/reflect/consolidate
 ├── knowledge/       # Cold Chroma + BM25 + RRF
 ├── ingest/          # unified LA ingest engine (persist→Cold→Warm→Hot)
+├── aware/           # Opt-in sensors · tick · episodes · suggestions
 ├── tools/           # Agent tools + approval
 ├── workspace/       # Git / recent files / todos
 ├── persist/         # conversations · sessions · ChatGPT archives
@@ -655,6 +677,7 @@ pytest tests/e2e -m e2e_live
 - Memories, chat archives, and audit logs stay on-device by default — not uploaded by LocalAgent
 - **Cloud / web search**: when you use a cloud model or `web_search`, that turn’s conversation (and any recalled memory in the prompt) is sent to the provider; stay pure-local with `/provider ollama` and avoid web search
 - **Local execution gate**: `run_shell` / `write_file` require your confirmation by default (`LA_TOOL_APPROVAL=always`); dangerous commands get an extra warning. Extremely destructive commands (e.g. `rm -rf /`) are blocked outright. Non-interactive runs without an approval callback are denied
+- **Aware (opt-in sensing)**: off until you `grant` a source; `ungrant` stops it. No screen capture and no keystroke content. Browser **selected ≠ viewing** (background tabs are not “what you were reading”). Indexable files become **suggestions only** — never auto-written to Cold / `kb/`; `approve` runs whitelist commands only
 - If a key was ever exposed elsewhere, rotate it on that platform immediately
 
 ## License

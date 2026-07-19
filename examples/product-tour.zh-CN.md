@@ -15,7 +15,7 @@
 |----|------|------------|------|
 | **I** | **Local First** | 一键装好、纯本地或自有 API | [§1](#1-一键安装与-hello用户--开发者) · [§2](#2-纯本地与自有-api-双路径) |
 | **II** | **Memory Forever** | 跨会话记住、ChatGPT 导入、RAG 深召回 | [§3](#3-跨会话记忆--hot--warm--cold) · [§4](#4-chatgpt-导入加速认识你) · [§5](#5-本地文档-rag-深度召回) |
-| **III** | **Actions Automated** | 联网、动手改文件、日常三剑客、审计与今日信号 | [§6](#6-联网搜索--小模型也能用好网络)–[§12](#12-一键润色故事-6d)；另试 `la status` |
+| **III** | **Actions Automated** | 联网、动手改文件、日常旁路（含 Aware）、审计与今日信号 | [§6](#6-联网搜索--小模型也能用好网络)–[§13](#13-aware本机感知故事-6e)；另试 `la status` |
 
 **叙事设定（虚构）**：你是「林晓」，在本机上用 LocalAgent 做个人 AI；偏好美式咖啡；2026-05 在深圳开会定了产品路线；2026-07 决定用 Mem0 做记忆引擎。
 
@@ -757,6 +757,34 @@ la polish --no-copy --scene email "您好，上次说的方案这周能给一下
 
 ---
 
+## 13. Aware——本机感知（故事 6e）
+
+感知本机工作上下文——**必须先 `grant` 授权对应源**。Episode 支撑 `aware>`，相关问题可注入 `la chat`。**绝不自动写入 Cold / `kb/`。**
+
+**输入：**
+
+```bash
+la aware status
+la aware grant fs terminal browser apps -y
+la aware tick --no-chat
+la aware suggestion
+la aware --no-chat
+```
+
+**预期：**
+
+- `status` 显示授权与上次 tick 状态
+- `grant` 开启所列源（去掉 `-y` 可对敏感源交互确认）
+- `tick` 采集一轮 → Episode / 可选 suggestion；即使安静也 exit 0
+- `suggestion` 列出待处理项（可能为空）；`approve` 仅执行白名单（`la ingest doc|text`、`la summarize`），不会静默入库
+- `la aware --no-chat` 打印智能总结（当前 + 近时窗）；TTY 不加 `--no-chat` 时进入 `aware>`
+
+可选：在 `la chat` 问「今天下午改了哪些文件？」，相关时应注入 Aware Episode 上下文。
+
+隐私核对：不录屏；浏览器 **选中 ≠ 正在看**；apps 只估输入活跃时长，不记按键内容。
+
+---
+
 ## 验收清单
 
 对照 [PRD §6](../docs/PRD.md) 验收，你应能勾选：
@@ -771,6 +799,7 @@ la polish --no-copy --scene email "您好，上次说的方案这周能给一下
 - [ ] **故事 6b**：`la summarize` 出速读卡；TTY 进 `sum>`；默认不入库  
 - [ ] **故事 6c**：`la news sync` + `la news brief`（或 `--no-ui`）能看到带原文链接的简报  
 - [ ] **故事 6d**：`la polish --no-copy` 输出识别 Brief + 主推/备选；不加 `--no-copy` 时主推可粘贴  
+- [ ] **故事 6e**：`la aware grant` → `tick` → 总结；suggestion 不自动写 Cold/`kb/`；`approve` 仅白名单  
 - [ ] **进阶**：明确路径写文件确认写入；「5 月 vs 7 月」时间查询 + `reflect` 讲清演变  
 
 ---
