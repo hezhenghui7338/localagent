@@ -32,6 +32,10 @@ def test_chat_shows_response_provider(capsys, monkeypatch):
 
 
 def test_chat_shows_error_for_empty_response(capsys, monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     inputs = iter(["你好", ":q"])
     monkeypatch.setattr("localagent.chat_repl.read_repl_line", lambda _p="> ": next(inputs))
     monkeypatch.setattr(

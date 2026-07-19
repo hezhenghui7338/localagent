@@ -93,11 +93,27 @@ def parse_ts(ts: str | datetime | None) -> datetime | None:
 
 
 def to_local(ts: str | datetime | None) -> datetime | None:
-    """Convert ISO/datetime to local timezone."""
-    dt = parse_ts(ts)
-    if dt is None:
+    """Wall-clock datetime for Aware local_day / period / display.
+
+    Timezone-aware inputs keep their embedded offset so historical local_day
+    stays stable across hosts (do not re-project +08:00 dawn into UTC night).
+    Naive inputs are interpreted as already-local wall clock on the host.
+    """
+    if ts is None:
         return None
-    return dt.astimezone()
+    if isinstance(ts, datetime):
+        dt = ts
+    else:
+        text = str(ts).strip()
+        if not text:
+            return None
+        try:
+            dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=datetime.now().astimezone().tzinfo)
+    return dt
 
 
 def period_key(ts: str | datetime | None) -> str:
