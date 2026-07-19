@@ -16,8 +16,8 @@
       "nav.demo": "演示",
       "nav.install": "安装",
       "nav.contact": "联系",
-      "hero.tagline": "Local First. Memory Forever. Actions Automated.",
-      "hero.lead": "栖居在你电脑里的 AI。",
+      "hero.tagline": "栖居在你电脑里的 AI。",
+      "hero.lead": "Local First. Memory Forever. Actions Automated.",
       "hero.ctaGithub": "在 GitHub 查看",
       "hero.ctaInstall": "快速安装",
       "hero.ctaDemo": "看演示 →",
@@ -93,15 +93,15 @@
       "footer.line": "LocalAgent · MIT · v0.6.0",
       title: "LocalAgent — 栖居在你电脑里的 AI",
       description:
-        "LocalAgent — Local First. Memory Forever. Actions Automated. 栖居在你电脑里的 AI。",
+        "LocalAgent — 栖居在你电脑里的 AI。Local First. Memory Forever. Actions Automated.",
     },
     en: {
       "nav.features": "Features",
       "nav.demo": "Demo",
       "nav.install": "Install",
       "nav.contact": "Contact",
-      "hero.tagline": "Local First. Memory Forever. Actions Automated.",
-      "hero.lead": "The AI that lives on your computer.",
+      "hero.tagline": "The AI that lives on your computer.",
+      "hero.lead": "Local First. Memory Forever. Actions Automated.",
       "hero.ctaGithub": "View on GitHub",
       "hero.ctaInstall": "Quick install",
       "hero.ctaDemo": "See the demo →",
@@ -178,7 +178,7 @@
       "footer.line": "LocalAgent · MIT · v0.6.0",
       title: "LocalAgent — The AI that lives on your computer",
       description:
-        "LocalAgent — Local First. Memory Forever. Actions Automated. The AI that lives on your computer.",
+        "LocalAgent — The AI that lives on your computer. Local First. Memory Forever. Actions Automated.",
     },
   };
 

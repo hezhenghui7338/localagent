@@ -1,6 +1,6 @@
 # LocalAgent 功能示例
 
-> **Local First. Memory Forever. Actions Automated.** — 栖居在你电脑里的 AI。
+> **栖居在你电脑里的 AI。** — **Local First. Memory Forever. Actions Automated.**
 
 本文档用短路径场景做上手（按 Local → Memory → Actions）。完整用户故事见 [product-tour.zh-CN.md](product-tour.zh-CN.md)（英文：[product-tour.md](product-tour.md)）。英文短路径：[walkthrough.md](walkthrough.md)。示例数据均为虚构内容，可安全复现。
 
