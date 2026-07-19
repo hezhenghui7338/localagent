@@ -123,6 +123,12 @@ SUMMARIZE_LLM_INPUT_CHARS = _env_int("LA_SUMMARIZE_LLM_INPUT_CHARS", "10000")
 # Document deep-chat: retrieve this many Cold chunks when body exceeds prompt stuffing.
 DOC_SESSION_RETRIEVE_TOP_K = _env_int("LA_DOC_SESSION_RETRIEVE_TOP_K", "8")
 
+# --- Evening postscript (late-hour closing line after the main answer) ---
+# LA_TONE_EVENING=off|on  (default off; experimental)
+TONE_EVENING = _env("LA_TONE_EVENING", "off").lower()
+TONE_EVENING_START = _env_int("LA_TONE_EVENING_START", "23")  # local hour inclusive
+TONE_EVENING_END = _env_int("LA_TONE_EVENING_END", "6")  # local hour exclusive; may cross midnight
+
 # --- Language (LA_LANG=auto|en|zh; default auto → system locale → en) ---
 from localagent.i18n import default_news_rss_url, resolve_lang  # noqa: E402
 

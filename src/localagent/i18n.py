@@ -972,6 +972,20 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
             "根据本机感知事实卡，用中文写 3～6 行动态（不要标题）。"
             "时间范围：{window}；须覆盖该整段窗口，按日期/时段组织主次。\n"
         ),
+        "prompt.tone_evening_chat": (
+            "### 夜深收束（本地时间已晚）\n"
+            "正事完整说完后，若本回合是对用户的最终自然语言答复，可在末尾空一行加一句收束，"
+            "优先用：「夜深了，早点休息哦。」\n"
+            "规则：\n"
+            "- 先把问题答完；收束不得插入正文、代码块或列表中间\n"
+            "- 只要产物/JSON/补丁、工具确认中、或用户在连续追问调试时：不要加\n"
+            "- 本会话若已出现过休息提醒：不要再加\n"
+            "- 禁止情绪诊断、禁止长篇劝健康、禁止卖陪伴\n"
+        ),
+        "prompt.tone_evening_aware": (
+            "夜深收束：动态写完后可选末行一句「夜深了，收工休息也不迟。」"
+            "勿插入事实中间；勿情绪诊断或鸡汤。\n"
+        ),
         "prompt.memory_summarize": (
             "请用简洁中文（或原文语言）概括下列内容，保留关键事实、人名、时间与结论。"
         ),
@@ -1948,6 +1962,23 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
             "From the local awareness fact cards below, write 3–6 lines of activity "
             "in English (no title). Time range: {window}; cover that full window, "
             "organized by date/period.\n"
+        ),
+        "prompt.tone_evening_chat": (
+            "### Late-night closing (local time is late)\n"
+            "After the main answer is complete, if this turn is the final natural-language "
+            "reply to the user, you may add one short closing line after a blank line. "
+            "Prefer: \"It's late — get some rest.\"\n"
+            "Rules:\n"
+            "- Finish the task first; never insert the closing inside prose, code, or lists\n"
+            "- Skip when the user wants only a product/JSON/patch, during tool confirmation, "
+            "or while they are mid debug follow-ups\n"
+            "- If this session already had a rest reminder: do not add another\n"
+            "- No emotion diagnosis, no long health lectures, no companion persona\n"
+        ),
+        "prompt.tone_evening_aware": (
+            "Late-night closing: after the activity lines, you may add one last line "
+            "\"It's late — wrapping up for rest is fine too.\" "
+            "Do not insert it mid-facts; no emotion diagnosis or pep talk.\n"
         ),
         "prompt.memory_summarize": (
             "Summarize the following in concise English (or the source language), "

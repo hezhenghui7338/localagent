@@ -1175,6 +1175,11 @@ def _build_system_prompt(
         prompt = f"{prompt}\n\n{aware_context}"
     if document_context:
         prompt = f"{prompt}\n\n{document_context}"
+    from localagent.tone import evening_postscript_block
+
+    evening = evening_postscript_block(surface="chat")
+    if evening:
+        prompt = f"{prompt}\n\n{evening}"
     return prompt
 
 

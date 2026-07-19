@@ -1111,8 +1111,13 @@ def retrieve_aware_context(
         "日摘要为历史聚合，粒度粗于 Episode，勿编造摘要未列出的细节；"
         f"Episode 仅为近 {hours_label} 小时活动，勿当成此刻仍在做的事；"
         "做朋友式建议，不评判。需要改记忆时请用户明确说「记住」。",
-        "",
     ]
+    from localagent.tone import evening_postscript_block
+
+    evening = evening_postscript_block(surface="aware")
+    if evening:
+        parts.append(evening.rstrip())
+    parts.append("")
     if hot_note and win.since_hours <= 48:
         parts.extend([*hot_note, ""])
     # Apps (true frontmost) before browser tabs so attention signal leads.

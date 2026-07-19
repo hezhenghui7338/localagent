@@ -299,9 +299,14 @@ def llm_summarize_facts(card: str, *, window_label: str = "") -> str | None:
 
     clipped = card[:_FACT_CHAR_LIMIT]
     window = window_label or ""
+    from localagent.tone import evening_postscript_block
+
+    evening = evening_postscript_block(surface="aware")
+    evening_prefix = f"{evening}\n" if evening else ""
     if resolve_lang() == "en":
         prompt = (
-            t("prompt.aware_summary", window=window)
+            evening_prefix
+            + t("prompt.aware_summary", window=window)
             + "Cover the entire time window on the fact card — organize by date/period; "
             "do not narrate only the last few hours when older buckets exist.\n"
             "Timestamps/time-of-day matter most: prefer daytime/evening/clock times "
@@ -317,7 +322,8 @@ def llm_summarize_facts(card: str, *, window_label: str = "") -> str | None:
         )
     else:
         prompt = (
-            t("prompt.aware_summary", window=window)
+            evening_prefix
+            + t("prompt.aware_summary", window=window)
             + "必须覆盖事实卡上的整个时间窗，按日期/时段组织，禁止只写最近几小时。\n"
             "发生时刻/时段是最重要元数据：优先写白天/晚上/具体钟面"
             "（如「晚上 22 点左右看视频」「上午在 Cursor 写代码」），"
