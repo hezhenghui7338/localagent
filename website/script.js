@@ -7,7 +7,7 @@
 
   const DEMO_IDS = ["setup", "memory", "deepread", "aware"];
   /** Demos without MP4 assets — always use steps mode. */
-  const STEPS_ONLY_DEMOS = ["aware"];
+  const STEPS_ONLY_DEMOS = [];
   const DEMO_PLAYBACK_RATE = 1.25;
 
   const strings = {
@@ -17,7 +17,7 @@
       "nav.install": "安装",
       "nav.contact": "联系",
       "hero.tagline": "栖居在你电脑里的 AI。",
-      "hero.lead": "Local First. Memory Forever. Actions Automated.",
+      "hero.lead": "本地优先。记忆永续。行动自动化。",
       "hero.ctaGithub": "在 GitHub 查看",
       "hero.ctaInstall": "快速安装",
       "hero.ctaDemo": "看演示 →",
@@ -40,7 +40,7 @@
       "demo.eyebrow": "演示",
       "demo.title": "几件事，马上感受到",
       "demo.lead":
-        "可分步查看，也可看短片（Aware 目前仅分步）——不接云端推理。装上本机后，这些就是真实路径。",
+        "可分步查看，也可看短片——不接云端推理。装上本机后，这些就是真实路径。",
       "demo.tab.setup": "上手",
       "demo.tab.memory": "记住你",
       "demo.tab.deepread": "深聊",
@@ -93,7 +93,7 @@
       "footer.line": "LocalAgent · MIT · v0.6.0",
       title: "LocalAgent — 栖居在你电脑里的 AI",
       description:
-        "LocalAgent — 栖居在你电脑里的 AI。Local First. Memory Forever. Actions Automated.",
+        "LocalAgent — 栖居在你电脑里的 AI。本地优先。记忆永续。行动自动化。",
     },
     en: {
       "nav.features": "Features",
@@ -125,7 +125,7 @@
       "demo.eyebrow": "Demo",
       "demo.title": "Moments you can feel",
       "demo.lead":
-        "Step through the walkthrough, or watch a short clip (Aware is steps-only for now) — no hosted model. On your machine, these are the real paths.",
+        "Step through the walkthrough, or watch a short clip — no hosted model. On your machine, these are the real paths.",
       "demo.tab.setup": "Setup",
       "demo.tab.memory": "Memory",
       "demo.tab.deepread": "Deep read",
@@ -342,40 +342,54 @@
         {
           lines: [
             { kind: "prompt", text: "$ la aware status" },
-            { kind: "out", text: "Aware: off (no sources granted)" },
+            { kind: "out", text: "LocalAgent · Aware" },
+            { kind: "out", text: "上次 tick · 尚未运行  |  suggestion · 0" },
+            { kind: "out", text: "授权：· fs · git · terminal · browser · apps" },
             { kind: "dim", text: "默认关闭 · 按源 opt-in" },
           ],
         },
         {
           lines: [
             { kind: "prompt", text: "$ la aware grant fs terminal browser apps -y" },
-            { kind: "out", text: "Granted: fs · terminal · browser · apps" },
-            { kind: "dim", text: "敏感源也可去掉 -y 交互确认" },
+            { kind: "out", text: "[aware] 已授权: fs · terminal · browser · apps" },
+            { kind: "dim", text: "fs 监视目录 · browser 停留时长 · apps 前台（不记按键）" },
           ],
         },
         {
           lines: [
             { kind: "prompt", text: "$ la aware tick --no-chat" },
-            { kind: "out", text: "[tick] fs: 3 events · browser: 1 viewing · apps: Cursor" },
-            { kind: "out", text: "[tick] episodes updated · 1 suggestion pending" },
+            { kind: "out", text: "[aware] tick · 12 事件 · 3 Episode" },
+            { kind: "out", text: "  suggestion 新增 · 1（la aware suggestion）" },
+            { kind: "out", text: "  · fs · README.md · browser · docs 停留 · apps · Cursor" },
           ],
         },
         {
           lines: [
             { kind: "prompt", text: "$ la aware suggestion" },
-            {
-              kind: "accent",
-              text: "s1  ingest doc ~/Notes/roadmap.md  (approve 后才入库)",
-            },
+            { kind: "out", text: "[aware] suggestion (1)：" },
+            { kind: "accent", text: "s1  ingest doc ~/Notes/roadmap.md" },
             { kind: "dim", text: "绝不自动写 Cold / kb/ · approve 仅白名单" },
           ],
         },
         {
           lines: [
             { kind: "prompt", text: "$ la aware --no-chat" },
-            { kind: "out", text: "## Now" },
-            { kind: "out", text: "前台 Cursor · 正在看 docs · 近 3h 改了 README" },
-            { kind: "accent", text: "相关 la chat 可注入 Episode · selected ≠ viewing" },
+            { kind: "out", text: "LocalAgent · Aware · 概览" },
+            { kind: "out", text: "主注意力：Cursor · 正在改 README" },
+            { kind: "out", text: "近 3h · fs README · browser docs · Episode：coding 28m" },
+            { kind: "dim", text: "selected ≠ viewing · 不录屏 / 不记按键" },
+          ],
+        },
+        {
+          lines: [
+            { kind: "prompt", text: "$ la chat" },
+            { kind: "you", text: "you> 我今天下午主要在忙什么？" },
+            { kind: "meta", text: "[chat] 注入 Aware Episode…" },
+            {
+              kind: "assistant",
+              text: "下午主要在 Cursor 改 README、看 LocalAgent 文档；roadmap.md 在 suggestion 里，尚未入库。",
+            },
+            { kind: "accent", text: "相关对话可注入感知 · suggestion ≠ 归档" },
           ],
         },
       ],
@@ -544,40 +558,54 @@
         {
           lines: [
             { kind: "prompt", text: "$ la aware status" },
-            { kind: "out", text: "Aware: off (no sources granted)" },
+            { kind: "out", text: "LocalAgent · Aware" },
+            { kind: "out", text: "last tick · never  |  suggestion · 0" },
+            { kind: "out", text: "sources: · fs · git · terminal · browser · apps" },
             { kind: "dim", text: "Off by default · per-source opt-in" },
           ],
         },
         {
           lines: [
             { kind: "prompt", text: "$ la aware grant fs terminal browser apps -y" },
-            { kind: "out", text: "Granted: fs · terminal · browser · apps" },
-            { kind: "dim", text: "Omit -y to confirm sensitive sources interactively" },
+            { kind: "out", text: "[aware] granted: fs · terminal · browser · apps" },
+            { kind: "dim", text: "fs watch dirs · browser History dwell · apps focus (no keystrokes)" },
           ],
         },
         {
           lines: [
             { kind: "prompt", text: "$ la aware tick --no-chat" },
-            { kind: "out", text: "[tick] fs: 3 events · browser: 1 viewing · apps: Cursor" },
-            { kind: "out", text: "[tick] episodes updated · 1 suggestion pending" },
+            { kind: "out", text: "[aware] tick · 12 events · 3 episodes" },
+            { kind: "out", text: "  suggestion +1（la aware suggestion）" },
+            { kind: "out", text: "  · fs · README.md · browser · docs dwell · apps · Cursor" },
           ],
         },
         {
           lines: [
             { kind: "prompt", text: "$ la aware suggestion" },
-            {
-              kind: "accent",
-              text: "s1  ingest doc ~/Notes/roadmap.md  (archive only after approve)",
-            },
-            { kind: "dim", text: "Never auto-writes Cold / kb/ · whitelist approve only" },
+            { kind: "out", text: "[aware] suggestion (1)：" },
+            { kind: "accent", text: "s1  ingest doc ~/Notes/roadmap.md" },
+            { kind: "dim", text: "Never auto-writes Cold / kb/ · approve whitelist only" },
           ],
         },
         {
           lines: [
             { kind: "prompt", text: "$ la aware --no-chat" },
-            { kind: "out", text: "## Now" },
-            { kind: "out", text: "Focus: Cursor · viewing docs · edited README in last 3h" },
-            { kind: "accent", text: "Relevant la chat can inject episodes · selected ≠ viewing" },
+            { kind: "out", text: "LocalAgent · Aware · overview" },
+            { kind: "out", text: "Focus: Cursor · editing README" },
+            { kind: "out", text: "Last 3h · fs README · browser docs · Episode: coding 28m" },
+            { kind: "dim", text: "selected ≠ viewing · no screen / key capture" },
+          ],
+        },
+        {
+          lines: [
+            { kind: "prompt", text: "$ la chat" },
+            { kind: "you", text: "you> What was I focused on this afternoon?" },
+            { kind: "meta", text: "[chat] injecting Aware episodes…" },
+            {
+              kind: "assistant",
+              text: "Cursor on README + LocalAgent docs; roadmap.md is suggested for ingest — not archived yet.",
+            },
+            { kind: "accent", text: "Relevant chat pulls Aware context · suggestion ≠ archive" },
           ],
         },
       ],

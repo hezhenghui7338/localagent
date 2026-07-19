@@ -20,7 +20,7 @@ Then visit `http://127.0.0.1:8080`.
 
 ## Regenerate demo videos
 
-- **`assets/demos/`** — shipped short clips (`{setup,memory,deepread}.{en,zh}.mp4` + `.poster.jpg`). Target ~800×468, ~8–12s; the page only fetches an MP4 after **Video**.
+- **`assets/demos/`** — shipped short clips (`{setup,memory,deepread,aware}.{en,zh}.mp4` + `.poster.jpg`). Target ~800×468, ~8–12s; the page only fetches an MP4 after **Video**.
 - **`/demos/`** — render toolchain (`scenes.json`, `render_demos.py`). Ignored by Cloudflare via `.assetsignore` (`/demos/` only — do not use bare `demos/`, or `assets/demos/` will be excluded too).
 
 Source of truth for terminal content: [`demos/scenes.json`](demos/scenes.json).
