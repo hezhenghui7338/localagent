@@ -196,15 +196,11 @@ LocalAgent 感知当前工作区——最近修改的文件、Git 状态、TODO 
 # 以 LocalAgent 仓库为工作区
 LA workspace --cwd .
 
-# 本机感知：概览后进入 aware>；grant apps 可读前台/正在播放
-la aware grant fs terminal browser apps -y
-la aware tick --no-chat
-la aware --no-chat
-la aware
-
 # 或在对话中指定工作区
 LA chat --cwd . --provider ollama
 ```
+
+本机感知（`la aware`）见 [§7](#7-日常旁路总结--新闻--润色--aware)。
 
 **预期输出（workspace）：**
 
@@ -274,7 +270,7 @@ LA audit --since 7d --report examples/my-audit.md
 
 ---
 
-## 7. 日常三剑客：总结 · 新闻 · 润色
+## 7. 日常旁路：总结 · 新闻 · 润色 · Aware
 
 ### 一键总结
 
@@ -297,6 +293,20 @@ la news brief --no-ui --limit 5    # 脚本/管道用 --no-ui；TTY 下可去掉
 la polish --no-copy --scene email "您好，上次说的方案这周能给一下吗？"
 ```
 
+### Aware（本机感知，需授权）
+
+按源 `grant` 后才采集。**绝不自动写入 Cold / `kb/`**——可索引文件只进 suggestion。
+
+```bash
+la aware status
+la aware grant fs terminal browser apps -y
+la aware tick --no-chat
+la aware suggestion
+la aware --no-chat                 # 智能总结；TTY 去掉 --no-chat → aware>
+```
+
+**预期：** 当前状态 + 近时动态摘要；suggestion 为空也正常。不想开感知可跳过 grant。
+
 ---
 
 ## 一键演示脚本（可选）
@@ -312,6 +322,7 @@ LA memory search "examples"
 LA ingest doc examples/sample-project-notes.md
 LA rag search "三层记忆"
 LA workspace --cwd .
+la aware --no-chat                 # 可选；未 grant+tick 前可能为空
 LA audit --since 7d
 
 echo "演示完成，数据在 $LA_DATA_DIR"

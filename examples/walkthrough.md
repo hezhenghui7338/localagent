@@ -188,15 +188,10 @@ LocalAgent can see recent files, Git status, and TODO comments — without uploa
 
 ```bash
 LA workspace --cwd .
-
-# Opt-in sensing: overview → aware>; grant apps for focus / Now Playing
-la aware grant fs terminal browser apps -y
-la aware tick --no-chat
-la aware --no-chat
-la aware
-
 LA chat --cwd . --provider ollama
 ```
+
+For opt-in machine sensing (`la aware`), see [§7](#7-daily-side-paths-summarize--news--polish--aware).
 
 **Expected (`workspace`):**
 
@@ -256,7 +251,7 @@ Sample report: [audit-report-sample.md](audit-report-sample.md).
 
 ---
 
-## 7. Daily trio: summarize · news · polish
+## 7. Daily side-paths: summarize · news · polish · aware
 
 ### Summarize
 
@@ -279,6 +274,20 @@ la news brief --no-ui --limit 5    # use --no-ui for scripts; omit on TTY for in
 la polish --no-copy --scene email "Hi — could you send the proposal this week?"
 ```
 
+### Aware (opt-in)
+
+Per-source grant required. **Nothing auto-writes to Cold / `kb/`** — indexable files become suggestions only.
+
+```bash
+la aware status
+la aware grant fs terminal browser apps -y
+la aware tick --no-chat
+la aware suggestion
+la aware --no-chat                 # smart summary; omit --no-chat on TTY → aware>
+```
+
+**Expected:** summary of current state + recent activity; empty suggestion list is fine. Skip grants if you prefer not to enable sensing.
+
 ---
 
 ## One-shot demo (optional)
@@ -294,6 +303,7 @@ LA memory search "examples"
 LA ingest doc examples/sample-project-notes.md
 LA rag search "three-layer memory"
 LA workspace --cwd .
+la aware --no-chat                 # optional; may be empty until you grant + tick
 LA audit --since 7d
 
 echo "Done. Data under $LA_DATA_DIR"

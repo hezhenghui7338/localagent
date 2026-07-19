@@ -5,7 +5,9 @@
   const INSTALL_CMD =
     'pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.6.0"\nla';
 
-  const DEMO_IDS = ["setup", "memory", "deepread"];
+  const DEMO_IDS = ["setup", "memory", "deepread", "aware"];
+  /** Demos without MP4 assets — always use steps mode. */
+  const STEPS_ONLY_DEMOS = ["aware"];
   const DEMO_PLAYBACK_RATE = 1.25;
 
   const strings = {
@@ -33,15 +35,16 @@
       "features.f2.link": "看「真记住你」演示 →",
       "features.f3.title": "Actions Automated",
       "features.f3.body":
-        "Shell、写文件、工作区；summarize · news · polish；定时简报。执行前确认，危险硬拦，办完有回执。",
-      "features.f3.link": "看「文章深聊」演示 →",
+        "Shell、写文件、工作区；summarize · news · polish · <strong>aware</strong>（需授权、不自动入库）；定时简报。执行前确认，危险硬拦，办完有回执。",
+      "features.f3.link": "看「本机感知」演示 →",
       "demo.eyebrow": "演示",
-      "demo.title": "三件事，马上感受到",
+      "demo.title": "几件事，马上感受到",
       "demo.lead":
-        "可分步查看，也可看短片——不接云端推理。装上本机后，这些就是真实路径。",
+        "可分步查看，也可看短片（Aware 目前仅分步）——不接云端推理。装上本机后，这些就是真实路径。",
       "demo.tab.setup": "上手",
       "demo.tab.memory": "记住你",
       "demo.tab.deepread": "深聊",
+      "demo.tab.aware": "感知",
       "demo.mode.steps": "分步",
       "demo.mode.video": "视频",
       "demo.prev": "上一步",
@@ -64,7 +67,12 @@
       "demo.deepread.body":
         "先速读，再围着原文追问；今日资讯精读也是同一套深聊。",
       "demo.deepread.note":
-        "summarize 与 news 精读共用 DocumentChat，不是另开一个空聊天框。",
+        "summarize 与 news 精读共用 DocumentChat。本机上下文见「感知」演示。",
+      "demo.aware.title": "本机感知，先授权再采集",
+      "demo.aware.body":
+        "按源 grant 后 tick 一轮：文件、终端、浏览器与前台应用变成 Episode。可索引文件只进 suggestion，绝不自动写 Cold。",
+      "demo.aware.note":
+        "默认关闭；浏览器选中 ≠ 正在看；不录屏、不记按键内容。",
       "install.eyebrow": "快速开始",
       "install.title": "一行命令，装上就聊",
       "install.lead": "需要 Python 3.10+ 与 pipx。当前版本 v0.6.0。",
@@ -112,15 +120,16 @@
       "features.f2.link": "See the “remembers you” demo →",
       "features.f3.title": "Actions Automated",
       "features.f3.body":
-        "Shell, file writes, workspace; summarize · news · polish; scheduled brief. Confirm before side effects, block danger, show a receipt when done.",
-      "features.f3.link": "See the deep-read demo →",
+        "Shell, file writes, workspace; summarize · news · polish · <strong>aware</strong> (opt-in; never auto-archives); scheduled brief. Confirm before side effects, block danger, show a receipt when done.",
+      "features.f3.link": "See the Aware demo →",
       "demo.eyebrow": "Demo",
-      "demo.title": "Three moments you can feel",
+      "demo.title": "Moments you can feel",
       "demo.lead":
-        "Step through the walkthrough, or watch a short clip — no hosted model. On your machine, these are the real paths.",
+        "Step through the walkthrough, or watch a short clip (Aware is steps-only for now) — no hosted model. On your machine, these are the real paths.",
       "demo.tab.setup": "Setup",
       "demo.tab.memory": "Memory",
       "demo.tab.deepread": "Deep read",
+      "demo.tab.aware": "Aware",
       "demo.mode.steps": "Steps",
       "demo.mode.video": "Video",
       "demo.prev": "Back",
@@ -143,7 +152,12 @@
       "demo.deepread.body":
         "Skim first, then ask against the source. News deep-read uses the same document chat.",
       "demo.deepread.note":
-        "summarize and news deep-read share DocumentChat — not a blank new thread.",
+        "summarize and news deep-read share DocumentChat. For on-device context, see the Aware demo.",
+      "demo.aware.title": "Sense your machine — grant first",
+      "demo.aware.body":
+        "After per-source grant, one tick turns files, terminal, browser, and focus apps into episodes. Indexable files become suggestions only — never auto-written to Cold.",
+      "demo.aware.note":
+        "Off by default. Browser selected ≠ viewing. No screen capture, no keystroke content.",
       "install.eyebrow": "Quick start",
       "install.title": "One command, then chat",
       "install.lead": "Needs Python 3.10+ and pipx. Current version v0.6.0.",
@@ -324,6 +338,47 @@
           ],
         },
       ],
+      aware: [
+        {
+          lines: [
+            { kind: "prompt", text: "$ la aware status" },
+            { kind: "out", text: "Aware: off (no sources granted)" },
+            { kind: "dim", text: "默认关闭 · 按源 opt-in" },
+          ],
+        },
+        {
+          lines: [
+            { kind: "prompt", text: "$ la aware grant fs terminal browser apps -y" },
+            { kind: "out", text: "Granted: fs · terminal · browser · apps" },
+            { kind: "dim", text: "敏感源也可去掉 -y 交互确认" },
+          ],
+        },
+        {
+          lines: [
+            { kind: "prompt", text: "$ la aware tick --no-chat" },
+            { kind: "out", text: "[tick] fs: 3 events · browser: 1 viewing · apps: Cursor" },
+            { kind: "out", text: "[tick] episodes updated · 1 suggestion pending" },
+          ],
+        },
+        {
+          lines: [
+            { kind: "prompt", text: "$ la aware suggestion" },
+            {
+              kind: "accent",
+              text: "s1  ingest doc ~/Notes/roadmap.md  (approve 后才入库)",
+            },
+            { kind: "dim", text: "绝不自动写 Cold / kb/ · approve 仅白名单" },
+          ],
+        },
+        {
+          lines: [
+            { kind: "prompt", text: "$ la aware --no-chat" },
+            { kind: "out", text: "## Now" },
+            { kind: "out", text: "前台 Cursor · 正在看 docs · 近 3h 改了 README" },
+            { kind: "accent", text: "相关 la chat 可注入 Episode · selected ≠ viewing" },
+          ],
+        },
+      ],
     },
     en: {
       setup: [
@@ -482,6 +537,47 @@
               kind: "accent",
               text: "News deep-read = the same DocumentChat as summarize",
             },
+          ],
+        },
+      ],
+      aware: [
+        {
+          lines: [
+            { kind: "prompt", text: "$ la aware status" },
+            { kind: "out", text: "Aware: off (no sources granted)" },
+            { kind: "dim", text: "Off by default · per-source opt-in" },
+          ],
+        },
+        {
+          lines: [
+            { kind: "prompt", text: "$ la aware grant fs terminal browser apps -y" },
+            { kind: "out", text: "Granted: fs · terminal · browser · apps" },
+            { kind: "dim", text: "Omit -y to confirm sensitive sources interactively" },
+          ],
+        },
+        {
+          lines: [
+            { kind: "prompt", text: "$ la aware tick --no-chat" },
+            { kind: "out", text: "[tick] fs: 3 events · browser: 1 viewing · apps: Cursor" },
+            { kind: "out", text: "[tick] episodes updated · 1 suggestion pending" },
+          ],
+        },
+        {
+          lines: [
+            { kind: "prompt", text: "$ la aware suggestion" },
+            {
+              kind: "accent",
+              text: "s1  ingest doc ~/Notes/roadmap.md  (archive only after approve)",
+            },
+            { kind: "dim", text: "Never auto-writes Cold / kb/ · whitelist approve only" },
+          ],
+        },
+        {
+          lines: [
+            { kind: "prompt", text: "$ la aware --no-chat" },
+            { kind: "out", text: "## Now" },
+            { kind: "out", text: "Focus: Cursor · viewing docs · edited README in last 3h" },
+            { kind: "accent", text: "Relevant la chat can inject episodes · selected ≠ viewing" },
           ],
         },
       ],
@@ -683,9 +779,14 @@
   }
 
   function renderDemoMode() {
+    const stepsOnly = STEPS_ONLY_DEMOS.includes(activeDemo);
     document.querySelectorAll("[data-demo-mode]").forEach((btn) => {
       const mode = btn.getAttribute("data-demo-mode");
       btn.classList.toggle("is-active", mode === demoMode);
+      if (mode === "video") {
+        btn.hidden = stepsOnly;
+        btn.setAttribute("aria-hidden", stepsOnly ? "true" : "false");
+      }
     });
 
     const stepsPanel = document.getElementById("demo-steps-panel");
@@ -752,7 +853,10 @@
   }
 
   function setDemoMode(mode) {
-    const next = mode === "video" ? "video" : "steps";
+    let next = mode === "video" ? "video" : "steps";
+    if (next === "video" && STEPS_ONLY_DEMOS.includes(activeDemo)) {
+      next = "steps";
+    }
     if (demoMode === next) return;
     demoMode = next;
     renderDemo();
@@ -767,6 +871,9 @@
   function setDemo(id, { resetStep = true, updateHash = true, scroll = false } = {}) {
     if (!DEMO_IDS.includes(id)) return;
     activeDemo = id;
+    if (STEPS_ONLY_DEMOS.includes(id) && demoMode === "video") {
+      demoMode = "steps";
+    }
     if (resetStep) stepIndex = 0;
     renderDemo();
     if (updateHash) {
