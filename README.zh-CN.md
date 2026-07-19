@@ -13,7 +13,7 @@
 
 # <img src="assets/logo-icon.png" alt="LA" width="36" valign="middle"> LocalAgent
 
-> **本地 AI：记得住你，也能把事办完。**
+> **栖居在你电脑里的 AI。**
 
 ## <img src="assets/icons/quick-start.svg" alt="" width="28" valign="middle"> 快速开始
 
@@ -103,7 +103,7 @@ la
 - LA 致力于提供高质量的 AI 实践反馈  
 - 「书读百遍其义自见」不会自己发生；真正懂，靠的是一遍遍实践  
 - LA 只摘**低垂、成熟**的果实，不引入失控、昂贵、难维护的重栈  
-- LA **只做一件事**：本地 AI——记得住你，也能把事办完。档案留本地，本地可完整跑通；欢迎联网与新技术，默认不设门槛  
+- LA **只做一件事**：栖居在你电脑里的 AI。档案留本地，本地可完整跑通；欢迎联网与新技术，默认不设门槛  
 - 尽量消除使用 AI 的门槛，而不是再添一道
 
 ## <img src="assets/icons/install.svg" alt="" width="28" valign="middle"> 安装与升级

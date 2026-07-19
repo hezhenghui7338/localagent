@@ -1,7 +1,7 @@
 [project]
 name = "la-localagent"
 dynamic = ["version"]
-description = "Local First. Memory Forever. Actions Automated. Local AI that remembers and gets things done."
+description = "Local First. Memory Forever. Actions Automated. The AI that lives on your computer."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

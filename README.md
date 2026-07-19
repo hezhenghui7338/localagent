@@ -13,7 +13,7 @@
 
 # <img src="assets/logo-icon.png" alt="LA" width="36" valign="middle"> LocalAgent
 
-> **Local AI that remembers and gets things done.**
+> **The AI that lives on your computer.**
 
 ## <img src="assets/icons/quick-start.svg" alt="" width="28" valign="middle"> Quick start
 
@@ -103,7 +103,7 @@ Optional OpenRouter / Cursor / Tavily — **archives stay on-device**; that turn
 - LA is dedicated to high-quality, hands-on AI practice feedback  
 - “Read it a hundred times and meaning appears” does not happen by itself — understanding comes from practice  
 - LA only picks **low-hanging, mature** fruit; no uncontrolled, expensive, hard-to-own stacks  
-- LA does **one thing**: local AI that remembers you and gets things done. Archives stay local; the full loop can run offline. Networking and new tech are welcome — barriers are not  
+- LA does **one thing**: the AI that lives on your computer. Archives stay local; the full loop can run offline. Networking and new tech are welcome — barriers are not  
 - Lower the bar to using AI, rather than raising another one
 
 ## <img src="assets/icons/install.svg" alt="" width="28" valign="middle"> Install & upgrade

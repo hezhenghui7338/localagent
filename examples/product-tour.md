@@ -1,7 +1,7 @@
 # LocalAgent Product Tour
 
 > **Positioning**: **Local First. Memory Forever. Actions Automated.**  
-> **One-liner**: Local AI that remembers and gets things done.  
+> **One-liner**: The AI that lives on your computer.  
 > **Goal**: In about **30 minutes**, walk three acts of LocalAgent’s core experience (see [PRD §2](../docs/PRD.md)).  
 > Every step includes **full input** and **expected output** (all sample data is fictional and safe to reproduce).  
 > CLI entrypoint: `la` / `LA` (equivalent). Shorter starter: [walkthrough.md](walkthrough.md).  
