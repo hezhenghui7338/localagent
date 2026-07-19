@@ -15,7 +15,7 @@
 |-----|--------|---------------|----------|
 | **I** | **Local First** | One-command install; local or BYO API | [§1](#1-one-command-install--hello-user--developer) · [§2](#2-local-only-vs-bring-your-own-api) |
 | **II** | **Memory Forever** | Cross-session memory, ChatGPT import, RAG | [§3](#3-cross-session-memory--hot--warm--cold)–[§5](#5-local-document-rag--deep-recall) |
-| **III** | **Actions Automated** | Web, tools, daily side-paths, audit, `la status` | [§6](#6-web-search--small-models-can-use-the-network)–[§12](#12-one-click-polish-story-6d) |
+| **III** | **Actions Automated** | Web, tools, daily side-paths (incl. Aware), audit, `la status` | [§6](#6-web-search--small-models-can-use-the-network)–[§13](#13-aware-opt-in-machine-sensing-story-6e) |
 
 **Persona (fictional)**: You are “Alex Lin”, using LocalAgent on your machine; prefer Americano; in May 2026 held a Shenzhen roadmap meeting; in July 2026 chose Mem0 as the memory engine.
 
@@ -747,6 +747,34 @@ Expect 【识别】/【主推】/【备选】/【改动】. Without `--no-copy`,
 
 ---
 
+## 13. Aware — opt-in machine sensing (story 6e)
+
+Sense what happened on this machine **only after you grant sources**. Episodes power `aware>` and can inject into `la chat` when relevant. **Nothing is auto-written to Cold / `kb/`.**
+
+**Input:**
+
+```bash
+la aware status
+la aware grant fs terminal browser apps -y
+la aware tick --no-chat
+la aware suggestion
+la aware --no-chat
+```
+
+**Expected:**
+
+- `status` shows grants off (or current grants) and last tick
+- `grant` enables the named sources (omit `-y` to confirm sensitive ones interactively)
+- `tick` collects a pass → episodes / optional suggestions; exit 0 even if quiet
+- `suggestion` lists pending items (may be empty); `approve` only runs whitelist commands (`la ingest doc|text`, `la summarize`) — never silent archive
+- `la aware --no-chat` prints a smart summary (now + recent window); on TTY without `--no-chat`, enters `aware>`
+
+Optional follow-up: ask in `la chat` something like “what files did I touch this afternoon?” and expect Aware episode context when relevant.
+
+Privacy to verify: no screen capture; browser **selected ≠ viewing**; apps estimate input-active time without key content.
+
+---
+
 ## Acceptance checklist
 
 Map to [PRD §6](../docs/PRD.md) acceptance — you should be able to check:
@@ -761,6 +789,7 @@ Map to [PRD §6](../docs/PRD.md) acceptance — you should be able to check:
 - [ ] **Story 6b**: `la summarize` shows digest; TTY enters `sum>`; not kept by default  
 - [ ] **Story 6c**: `la news sync` + `la news brief` (or `--no-ui`) shows items with source URLs  
 - [ ] **Story 6d**: `la polish --no-copy` shows Brief + primary/alternates; without `--no-copy`, primary is paste-ready  
+- [ ] **Story 6e**: `la aware grant` → `tick` → summary; suggestions do not auto-write Cold/`kb/`; `approve` whitelist-only  
 - [ ] **Advanced**: Clear-path writes approve and write; May vs July + `reflect` explains the arc  
 
 ---

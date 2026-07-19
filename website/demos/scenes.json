@@ -132,6 +132,48 @@
       { "kind": "you", "text": "sum> 这篇文章对「本机记忆」的核心主张是什么？", "type": true },
       { "kind": "assistant", "text": "主张身份与长期记忆留在本机：模型可替换，记忆层不可被会话清空。 〔§导语 | p.1〕" },
       { "kind": "accent", "text": "news 精读 = summarize 同款 DocumentChat" }
+    ],
+    "aware.en": [
+      { "kind": "prompt", "text": "$ la aware status", "type": true },
+      { "kind": "out", "text": "Aware: off (no sources granted)" },
+      { "kind": "dim", "text": "Off by default · per-source opt-in" },
+      { "kind": "gap" },
+      { "kind": "prompt", "text": "$ la aware grant fs terminal browser apps -y", "type": true },
+      { "kind": "out", "text": "Granted: fs · terminal · browser · apps" },
+      { "kind": "gap" },
+      { "kind": "prompt", "text": "$ la aware tick --no-chat", "type": true },
+      { "kind": "out", "text": "[tick] fs: 3 events · browser: 1 viewing · apps: Cursor" },
+      { "kind": "out", "text": "[tick] episodes updated · 1 suggestion pending" },
+      { "kind": "gap" },
+      { "kind": "prompt", "text": "$ la aware suggestion", "type": true },
+      { "kind": "accent", "text": "s1  ingest doc ~/Notes/roadmap.md  (archive only after approve)" },
+      { "kind": "dim", "text": "Never auto-writes Cold / kb/ · whitelist approve only" },
+      { "kind": "gap" },
+      { "kind": "prompt", "text": "$ la aware --no-chat", "type": true },
+      { "kind": "out", "text": "## Now" },
+      { "kind": "out", "text": "Focus: Cursor · viewing docs · edited README in last 3h" },
+      { "kind": "accent", "text": "Relevant la chat can inject episodes · selected ≠ viewing" }
+    ],
+    "aware.zh": [
+      { "kind": "prompt", "text": "$ la aware status", "type": true },
+      { "kind": "out", "text": "Aware: off (no sources granted)" },
+      { "kind": "dim", "text": "默认关闭 · 按源 opt-in" },
+      { "kind": "gap" },
+      { "kind": "prompt", "text": "$ la aware grant fs terminal browser apps -y", "type": true },
+      { "kind": "out", "text": "Granted: fs · terminal · browser · apps" },
+      { "kind": "gap" },
+      { "kind": "prompt", "text": "$ la aware tick --no-chat", "type": true },
+      { "kind": "out", "text": "[tick] fs: 3 events · browser: 1 viewing · apps: Cursor" },
+      { "kind": "out", "text": "[tick] episodes updated · 1 suggestion pending" },
+      { "kind": "gap" },
+      { "kind": "prompt", "text": "$ la aware suggestion", "type": true },
+      { "kind": "accent", "text": "s1  ingest doc ~/Notes/roadmap.md  (approve 后才入库)" },
+      { "kind": "dim", "text": "绝不自动写 Cold / kb/ · approve 仅白名单" },
+      { "kind": "gap" },
+      { "kind": "prompt", "text": "$ la aware --no-chat", "type": true },
+      { "kind": "out", "text": "## Now" },
+      { "kind": "out", "text": "前台 Cursor · 正在看 docs · 近 3h 改了 README" },
+      { "kind": "accent", "text": "相关 la chat 可注入 Episode · selected ≠ viewing" }
     ]
   }
 }

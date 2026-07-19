@@ -8,9 +8,9 @@
 |------|--------|----------|
 | **Local First** | 配置 / 模型路由 / 纯本地路径 | `cli.py` · `setup` · `config` · `models/router.py` |
 | **Memory Forever** | Hot / Warm / Cold + pending | `memory/*` · `knowledge/*` · `pending/*` · `ingest/*` |
-| **Actions Automated** | 工具循环 · 旁路 · 定时 · 回执 · 确认门 | `agent/runtime.py` · `tools/*` · `summarize/` · `news/` · `writing/` · `status/` · `audit/` |
+| **Actions Automated** | 工具循环 · 旁路 · 定时 · 回执 · 确认门 | `agent/runtime.py` · `tools/*` · `summarize/` · `news/` · `writing/` · `aware/` · `status/` · `audit/` |
 
-Actions 三档：旁路快捷（summarize / news / polish）· Agent 工具循环（`run_shell` / `write_file` + Action receipt + session approve-once）· 定时（`news schedule`）+ Daily Actions / 数据层表面（`la status`·`/status` / 欢迎横幅）。
+Actions 三档：旁路快捷（summarize / news / polish / aware）· Agent 工具循环（`run_shell` / `write_file` + Action receipt + session approve-once）· 定时（`news schedule` · `aware schedule`）+ Daily Actions / 数据层表面（`la status`·`/status` / 欢迎横幅）。
 
 ## 1. 架构
 
@@ -84,6 +84,7 @@ data/
 ├── kb/                  # 软链接
 ├── core_profile.json
 ├── news/                # articles.sqlite · news_profile.json · sync_state.json · cache/
+├── aware/               # events · episodes · suggestions · profile · cursors
 ├── sync_index.json
 ├── pending_queue.json
 ├── conversations/*.jsonl
@@ -105,6 +106,7 @@ data/
 | 一键总结 | 短路径单次生成（1～最多 3 句 + 〔§/p.〕引用）；TTY 默认 `DocumentChatREPL`（`sum>`）；默认不入库 |
 | 新闻嗅探 | BestBlogs RSS → SQLite；兴趣重排；`brief` TTY 用 prompt_toolkit 浏览器（↑↓ / o→webbrowser / r→精读+DocumentChatREPL）；launchd/cron 早 8 点 sync；chat 启动就绪通知 |
 | 一键润色 | `writing/polish.py` 旁路 Agent；场景/态度识别 → 主推+备选；默认 `clipboard.copy_text` |
+| Aware 本机感知 | 按源 opt-in（`fs`/`git`/`terminal`/`browser`/`apps`）；tick → Episode；可索引文件仅 suggestion；`approve` 白名单（`ingest doc\|text` / `summarize`）；**不自动写 Cold/`kb/`**；browser selected ≠ viewing；相关 chat 注入近时 Episode |
 | 编排 | LangGraph + SQLite Checkpointer |
 | 联网 | **ddgs 默认**（无需 Key）；可选 Tavily / SearXNG |
 | 模型 | Ollama 优先，OpenRouter/Cursor 降级 |
