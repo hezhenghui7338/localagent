@@ -148,7 +148,11 @@ def test_prepare_symlink_blocks_pem(tmp_path: Path, isolated_data):
         prepare_symlink(pem)
 
 
-def test_ingest_file_blocks_sensitive_even_if_already_in_kb(tmp_path: Path, isolated_data):
+def test_ingest_file_blocks_sensitive_even_if_already_in_kb(tmp_path: Path, isolated_data, monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     secret = tmp_path / "id_rsa"
     secret.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\nxxx\n", encoding="utf-8")
     link = isolated_data["kb_dir"] / "id_rsa"
@@ -171,6 +175,10 @@ def test_security_scan_still_flags_existing_env_symlink(tmp_path: Path, isolated
 
 
 def test_audit_report_includes_blocked_behavior(isolated_data, monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     tool_reply = (
         '```tool\n{"name": "run_shell", "arguments": '
         '{"command": "mkfs.ext4 /dev/sda"}}\n```'
