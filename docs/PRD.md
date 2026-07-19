@@ -3,7 +3,7 @@
 **产品名**：LocalAgent（CLI 入口：`LA` / `la`）  
 **一句话**：The AI that lives on your computer.  
 **中文一句话**：栖居在你电脑里的 AI。  
-**定位三板斧**：**本地优先。真记得你。把事办完。**（Local First. Memory Forever. Actions Automated.；特性专业化拆分，次于一句话）
+**定位三板斧**：**本地优先，真记得你，把事办完。**（Local First. Memory Forever. Actions Automated.；特性专业化拆分，次于一句话）
 
 **定位**：本地个人 AI——默认本机可完整跑通；跨会话持久记住你；能动手把事办完（工具循环 · 日常旁路 · 定时），副作用可控。
 

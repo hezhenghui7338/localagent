@@ -17,12 +17,12 @@
       "nav.install": "安装",
       "nav.contact": "联系",
       "hero.tagline": "栖居在你电脑里的 AI。",
-      "hero.lead": "本地优先。真记得你。把事办完。",
+      "hero.lead": "本地优先，真记得你，把事办完。",
       "hero.ctaGithub": "在 GitHub 查看",
       "hero.ctaInstall": "快速安装",
       "hero.ctaDemo": "看演示 →",
       "features.eyebrow": "产品设计",
-      "features.title": "本地优先。真记得你。把事办完。",
+      "features.title": "本地优先，真记得你，把事办完。",
       "features.lead":
         "装上就能聊、能记住、能动手办事——默认本机跑通，云端可选。身份、记忆与审计档案存本机、不上传；选用云端模型或联网搜索时，当轮内容会发往对应服务。",
       "features.f1.title": "Local First",
@@ -93,7 +93,7 @@
       "footer.line": "LocalAgent · MIT · v0.6.0",
       title: "LocalAgent — 栖居在你电脑里的 AI",
       description:
-        "LocalAgent — 栖居在你电脑里的 AI。本地优先。真记得你。把事办完。",
+        "LocalAgent — 栖居在你电脑里的 AI。本地优先，真记得你，把事办完。",
     },
     en: {
       "nav.features": "Features",

@@ -224,7 +224,7 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "approval.denied": "用户拒绝执行该操作。",
         "cli.description": (
             "LocalAgent — The AI that lives on your computer · 栖居在你电脑里的 AI。\n"
-            "本地优先。真记得你。把事办完。\n\n"
+            "本地优先，真记得你，把事办完。\n\n"
             "主路径（少即是多）：\n"
             "  la / la chat     对话\n"
             "  la setup [-y]    安装/拉取本地 Ollama 模型\n"
