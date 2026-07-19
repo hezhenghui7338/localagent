@@ -1714,8 +1714,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="LA",
         description=(
-            "LocalAgent — Local First. Memory Forever. Actions Automated.\n"
-            "The AI that lives on your computer · 栖居在你电脑里的 AI。\n\n"
+            "LocalAgent — The AI that lives on your computer · 栖居在你电脑里的 AI。\n"
+            "Local First. Memory Forever. Actions Automated.\n\n"
             "主路径（少即是多）：\n"
             "  la / la chat     对话\n"
             "  la setup [-y]    安装/拉取本地 Ollama 模型\n"

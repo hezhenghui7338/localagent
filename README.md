@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Local First. Memory Forever. Actions Automated.</strong>
+  <strong>The AI that lives on your computer.</strong>
 </p>
 
 <p align="center">
@@ -13,7 +13,7 @@
 
 # <img src="assets/logo-icon.png" alt="LA" width="36" valign="middle"> LocalAgent
 
-> **The AI that lives on your computer.**
+> **Local First. Memory Forever. Actions Automated.**
 
 ## <img src="assets/icons/quick-start.svg" alt="" width="28" valign="middle"> Quick start
 

@@ -1,9 +1,9 @@
 # LocalAgent 需求文档（PRD v1）
 
 **产品名**：LocalAgent（CLI 入口：`LA` / `la`）  
-**定位三板斧**：**Local First. Memory Forever. Actions Automated.**（特性专业化拆分）  
 **一句话**：The AI that lives on your computer.  
-**中文一句话**：栖居在你电脑里的 AI。
+**中文一句话**：栖居在你电脑里的 AI。  
+**定位三板斧**：**Local First. Memory Forever. Actions Automated.**（特性专业化拆分，次于一句话）
 
 **定位**：本地个人 AI——默认本机可完整跑通；跨会话持久记住你；能动手把事办完（工具循环 · 日常旁路 · 定时），副作用可控。
 
@@ -304,7 +304,7 @@ LA audit --since 7d
 - 源码 `pip install -e ".[dev]"` 可开发与测试
 - `la config` 可配置纯本地 Ollama 或自有 OpenRouter / Cursor Key
 - `LA chat` 可在 Ollama / OpenRouter / Cursor 间切换或 auto 降级
-- CLI / 官网 / README 主标为三板斧与一句话；旧主权 slogan 不再作主标
+- CLI help / 官网 / README 主标为一句话，三板斧为次标拆分；旧主权 slogan 不再作主标
 
 ### 6.2 Memory Forever（故事 4–6）
 

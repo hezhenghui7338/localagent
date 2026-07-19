@@ -1,6 +1,6 @@
 # LocalAgent feature walkthrough
 
-> **Local First. Memory Forever. Actions Automated.** — The AI that lives on your computer.
+> **The AI that lives on your computer.** — **Local First. Memory Forever. Actions Automated.**
 
 Short scenarios for a **fast path** (Local → Memory → Actions), including the daily trio (summarize · news · polish). Full user stories live in [product-tour.md](product-tour.md) (Chinese: [product-tour.zh-CN.md](product-tour.zh-CN.md)). Sample data is fictional and safe to reproduce.
 

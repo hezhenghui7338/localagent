@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Local First. Memory Forever. Actions Automated.</strong>
+  <strong>栖居在你电脑里的 AI。</strong>
 </p>
 
 <p align="center">
@@ -13,7 +13,7 @@
 
 # <img src="assets/logo-icon.png" alt="LA" width="36" valign="middle"> LocalAgent
 
-> **栖居在你电脑里的 AI。**
+> **Local First. Memory Forever. Actions Automated.**
 
 ## <img src="assets/icons/quick-start.svg" alt="" width="28" valign="middle"> 快速开始
 

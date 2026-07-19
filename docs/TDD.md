@@ -1,6 +1,6 @@
 # LocalAgent 技术设计文档（TDD v1）
 
-产品叙事真源见 [PRD.md](PRD.md)：**Local First. Memory Forever. Actions Automated.**
+产品叙事真源见 [PRD.md](PRD.md)：**The AI that lives on your computer.** · **Local First. Memory Forever. Actions Automated.**（一句话优先，三板斧为特性拆分）
 
 ## 0. 产品三支柱 → 子系统
 
