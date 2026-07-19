@@ -1,7 +1,7 @@
 # LocalAgent 产品体验教程
 
 > **一句话**：栖居在你电脑里的 AI。  
-> **特性拆分**：**Local First. Memory Forever. Actions Automated.**  
+> **特性拆分**：**本地优先。真记得你。把事办完。**  
 > **目标**：用一条连贯的「虚构用户」故事，在约 **30 分钟**内亲手跑通三幕核心体验（对照 [PRD §2](../docs/PRD.md)）。  
 > 每一步都给出**完整输入**与**预期输出**（示例数据均为虚构，可安全复现）。  
 > 命令入口：`la` / `LA`（等价）。更短的上手见 [walkthrough.zh-CN.md](walkthrough.zh-CN.md)。  
