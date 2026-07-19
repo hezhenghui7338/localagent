@@ -17,7 +17,7 @@
       "nav.install": "安装",
       "nav.contact": "联系",
       "hero.tagline": "Local First. Memory Forever. Actions Automated.",
-      "hero.lead": "本地 AI：记得住你，也能把事办完。",
+      "hero.lead": "栖居在你电脑里的 AI。",
       "hero.ctaGithub": "在 GitHub 查看",
       "hero.ctaInstall": "快速安装",
       "hero.ctaDemo": "看演示 →",
@@ -88,12 +88,12 @@
       "contact.eyebrow": "联系",
       "contact.title": "打招呼",
       "contact.lead":
-        "不是又一个 Chat 客户端——本地 AI：记得住你，也能把事办完。问题、建议或合作，欢迎来信。",
+        "不是又一个 Chat 客户端——栖居在你电脑里的 AI。问题、建议或合作，欢迎来信。",
       "contact.emailLabel": "邮箱",
       "footer.line": "LocalAgent · MIT · v0.6.0",
-      title: "LocalAgent — 本地 AI：记得住你，也能把事办完",
+      title: "LocalAgent — 栖居在你电脑里的 AI",
       description:
-        "LocalAgent — Local First. Memory Forever. Actions Automated. 本地 AI：记得住你，也能把事办完。",
+        "LocalAgent — Local First. Memory Forever. Actions Automated. 栖居在你电脑里的 AI。",
     },
     en: {
       "nav.features": "Features",
@@ -101,7 +101,7 @@
       "nav.install": "Install",
       "nav.contact": "Contact",
       "hero.tagline": "Local First. Memory Forever. Actions Automated.",
-      "hero.lead": "Local AI that remembers and gets things done.",
+      "hero.lead": "The AI that lives on your computer.",
       "hero.ctaGithub": "View on GitHub",
       "hero.ctaInstall": "Quick install",
       "hero.ctaDemo": "See the demo →",
@@ -173,12 +173,12 @@
       "contact.eyebrow": "Contact",
       "contact.title": "Say hello",
       "contact.lead":
-        "Not another chat client — local AI that remembers and gets things done. Questions, ideas, or collaboration welcome.",
+        "Not another chat client — the AI that lives on your computer. Questions, ideas, or collaboration welcome.",
       "contact.emailLabel": "Email",
       "footer.line": "LocalAgent · MIT · v0.6.0",
-      title: "LocalAgent — Local AI that remembers and gets things done",
+      title: "LocalAgent — The AI that lives on your computer",
       description:
-        "LocalAgent — Local First. Memory Forever. Actions Automated. Local AI that remembers and gets things done.",
+        "LocalAgent — Local First. Memory Forever. Actions Automated. The AI that lives on your computer.",
     },
   };
 

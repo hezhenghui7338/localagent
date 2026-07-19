@@ -1,9 +1,9 @@
 # LocalAgent 需求文档（PRD v1）
 
 **产品名**：LocalAgent（CLI 入口：`LA` / `la`）  
-**定位三板斧**：**Local First. Memory Forever. Actions Automated.**  
-**一句话**：Local AI that remembers and gets things done.  
-**中文一句话**：本地 AI：记得住你，也能把事办完。
+**定位三板斧**：**Local First. Memory Forever. Actions Automated.**（特性专业化拆分）  
+**一句话**：The AI that lives on your computer.  
+**中文一句话**：栖居在你电脑里的 AI。
 
 **定位**：本地个人 AI——默认本机可完整跑通；跨会话持久记住你；能动手把事办完（工具循环 · 日常旁路 · 定时），副作用可控。
 
