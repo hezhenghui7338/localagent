@@ -5,10 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from localagent.audit.health import collect_memory_health
-from localagent.audit.report import generate_report, write_report
+from localagent.audit.report import generate_report, print_audit_summary, write_report
 from localagent.audit.security import run_security_scan
 from localagent.audit.usage import aggregate_usage, load_usage_events, log_usage, parse_since
 from localagent.cli import main
+from localagent.i18n import reset_lang_cache
 
 
 def test_log_and_aggregate_usage(isolated_data):
@@ -43,13 +44,39 @@ def test_memory_health_counts(isolated_data):
     assert health.memory_facts == 0
 
 
-def test_generate_report(isolated_data):
+def test_generate_report(isolated_data, monkeypatch):
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     log_usage("tavily", "search", command="web_search", per_call=True)
     md = generate_report(since=None, include_workspace=False)
     assert "# LocalAgent 审计报告" in md
     assert "Token 与服务花费" in md
     assert "Agent 行为与护栏" in md
     assert "文件安全" in md
+
+
+def test_generate_report_en(isolated_data, monkeypatch):
+    monkeypatch.setenv("LA_LANG", "en")
+    reset_lang_cache()
+    log_usage("tavily", "search", command="web_search", per_call=True)
+    md = generate_report(since=None, include_workspace=False)
+    assert "# LocalAgent Audit Report" in md
+    assert "Tokens & service spend" in md
+    assert "File safety" in md
+    assert "审计报告" not in md
+
+
+def test_print_audit_summary_en(isolated_data, monkeypatch):
+    monkeypatch.setenv("LA_LANG", "en")
+    reset_lang_cache()
+    log_usage("ollama", "test", command="chat", prompt_tokens=10, completion_tokens=5)
+    text = print_audit_summary()
+    assert "[audit] Summary" in text
+    assert "Calls:" in text
+    assert "File safety" in text
+    assert "Memory health" in text
+    assert "摘要" not in text
+    assert "文件安全" not in text
 
 
 def test_write_report_html(isolated_data, tmp_path: Path):
@@ -94,9 +121,16 @@ def test_cli_audit_summary(isolated_data, capsys):
     assert "Token" in out
 
 
-def test_cli_audit_report_file(isolated_data, tmp_path: Path):
+def test_cli_audit_report_file(isolated_data, tmp_path: Path, monkeypatch, capsys):
+    # main() → ensure_config reloads project .env with override=True; pin via LA_ENV_FILE.
+    env_file = tmp_path / "la-test.env"
+    env_file.write_text("LA_LANG=zh\n", encoding="utf-8")
+    monkeypatch.setenv("LA_ENV_FILE", str(env_file))
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     out = tmp_path / "report.md"
     rc = main(["audit", "--report", str(out)])
     assert rc == 0
     assert out.is_file()
     assert "审计报告" in out.read_text(encoding="utf-8")
+    assert "报告已写入" in capsys.readouterr().out

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from localagent import config
+from localagent.i18n import reset_lang_cache
 from localagent.summarize.document import (
     KEEP_HINT,
     DocumentTooLongError,
@@ -17,6 +18,15 @@ from localagent.summarize.document import (
     summarize_path,
 )
 from localagent.ingest.loader import LoadedDoc, load_file
+
+
+@pytest.fixture(autouse=True)
+def _force_zh_ui_lang(monkeypatch):
+    """Summarize UI strings stay Chinese in assertions; pin LA_LANG for CI locales."""
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
+    yield
+    reset_lang_cache()
 
 
 def _md_doc(tmp_path: Path) -> Path:

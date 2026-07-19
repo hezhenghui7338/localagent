@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
+
+from localagent.i18n import t
 
 # Common suggestions for help / tab completion (not an exhaustive allow-list).
 SINCE_CHOICES = ("3h", "1d", "1w", "1m", "1y", "2d", "7d")
@@ -20,22 +23,32 @@ _UNIT_DELTA = {
     "y": lambda n: timedelta(days=365 * n),
 }
 
-_UNIT_LABEL = {
-    "h": "小时",
-    "d": "天",
-    "w": "周",
-    "m": "个月",
-    "y": "年",
-}
+# Stable English keys for rollups / signals (not localized).
+_PERIOD_KEYS = (
+    (5, 8, "dawn"),
+    (8, 12, "morning"),
+    (12, 18, "afternoon"),
+    (18, 20, "evening"),
+    (20, 24, "night"),
+)
+
+
+@dataclass(frozen=True)
+class QueryWindow:
+    """Resolved time intent for aware retrieval."""
+
+    since_token: str
+    since_hours: float
+    tier: str  # hot | episodes | rollup
+    prefer_rollup: bool = False
+    label: str = ""
 
 
 def parse_since(value: str | None) -> str:
     """Normalize since token; default 1w when None or empty."""
     text = (value or DEFAULT_SINCE).strip().lower()
     if not _SINCE_RE.fullmatch(text):
-        raise ValueError(
-            f"无效 --since: {value!r}（格式: <N>h|<N>d|<N>w|<N>m|<N>y，如 3h、2d、1w）"
-        )
+        raise ValueError(t("aware.since_invalid", value=value))
     return text
 
 
@@ -57,7 +70,7 @@ def since_to_datetime(value: str | None, *, now: datetime | None = None) -> date
 def label_since(value: str | None) -> str:
     key = parse_since(value)
     n, unit = _split_since(key)
-    return f"最近 {n} {_UNIT_LABEL[unit]}"
+    return t("aware.recent_n", n=n, unit=t(f"aware.unit_{unit}"))
 
 
 def parse_ts(ts: str | datetime | None) -> datetime | None:
@@ -87,36 +100,119 @@ def to_local(ts: str | datetime | None) -> datetime | None:
     return dt.astimezone()
 
 
-def period_label(ts: str | datetime | None) -> str:
-    """Local hour bucket: 清晨/上午/下午/傍晚/晚上/深夜."""
+def period_key(ts: str | datetime | None) -> str:
+    """Stable English period bucket for storage / rollups."""
     local = to_local(ts)
     if local is None:
         return ""
     h = local.hour
-    if 5 <= h < 8:
-        return "清晨"
-    if 8 <= h < 12:
-        return "上午"
-    if 12 <= h < 18:
-        return "下午"
-    if 18 <= h < 20:
-        return "傍晚"
-    if 20 <= h < 24:
-        return "晚上"
-    return "深夜"
+    for lo, hi, key in _PERIOD_KEYS:
+        if lo <= h < hi:
+            return key
+    return "late"
+
+
+def period_label(ts: str | datetime | None) -> str:
+    """Local hour bucket: dawn / morning / afternoon / evening / night / late."""
+    key = period_key(ts)
+    if not key:
+        return ""
+    return t(f"aware.period_{key}")
+
+
+def since_token_to_hours(value: str | None) -> float:
+    """Approximate hours covered by a since token (for legacy since_hours APIs)."""
+    key = parse_since(value)
+    n, unit = _split_since(key)
+    if unit == "h":
+        return float(n)
+    if unit == "d":
+        return float(n * 24)
+    if unit == "w":
+        return float(n * 24 * 7)
+    if unit == "m":
+        return float(n * 24 * 30)
+    return float(n * 24 * 365)
+
+
+def infer_query_window(query: str = "", *, default_token: str = "3h") -> QueryWindow:
+    """Heuristic time intent from user text (rules first; no LLM)."""
+    q = (query or "").strip().lower()
+    if not q:
+        tok = parse_since(default_token)
+        return QueryWindow(
+            since_token=tok,
+            since_hours=since_token_to_hours(tok),
+            tier="hot",
+            prefer_rollup=False,
+            label="default",
+        )
+
+    # Order matters: more specific / longer-horizon first.
+    rules: list[tuple[re.Pattern[str], str, str, bool, str]] = [
+        (re.compile(r"(上个月|上月|last\s*month|past\s*month)"), "1m", "rollup", True, "month"),
+        (re.compile(r"(上周|上星期|last\s*week|past\s*week)"), "1w", "rollup", True, "last_week"),
+        (
+            re.compile(r"(这周|这一周|最近几天|这几天|this\s*week|past\s*few\s*days|recent\s*days)"),
+            "1w",
+            "rollup",
+            True,
+            "week",
+        ),
+        (re.compile(r"(昨天|昨日|昨晚|yesterday|last\s*night)"), "2d", "episodes", False, "yesterday"),
+        (
+            re.compile(
+                r"(今天|今日|今早|今天上午|今天下午|今晚|今天晚上|\btoday\b|this\s*morning|"
+                r"this\s*afternoon|tonight)"
+            ),
+            "1d",
+            "episodes",
+            False,
+            "today",
+        ),
+        (
+            re.compile(
+                r"(刚才|刚刚|现在|此刻|在听|正在听|在看什么|just\s*now|right\s*now|"
+                r"currently|what\s*am\s*i\s*(listening|watching))"
+            ),
+            "3h",
+            "hot",
+            False,
+            "now",
+        ),
+        (re.compile(r"(最近|recently|lately)"), "3h", "hot", False, "recent"),
+    ]
+    for pat, token, tier, prefer_rollup, label in rules:
+        if pat.search(q):
+            tok = parse_since(token)
+            return QueryWindow(
+                since_token=tok,
+                since_hours=since_token_to_hours(tok),
+                tier=tier,
+                prefer_rollup=prefer_rollup,
+                label=label,
+            )
+    tok = parse_since(default_token)
+    return QueryWindow(
+        since_token=tok,
+        since_hours=since_token_to_hours(tok),
+        tier="episodes",
+        prefer_rollup=False,
+        label="fallback",
+    )
 
 
 def day_part_label(ts: str | datetime | None) -> str:
-    """Coarse day/night label for narrative: 白天 / 晚上 / 深夜."""
+    """Coarse day/night label for narrative: day / night / late."""
     local = to_local(ts)
     if local is None:
         return ""
     h = local.hour
     if 5 <= h < 18:
-        return "白天"
+        return t("aware.daypart_day")
     if 18 <= h < 24:
-        return "晚上"
-    return "深夜"
+        return t("aware.daypart_night")
+    return t("aware.daypart_late")
 
 
 def format_clock(

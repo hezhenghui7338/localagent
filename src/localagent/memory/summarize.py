@@ -37,10 +37,14 @@ def llm_summary(text: str, *, context: str = "", max_chars: int = 600) -> str | 
         from localagent.models.router import ChatMessage, get_model_router
     except Exception:
         return None
-    prompt = (
-        "请用简洁中文（或原文语言）概括下列内容，保留关键事实、人名、时间与结论。"
-        f"不超过 {max(80, max_chars // 2)} 字，不要列表，不要前言。\n"
+    from localagent.i18n import resolve_lang, t
+
+    limit_hint = (
+        f"At most {max(80, max_chars // 2)} characters; no lists; no preamble.\n"
+        if resolve_lang() == "en"
+        else f"不超过 {max(80, max_chars // 2)} 字，不要列表，不要前言。\n"
     )
+    prompt = t("prompt.memory_summarize") + limit_hint
     if context:
         prompt += f"上下文: {context}\n"
     prompt += f"\n内容:\n{(text or '')[:6000]}"

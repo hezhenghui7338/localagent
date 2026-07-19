@@ -16,6 +16,7 @@ from localagent.aware.profile import load_profile, save_profile
 from localagent.aware.sensors import iter_active_sensors
 from localagent.aware.store import append_events, load_cursors, save_cursors
 from localagent.aware.types import AwareEvent, utc_now
+from localagent.i18n import t
 
 
 @dataclass
@@ -84,10 +85,43 @@ def release_tick_lock(fh: TextIO[Any] | None) -> None:
         pass
 
 
+def _record_tick_input(events: list[AwareEvent]) -> None:
+    """Record input/presence once per tick using apps focus + same-tick corroboration."""
+    apps = [e for e in events if e.source == "apps" and e.kind == "apps.focus"]
+    if not apps:
+        return
+    from localagent.aware.input_activity import counts_as_input, record_input_activity
+
+    last = apps[-1]
+    idle = last.data.get("idle_seconds")
+    idle_f = float(idle) if idle is not None else None
+    scene = str(last.data.get("scene") or "")
+    corroborated = any(e.source in {"fs", "terminal", "git"} for e in events)
+    record_input_activity(
+        app=str(last.data.get("app") or ""),
+        idle_seconds=idle_f,
+        error=str(last.data.get("error") or ""),
+        scene=scene,
+        corroborated=corroborated,
+    )
+    # Align event flag with final accounting (sensor path has no same-tick corroboration).
+    if idle_f is not None:
+        from localagent.aware.input_activity import is_input_active
+
+        hid = is_input_active(
+            idle_seconds=idle_f,
+            app=str(last.data.get("app") or ""),
+            error=str(last.data.get("error") or ""),
+        )
+        last.data["input_active"] = bool(
+            hid and counts_as_input(scene=scene, corroborated=corroborated)
+        )
+
+
 def run_tick() -> TickResult:
     lock_fh = try_acquire_tick_lock()
     if lock_fh is None:
-        return TickResult(skipped="another tick is already running")
+        return TickResult(skipped=t("aware.tick_skip_busy"))
 
     try:
         return _run_tick_locked()
@@ -99,9 +133,7 @@ def _run_tick_locked() -> TickResult:
     profile = load_profile()
     active = iter_active_sensors(profile)
     if not active:
-        return TickResult(
-            skipped="无已授权且已实现的传感器；先 la aware grant fs git terminal browser apps"
-        )
+        return TickResult(skipped=t("aware.tick_skip_no_sensors"))
 
     deadline_sec = float(getattr(config, "AWARE_TICK_DEADLINE_SEC", 20) or 20)
     deadline = time.monotonic() + max(1.0, deadline_sec)
@@ -118,7 +150,11 @@ def _run_tick_locked() -> TickResult:
         sources.append(name)
         cursor = dict(cursors.get(name) or {})
         try:
-            events, new_cursor = sensor.collect(cursor)
+            # Defer input accounting until all sensors finish (same-tick corroboration).
+            if name == "apps":
+                events, new_cursor = sensor.collect(cursor, record_activity=False)
+            else:
+                events, new_cursor = sensor.collect(cursor)
         except Exception as exc:  # noqa: BLE001
             log_event("aware.tick", source=name, summary=f"sensor error: {exc}")
             errors.append(f"{name}: {exc}")
@@ -138,6 +174,12 @@ def _run_tick_locked() -> TickResult:
     append_events(all_events)
     save_cursors(cursors)
 
+    try:
+        _record_tick_input(all_events)
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"input: {exc}")
+
+    # Reduce: episodes (no LLM). Reason/summary runs only on user pull.
     if all_events:
         try:
             from localagent.aware.episode import ingest_tick_episodes
@@ -153,6 +195,22 @@ def _run_tick_locked() -> TickResult:
         maybe_rebuild_stale_episodes(since_hours=24)
     except Exception as exc:  # noqa: BLE001
         errors.append(f"episode-rebuild: {exc}")
+
+    # Reduce: hot/diff cards for Reason injection.
+    try:
+        from localagent.aware.context_store import refresh_context_artifacts
+
+        refresh_context_artifacts(all_events)
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"context: {exc}")
+
+    # Reduce: daily rollups for historical queries (coarse, no URLs).
+    try:
+        from localagent.aware.rollup import refresh_recent_rollups
+
+        refresh_recent_rollups(days=2)
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"rollup: {exc}")
 
     # Policy only enqueues suggestions (never auto-ingests into kb).
     reaction = (

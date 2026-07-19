@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
+from localagent.i18n import reset_lang_cache
 from localagent.news.brief import build_brief, format_brief
 from localagent.news.links import format_article_link_block, hyperlink
 from localagent.news.mark import mark_article
@@ -31,6 +32,15 @@ from localagent.news.store import (
     today_synced,
 )
 from localagent.news.sync import sync_news
+
+
+@pytest.fixture(autouse=True)
+def _force_zh_ui_lang(monkeypatch):
+    """News UI strings are asserted in Chinese; pin LA_LANG for CI locales."""
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
+    yield
+    reset_lang_cache()
 
 
 SAMPLE_RSS = """<?xml version="1.0" encoding="UTF-8"?>

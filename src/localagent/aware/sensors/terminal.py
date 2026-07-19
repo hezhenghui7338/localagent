@@ -10,6 +10,7 @@ from localagent.aware.platform_paths import discover_history_files
 from localagent.aware.profile import SourceGrant
 from localagent.aware.sensors.base import int_cursor, redact_secrets
 from localagent.aware.types import AwareEvent
+from localagent.i18n import t
 
 _MAX_LINES_PER_TICK = 50
 
@@ -47,7 +48,7 @@ class TerminalSensor:
 
     def describe_access(self) -> list[str]:
         files = self._files()
-        return [str(f) for f in files] or ["（未发现 shell history 文件）"]
+        return [str(f) for f in files] or [t("aware.sensor_terminal_none")]
 
     def collect(self, cursor: dict[str, Any]) -> tuple[list[AwareEvent], dict[str, Any]]:
         events: list[AwareEvent] = []

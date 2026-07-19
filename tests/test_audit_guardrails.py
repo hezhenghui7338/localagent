@@ -18,19 +18,20 @@ from localagent.tools.shell import run_shell_command
 
 
 @pytest.mark.parametrize(
-    "command,reason_substr",
+    "command,reason_substrs",
     [
-        ("rm -rf /", "根目录"),
-        ("rm -rf /*", "根目录"),
-        ("mkfs.ext4 /dev/sda1", "格式化"),
-        ("dd if=/dev/zero of=/dev/sda", "块设备"),
-        (":(){ :|:& };:", "fork"),
+        ("rm -rf /", ("根目录", "filesystem root")),
+        ("rm -rf /*", ("根目录", "filesystem root")),
+        ("mkfs.ext4 /dev/sda1", ("格式化", "Formatting")),
+        ("dd if=/dev/zero of=/dev/sda", ("块设备", "block devices")),
+        (":(){ :|:& };:", ("fork", "Fork")),
     ],
 )
-def test_classify_blocks_destructive_commands(command: str, reason_substr: str):
+def test_classify_blocks_destructive_commands(command: str, reason_substrs: tuple[str, ...]):
     risk = classify_shell_command(command)
     assert risk.level == "blocked"
-    assert reason_substr in (risk.reason or "")
+    reason = risk.reason or ""
+    assert any(s in reason for s in reason_substrs)
 
 
 @pytest.mark.parametrize(
@@ -51,7 +52,7 @@ def test_run_shell_never_executes_blocked_command(isolated_data):
     with patch("localagent.tools.shell.subprocess.run") as run:
         out = run_shell_command("rm -rf /")
     run.assert_not_called()
-    assert "禁止" in out or "错误" in out
+    assert any(token in out for token in ("禁止", "错误", "Error", "blocked", "Blocked"))
 
 
 def test_agent_blocks_rm_rf_root_without_executing(isolated_data, monkeypatch):

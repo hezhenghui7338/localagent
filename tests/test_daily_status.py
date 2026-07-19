@@ -18,7 +18,11 @@ from localagent.status.report import format_status_report
 from localagent.workspace.tasks import add_task
 
 
-def test_format_daily_actions_lines():
+def test_format_daily_actions_lines(monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     status = DailyActionsStatus(
         news_synced_today=True,
         pending_count=2,
@@ -36,7 +40,31 @@ def test_format_daily_actions_lines():
     assert any("suggestion 1" in line for line in lines)
 
 
-def test_format_daily_actions_report_includes_tagline():
+def test_format_daily_actions_lines_en(monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "en")
+    reset_lang_cache()
+    status = DailyActionsStatus(
+        news_synced_today=False,
+        pending_count=2,
+        todo_count=0,
+        aware_events_today=4,
+        aware_suggestion_count=1,
+    )
+    lines = format_daily_actions_lines(status)
+    assert any("News ·" in line and "not synced" in line for line in lines)
+    assert any("Memory pending · 2" in line for line in lines)
+    assert any("Workspace todos · 0" in line for line in lines)
+    assert any("today 4 events" in line for line in lines)
+    assert not any("新闻" in line for line in lines)
+
+
+def test_format_daily_actions_report_includes_tagline(monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     report = format_daily_actions_report(
         DailyActionsStatus(
             news_synced_today=False,
@@ -52,7 +80,11 @@ def test_format_daily_actions_report_includes_tagline():
     assert "la aware suggestion" in report
 
 
-def test_format_data_layer_banner_and_detail_lines():
+def test_format_data_layer_banner_and_detail_lines(monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     layers = DataLayerStatus(
         hot_configured=True,
         hot_name="Ada",
@@ -85,7 +117,11 @@ def test_format_data_layer_banner_and_detail_lines():
     assert any("suggestion 2" in line for line in detail)
 
 
-def test_format_status_report_includes_layers_and_recall():
+def test_format_status_report_includes_layers_and_recall(monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     report = format_status_report(
         daily=DailyActionsStatus(
             news_synced_today=True,

@@ -10,6 +10,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from localagent.i18n import t
+
 _SKIP_DIR_NAMES = frozenset(
     {
         ".git",
@@ -82,23 +84,23 @@ class GitSummary:
 
     def to_text(self) -> str:
         if self.error:
-            return f"Git: {self.error}"
+            return t("workspace.git_error", error=self.error)
         if not self.is_repo:
-            return "Git: 当前目录不是 git 仓库"
-        lines = [f"Git 分支: {self.branch or 'unknown'}"]
+            return t("workspace.git_not_repo")
+        lines = [t("workspace.git_branch", branch=self.branch or "unknown")]
         if self.clean:
-            lines.append("工作区: 干净（无未提交变更）")
+            lines.append(t("workspace.git_clean"))
         else:
             parts = []
             if self.staged_count:
-                parts.append(f"已暂存 {self.staged_count}")
+                parts.append(t("workspace.git_staged", n=self.staged_count))
             if self.unstaged_count:
-                parts.append(f"未暂存 {self.unstaged_count}")
+                parts.append(t("workspace.git_unstaged", n=self.unstaged_count))
             if self.untracked_count:
-                parts.append(f"未跟踪 {self.untracked_count}")
-            lines.append(f"工作区: {', '.join(parts)}")
+                parts.append(t("workspace.git_untracked", n=self.untracked_count))
+            lines.append(t("workspace.git_dirty", parts=", ".join(parts)))
         if self.recent_commits:
-            lines.append("最近提交:")
+            lines.append(t("workspace.git_recent"))
             for commit in self.recent_commits[:5]:
                 lines.append(f"  - {commit['hash']} {commit['date']} {commit['subject']}")
         return "\n".join(lines)
@@ -289,17 +291,17 @@ def format_diagnostic_todos(
     root = workspace or resolve_workspace()
     todos = scan_todos(root, limit=limit)
     lines = [
-        f"[workspace] 诊断扫描（未入队）({root})",
-        "说明: 代码 TODO/checkbox 仅供参考；正式待办请用 la workspace tasks / add",
+        t("workspace.diag_header", root=root),
+        t("workspace.diag_note"),
     ]
     if not todos:
-        lines.append("  未扫描到可读的 TODO/FIXME 或未勾选 checkbox")
+        lines.append(t("workspace.diag_empty"))
         return "\n".join(lines)
     for item in todos:
         lines.append(
             f"  [{item['kind']}] {item['path']}:{item['line']}  {item['text']}"
         )
-    lines.append(f"[workspace] 诊断命中 {len(todos)} 条（未入队）")
+    lines.append(t("workspace.diag_hits", n=len(todos)))
     return "\n".join(lines)
 
 
@@ -311,15 +313,15 @@ def format_workspace_summary(
 ) -> str:
     """Human-readable workspace overview for CLI and agent tools."""
     root = workspace or resolve_workspace()
-    lines = [f"工作区: {root}", f"最近 {days} 天修改的文件:"]
+    lines = [t("workspace.root", root=root), t("workspace.recent_files", days=days)]
     files = recent_files(root, days=days)
     if not files:
-        lines.append("  （无近期变更，或目录不可访问）")
+        lines.append(t("workspace.no_recent"))
     else:
         for item in files[:15]:
             lines.append(f"  - {item['modified']}  {item['path']}")
         if len(files) > 15:
-            lines.append(f"  … 共 {len(files)} 个文件")
+            lines.append(t("workspace.files_more", n=len(files)))
 
     lines.append("")
     lines.append(git_summary(root).to_text())
@@ -333,13 +335,13 @@ def format_workspace_summary(
         diag = scan_todos(root, limit=20)
         lines.append("")
         if diag:
-            lines.append(f"诊断扫描命中 {len(diag)}（未入队，显示前 5）:")
+            lines.append(t("workspace.diag_summary_hits", n=len(diag)))
             for item in diag[:5]:
                 lines.append(
                     f"  - [{item['kind']}] {item['path']}:{item['line']}  {item['text']}"
                 )
         else:
-            lines.append("诊断扫描: 无命中（未入队）")
+            lines.append(t("workspace.diag_summary_empty"))
 
     return "\n".join(lines)
 

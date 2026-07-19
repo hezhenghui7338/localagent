@@ -11,6 +11,7 @@ import shlex
 from dataclasses import dataclass, field
 
 from localagent import config
+from localagent.i18n import t
 
 # Session-only names (not argparse subcommands)
 _EXIT_NAMES = frozenset({"q", "quit", "exit"})
@@ -190,22 +191,22 @@ def print_session_help() -> None:
     parser = build_parser()
     print(parser.format_help().rstrip())
     print()
-    print("会话内命令（进入 LA / LA chat 后，以 / 开头；: 为兼容别名）：")
-    print("  /help, /h              显示本帮助")
-    print("  /status                今日信号 + 数据层（Hot/Warm/Cold/Aware）")
-    print("  /provider, /p [name]   查看或切换模型路径")
-    print("  /model [name|N]        查看/翻页/切换当前路径模型（写入配置）")
-    print("                          翻页: next|prev|page N；序号为本页 1–10")
-    print("  /memory [action]       记忆概览；无参显示 status（与外层 LA memory 相同）")
-    print("  /rag [action]          知识库概览；无参显示 status（与外层 LA rag 相同）")
-    print("  /reflect <问题>        综合推理：记忆召回 → 知识库 → 归纳")
-    print("  /websearch <关键词>    联网搜索（专注互联网）")
-    print("  /deepsearch <主题>     多步联网深度研究")
-    print("  /polish <草稿>         一键润色（场景识别 + 复制主推）")
-    print("  /q, /quit, /exit       退出对话")
+    print(t("session.help_header"))
+    print(t("session.help_help"))
+    print(t("session.help_status"))
+    print(t("session.help_provider"))
+    print(t("session.help_model"))
+    print(t("session.help_model_page"))
+    print(t("session.help_memory"))
+    print(t("session.help_rag"))
+    print(t("session.help_reflect"))
+    print(t("session.help_websearch"))
+    print(t("session.help_deepsearch"))
+    print(t("session.help_polish"))
+    print(t("session.help_quit"))
     print()
-    print("外层 LA <command> 与会话内 /<command> 等价（/chat 除外）。")
-    print("会话快捷方式：/add → /ingest text，/search → /memory search，/forget → /memory forget。")
+    print(t("session.help_equiv"))
+    print(t("session.help_shortcuts"))
 
 
 def _normalize_ingest_argv(argv: list[str]) -> list[str]:
@@ -242,14 +243,14 @@ def dispatch_cli_argv(argv: list[str], *, allow_chat: bool = True) -> int:
         if allow_chat:
             argv = ["chat"]
         else:
-            print("[LA] 缺少命令。输入 /help 查看可用命令。")
+            print(t("session.missing_cmd"))
             return 1
 
     argv = _normalize_config_argv(argv)
     argv = _normalize_ingest_argv(argv)
 
     if not allow_chat and argv[0] == "chat":
-        print("[LA] 已在对话中，无需 /chat。输入问题开始聊天，或 /help 查看命令。")
+        print(t("session.already_chat"))
         return 1
 
     parser = build_parser()
@@ -265,7 +266,7 @@ def dispatch_cli_argv(argv: list[str], *, allow_chat: bool = True) -> int:
         if allow_chat:
             args = parser.parse_args(["chat"])
         else:
-            print("[LA] 缺少命令。输入 /help 查看可用命令。")
+            print(t("session.missing_cmd"))
             return 1
 
     return int(args.func(args))
@@ -277,7 +278,7 @@ def _handle_provider(argv: list[str], ctx: SessionCommandContext) -> DispatchRes
     router = get_model_router()
     if len(argv) < 2:
         status = router.provider_status()
-        print(f"当前路径: {router.format_provider_hint(ctx.provider)}")
+        print(t("session.provider_current", hint=router.format_provider_hint(ctx.provider)))
         for name in config.MODEL_PROVIDER_PRIORITY:
             server = config.get_model_server(name)
             model = (
@@ -288,7 +289,7 @@ def _handle_provider(argv: list[str], ctx: SessionCommandContext) -> DispatchRes
             mark = "✓" if status.get(name) else "✗"
             print(f"  {name:<12} {mark}  {model}")
         providers = "|".join(config.VALID_PROVIDERS)
-        print(f"用法: /provider auto|{providers}")
+        print(t("session.provider_usage", providers=providers))
         return DispatchResult(provider=ctx.provider)
 
     try:
@@ -298,26 +299,26 @@ def _handle_provider(argv: list[str], ctx: SessionCommandContext) -> DispatchRes
         return DispatchResult(exit_code=1, provider=ctx.provider)
 
     set_repl_provider(ctx.provider)
-    print(f"[provider] 已切换为 {router.format_provider_hint(ctx.provider)}")
+    print(t("session.provider_switched", hint=router.format_provider_hint(ctx.provider)))
     return DispatchResult(provider=ctx.provider)
 
 
 def _print_model_page(state: _ModelBrowseState) -> None:
     total = len(state.models)
     if not state.models:
-        print("未获取到可用模型列表（可仍用 /model <名称> 直接设置）。")
-        print("用法: /model <名称>")
+        print(t("session.model_empty"))
+        print(t("session.model_usage"))
         return
 
     pages = _model_page_count(total)
     page_items = _page_slice(state.models, state.page)
-    print(f"可用模型 ({total}) 第 {state.page + 1}/{pages} 页：")
+    print(t("session.model_list", total=total, page=state.page + 1, pages=pages))
     for index, name in enumerate(page_items, start=1):
         mark = "  ←" if name == state.current else ""
         print(f"  {index}. {name}{mark}")
     if pages > 1:
-        print("翻页: /model next|prev|page N")
-    print(f"选择: /model <1-{len(page_items)}> 或完整名称")
+        print(t("session.model_page_hint"))
+    print(t("session.model_select", n=len(page_items)))
 
 
 def _apply_model_choice(effective: str, selected: str) -> DispatchResult:
@@ -333,8 +334,8 @@ def _apply_model_choice(effective: str, selected: str) -> DispatchResult:
     get_model_router().clear_model_cache()
     if _model_browse is not None and _model_browse.provider == effective:
         _model_browse.current = selected
-    print(f"[model] 已将 {effective} 默认模型设为 {selected}")
-    print(f"[model] 已写入 {config_path}（下次启动默认使用）")
+    print(t("session.model_set", provider=effective, model=selected))
+    print(t("session.model_wrote", path=config_path))
     return DispatchResult()
 
 
@@ -348,10 +349,10 @@ def _handle_model(argv: list[str], ctx: SessionCommandContext) -> DispatchResult
 
     if len(argv) < 2:
         if ctx.provider == config.DEFAULT_MODEL_PROVIDER:
-            print(f"当前路径: auto → {effective}")
+            print(t("session.model_path_auto", effective=effective))
         else:
-            print(f"当前路径: {effective}")
-        print(f"当前模型: {current or '(未配置)'}")
+            print(t("session.model_path", effective=effective))
+        print(t("session.model_current", current=current or t("session.model_unset")))
         state = _sync_model_browse(effective, models, current, reset_page=True)
         _print_model_page(state)
         return DispatchResult()
@@ -363,11 +364,11 @@ def _handle_model(argv: list[str], ctx: SessionCommandContext) -> DispatchResult
     if key in _MODEL_PAGE_NEXT or key in _MODEL_PAGE_PREV or key == "page":
         state = _sync_model_browse(effective, models, current)
         if not state.models:
-            print("[model] 无可用模型列表，无法翻页。可直接 /model <名称>")
+            print(t("session.model_no_page"))
             return DispatchResult(exit_code=1)
         if key == "page":
             if len(argv) < 3 or not argv[2].strip().isdigit():
-                print(f"用法: /model page <1-{_model_page_count(len(state.models))}>")
+                print(t("session.model_page_usage", pages=_model_page_count(len(state.models))))
                 return DispatchResult(exit_code=1)
             target = int(argv[2].strip()) - 1
             state = _sync_model_browse(effective, models, current, page=target)
@@ -376,10 +377,10 @@ def _handle_model(argv: list[str], ctx: SessionCommandContext) -> DispatchResult
         else:
             state = _sync_model_browse(effective, models, current, page=state.page - 1)
         if ctx.provider == config.DEFAULT_MODEL_PROVIDER:
-            print(f"当前路径: auto → {effective}")
+            print(t("session.model_path_auto", effective=effective))
         else:
-            print(f"当前路径: {effective}")
-        print(f"当前模型: {current or '(未配置)'}")
+            print(t("session.model_path", effective=effective))
+        print(t("session.model_current", current=current or t("session.model_unset")))
         _print_model_page(state)
         return DispatchResult()
 
@@ -389,13 +390,13 @@ def _handle_model(argv: list[str], ctx: SessionCommandContext) -> DispatchResult
         page_items = _page_slice(state.models, state.page)
         index = int(raw)
         if index < 1 or index > len(page_items):
-            print(f"[model] 序号无效，本页请输入 1–{len(page_items) or 0}（先 /model 或 /model next 翻页）")
+            print(t("session.model_bad_index", n=len(page_items) or 0))
             return DispatchResult(exit_code=1)
         return _apply_model_choice(effective, page_items[index - 1])
 
     selected = raw
     if models and selected not in models:
-        print(f"[model] 提示: {selected!r} 不在当前列表中，仍将写入配置")
+        print(t("session.model_not_in_list", name=selected))
     return _apply_model_choice(effective, selected)
 
 
@@ -406,19 +407,19 @@ def _handle_deepsearch(argv: list[str], ctx: SessionCommandContext) -> DispatchR
 
     topic = " ".join(argv[1:]).strip()
     if not topic:
-        print("用法: /deepsearch <主题>")
+        print(t("session.deepsearch_usage"))
         return DispatchResult(exit_code=1)
 
     user_line = f"/deepsearch {topic}"
     append_message(ctx.session_id, "user", user_line)
-    with ActivityIndicator("deepsearch", f"研究中: {topic}") as activity:
+    with ActivityIndicator("deepsearch", t("session.deepsearch_working", topic=topic)) as activity:
         try:
             report = deep_search(topic, on_status=activity.update)
         except KeyboardInterrupt:
-            print("\n[chat] deepsearch 已取消")
+            print(t("session.deepsearch_cancelled"))
             return DispatchResult(exit_code=130)
         except Exception as exc:
-            report = f"[deepsearch 失败] {exc}"
+            report = t("session.deepsearch_failed", exc=exc)
     print(report)
     append_message(ctx.session_id, "assistant", report, tool="deepsearch")
     ctx.history.append({"role": "user", "content": user_line})
@@ -430,7 +431,7 @@ def dispatch_session_line(line: str, ctx: SessionCommandContext) -> DispatchResu
     """Dispatch a ``/`` or ``:`` line inside the chat REPL."""
     argv = normalize_session_argv(line)
     if not argv:
-        print("[LA] 空命令。输入 /help 查看可用命令。")
+        print(t("session.empty_cmd"))
         return DispatchResult(exit_code=1)
 
     cmd = argv[0]
@@ -442,10 +443,7 @@ def dispatch_session_line(line: str, ctx: SessionCommandContext) -> DispatchResu
         return DispatchResult()
 
     if cmd == "m":
-        print(
-            "[LA] /m 已弃用（易与 model / memory 混淆）。"
-            "切换模型用 /model，查询记忆用 /memory query。"
-        )
+        print(t("session.m_deprecated"))
         return DispatchResult(exit_code=1)
 
     if cmd in _PROVIDER_NAMES:
@@ -460,10 +458,10 @@ def dispatch_session_line(line: str, ctx: SessionCommandContext) -> DispatchResu
     try:
         rc = dispatch_cli_argv(argv, allow_chat=False)
     except KeyboardInterrupt:
-        print("\n[LA] 已中断")
+        print(t("session.interrupted"))
         return DispatchResult(exit_code=130)
     except Exception as exc:
-        print(f"[LA] 命令失败: {exc}")
+        print(t("session.cmd_failed", exc=exc))
         return DispatchResult(exit_code=1)
 
     return DispatchResult(exit_code=rc)

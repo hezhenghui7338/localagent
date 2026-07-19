@@ -5,7 +5,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 from localagent.cli import main
+from localagent.i18n import reset_lang_cache
 from localagent.workspace.context import (
     format_workspace_summary,
     git_summary,
@@ -24,7 +27,15 @@ from localagent.workspace.tasks import (
     snooze,
     task_count_open,
 )
-import pytest
+
+
+@pytest.fixture(autouse=True)
+def _force_zh_ui_lang(monkeypatch):
+    """Workspace UI strings are asserted in Chinese; pin LA_LANG for CI locales."""
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
+    yield
+    reset_lang_cache()
 
 
 def test_scan_todos_finds_markers(tmp_path: Path):

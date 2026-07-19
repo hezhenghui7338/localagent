@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from localagent import config
+from localagent.i18n import t
 
 TaskSource = Literal["user", "agent", "import"]
 TaskStatus = Literal["open", "snoozed", "done", "dismissed", "expired"]
@@ -226,9 +227,9 @@ def _validate_create(title: str, rationale: str) -> tuple[str, str]:
     min_title = max(1, int(config.WORKSPACE_TASK_MIN_TITLE_LEN))
     min_why = max(1, int(config.WORKSPACE_TASK_MIN_RATIONALE_LEN))
     if len(title) < min_title:
-        raise TaskRejected(f"title 至少 {min_title} 个字符")
+        raise TaskRejected(t("workspace.reject_title", n=min_title))
     if len(rationale) < min_why:
-        raise TaskRejected(f"rationale（--why）至少 {min_why} 个字符，说明为何值得占用注意力")
+        raise TaskRejected(t("workspace.reject_rationale", n=min_why))
     return title, rationale
 
 
@@ -270,14 +271,14 @@ def add_task(
     """Create a managed task. Raises TaskRejected on gate failure."""
     title, rationale = _validate_create(title, rationale)
     if source not in ("user", "agent", "import"):
-        raise TaskRejected(f"非法 source: {source}")
+        raise TaskRejected(t("workspace.reject_source", source=source))
 
     root = _resolve_root(workspace)
     items = load_tasks(root)
     now = _utc_now()
     dup = _find_active_duplicate(items, title)
     if dup is not None:
-        raise TaskRejected(f"已有相同待办 [{dup.id}]: {dup.title}")
+        raise TaskRejected(t("workspace.reject_dup", id=dup.id, title=dup.title))
 
     if source == "agent":
         # Also block recent identical titles (any status) within 7 days for agent spam.
@@ -288,10 +289,12 @@ def add_task(
                 continue
             created = _parse_ts(item.created_at)
             if created is not None and created >= cutoff:
-                raise TaskRejected(f"近 7 日内已提议过相同待办 [{item.id}]: {item.title}")
+                raise TaskRejected(
+                    t("workspace.reject_recent", id=item.id, title=item.title)
+                )
         limit = max(0, int(config.WORKSPACE_TASK_AGENT_DAILY_LIMIT))
         if _agent_created_today(items, now) >= limit:
-            raise TaskRejected(f"今日 agent 入队已达上限（{limit}）")
+            raise TaskRejected(t("workspace.reject_daily", limit=limit))
 
     days = int(config.WORKSPACE_TASK_TTL_DAYS if ttl_days is None else ttl_days)
     days = max(1, days)
@@ -439,17 +442,17 @@ def format_task_line(task: WorkspaceTask, *, verbose: bool = True) -> str:
         exp = expires.strftime("%m-%d")
     base = f"[{task.id}] {task.title}"
     if exp:
-        base += f"  ·到期 {exp}"
+        base += t("workspace.line_expires", exp=exp)
     if task.source and task.source != "user":
         base += f"  ·{task.source}"
     if not verbose:
         return base
-    lines = [base, f"    为何: {task.rationale}"]
+    lines = [base, t("workspace.line_why", rationale=task.rationale)]
     if task.complete_hint:
-        lines.append(f"    办完: {task.complete_hint}")
+        lines.append(t("workspace.line_hint", hint=task.complete_hint))
     if task.evidence:
-        lines.append(f"    旁证: {task.evidence}")
-    lines.append(f"    → la workspace done {task.id}  |  dismiss {task.id}  |  snooze {task.id}")
+        lines.append(t("workspace.line_evidence", evidence=task.evidence))
+    lines.append(t("workspace.line_actions", id=task.id))
     return "\n".join(lines)
 
 
@@ -462,8 +465,14 @@ def format_open_tasks(
     root = _resolve_root(workspace)
     items = list_open(root)[:limit]
     if not items:
-        return f"工作区托管待办: 无（{root}）\n提示: la workspace add \"…\" --why \"…\""
-    lines = [f"工作区托管待办 ({len(list_open(root))} 条 open，显示前 {len(items)}):"]
+        return t("workspace.open_empty", root=root)
+    lines = [
+        t(
+            "workspace.open_header",
+            count=len(list_open(root)),
+            shown=len(items),
+        )
+    ]
     for item in items:
         lines.append(format_task_line(item, verbose=verbose))
     return "\n".join(lines)
@@ -474,14 +483,15 @@ def format_tasks_for_summary(workspace: Path | None = None, *, limit: int = 10) 
     root = _resolve_root(workspace)
     open_items = list_open(root)
     if not open_items:
-        return "托管待办: 无\n提示: la workspace add \"标题\" --why \"理由\""
-    lines = [f"托管待办 ({len(open_items)} 条 open，显示前 {min(limit, len(open_items))}):"]
+        return t("workspace.summary_empty")
+    shown = min(limit, len(open_items))
+    lines = [t("workspace.summary_header", count=len(open_items), shown=shown)]
     for item in open_items[:limit]:
         hint = f" — {item.complete_hint}" if item.complete_hint else ""
         lines.append(f"  - [{item.id}] {item.title}{hint}")
-        lines.append(f"    为何: {item.rationale}")
+        lines.append(t("workspace.line_why", rationale=item.rationale))
     if len(open_items) > limit:
-        lines.append(f"  … 共 {len(open_items)} 条；la workspace tasks / done <id>")
+        lines.append(t("workspace.summary_more", count=len(open_items)))
     else:
-        lines.append("  完成: la workspace done <id>  |  搁置: snooze <id>  |  丢弃: dismiss <id>")
+        lines.append(t("workspace.summary_actions"))
     return "\n".join(lines)

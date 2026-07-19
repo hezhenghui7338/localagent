@@ -21,6 +21,7 @@ from localagent.aware.engagement import (
 from localagent.aware.platform_paths import BrowserDb, discover_browser_dbs
 from localagent.aware.profile import SourceGrant
 from localagent.aware.types import AwareEvent, utc_now
+from localagent.i18n import t
 
 _MAX_RAW_VISITS = 100
 _CHROMIUM_EPOCH = datetime(1601, 1, 1, tzinfo=timezone.utc)
@@ -49,9 +50,9 @@ class BrowserSensor:
     def describe_access(self) -> list[str]:
         dbs = self._dbs()
         if not dbs:
-            return ["（未发现浏览器 History 数据库）"]
+            return [t("aware.sensor_browser_none")]
         lines = [f"{db.browser}/{db.profile}: {db.path}" for db in dbs]
-        lines.append("说明: 只读拷贝后查询；不读取 Cookie/密码。macOS Safari 可能需要「完全磁盘访问」。")
+        lines.append(t("aware.sensor_browser_note"))
         return lines
 
     def collect(self, cursor: dict[str, Any]) -> tuple[list[AwareEvent], dict[str, Any]]:

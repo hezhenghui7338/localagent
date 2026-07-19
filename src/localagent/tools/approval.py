@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from localagent import config
+from localagent.i18n import t
 from localagent.ui.console import prepare_for_input
 
 ApprovalPolicy = Literal["always", "dangerous", "off"]
@@ -15,35 +16,35 @@ RiskLevel = Literal["safe", "dangerous", "blocked"]
 
 APPROVAL_TOOLS = frozenset({"run_shell", "write_file", "edit_file"})
 
-# Hard-blocked: never execute, never ask.
+# Hard-blocked: never execute, never ask. Values are i18n keys.
 _BLOCKED_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\brm\s+(-\w*f\w*\s+)?(-\w*r\w*\s+)?/\s*$", re.I), "禁止删除根目录"),
-    (re.compile(r"\brm\s+(-\w*f\w*\s+)?(-\w*r\w*\s+)?/\*", re.I), "禁止删除根目录"),
-    (re.compile(r"\bmkfs\.", re.I), "禁止格式化磁盘"),
-    (re.compile(r"\bdd\s+.*\bof=/dev/", re.I), "禁止直接写入块设备"),
-    (re.compile(r">\s*/dev/sd[a-z]", re.I), "禁止覆写磁盘设备"),
-    (re.compile(r":\(\)\s*\{.*:\|:.*\}.*;", re.I), "禁止 fork bomb"),
+    (re.compile(r"\brm\s+(-\w*f\w*\s+)?(-\w*r\w*\s+)?/\s*$", re.I), "approval.deny_rm_root"),
+    (re.compile(r"\brm\s+(-\w*f\w*\s+)?(-\w*r\w*\s+)?/\*", re.I), "approval.deny_rm_root"),
+    (re.compile(r"\bmkfs\.", re.I), "approval.deny_mkfs"),
+    (re.compile(r"\bdd\s+.*\bof=/dev/", re.I), "approval.deny_dd_dev"),
+    (re.compile(r">\s*/dev/sd[a-z]", re.I), "approval.deny_overwrite_disk"),
+    (re.compile(r":\(\)\s*\{.*:\|:.*\}.*;", re.I), "approval.deny_fork_bomb"),
 ]
 
 # Dangerous: execute only after explicit confirmation (with warning).
 _DANGEROUS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\brm\s+(-[^\s]*\s+)*", re.I), "删除文件/目录"),
-    (re.compile(r"\bsudo\b", re.I), "以管理员权限执行"),
-    (re.compile(r"\bchmod\b", re.I), "修改文件权限"),
-    (re.compile(r"\bchown\b", re.I), "修改文件所有者"),
-    (re.compile(r"\b(mv|cp)\b", re.I), "移动/复制文件"),
-    (re.compile(r"\b(unlink|shred|truncate)\b", re.I), "破坏性文件操作"),
-    (re.compile(r"\bfind\b.*\s-delete\b", re.I), "find 批量删除"),
-    (re.compile(r"\bgit\s+push\b.*--force", re.I), "强制推送"),
-    (re.compile(r"\bgit\s+reset\b.*--hard", re.I), "硬重置"),
-    (re.compile(r"\bgit\s+clean\b.*-[^\s]*f", re.I), "强制清理工作区"),
-    (re.compile(r"\bkill\b|\bpkill\b|\bkillall\b", re.I), "终止进程"),
-    (re.compile(r"\b(curl|wget)\b.*\|\s*(ba)?sh\b", re.I), "下载并执行脚本"),
-    (re.compile(r"\beval\b", re.I), "动态执行代码"),
-    (re.compile(r">\s*/", re.I), "重定向写入绝对路径"),
-    (re.compile(r"\bdd\b", re.I), "底层磁盘读写"),
-    (re.compile(r"\b(shutdown|reboot|halt|poweroff)\b", re.I), "关机/重启"),
-    (re.compile(r"\b(pip|npm|brew)\s+uninstall\b", re.I), "卸载软件包"),
+    (re.compile(r"\brm\s+(-[^\s]*\s+)*", re.I), "approval.risk_rm"),
+    (re.compile(r"\bsudo\b", re.I), "approval.risk_sudo"),
+    (re.compile(r"\bchmod\b", re.I), "approval.risk_chmod"),
+    (re.compile(r"\bchown\b", re.I), "approval.risk_chown"),
+    (re.compile(r"\b(mv|cp)\b", re.I), "approval.risk_mv_cp"),
+    (re.compile(r"\b(unlink|shred|truncate)\b", re.I), "approval.risk_destructive"),
+    (re.compile(r"\bfind\b.*\s-delete\b", re.I), "approval.risk_find_delete"),
+    (re.compile(r"\bgit\s+push\b.*--force", re.I), "approval.risk_force_push"),
+    (re.compile(r"\bgit\s+reset\b.*--hard", re.I), "approval.risk_hard_reset"),
+    (re.compile(r"\bgit\s+clean\b.*-[^\s]*f", re.I), "approval.risk_git_clean"),
+    (re.compile(r"\bkill\b|\bpkill\b|\bkillall\b", re.I), "approval.risk_kill"),
+    (re.compile(r"\b(curl|wget)\b.*\|\s*(ba)?sh\b", re.I), "approval.risk_pipe_sh"),
+    (re.compile(r"\beval\b", re.I), "approval.risk_eval"),
+    (re.compile(r">\s*/", re.I), "approval.risk_redirect"),
+    (re.compile(r"\bdd\b", re.I), "approval.risk_dd"),
+    (re.compile(r"\b(shutdown|reboot|halt|poweroff)\b", re.I), "approval.risk_power"),
+    (re.compile(r"\b(pip|npm|brew)\s+uninstall\b", re.I), "approval.risk_uninstall"),
 ]
 
 
@@ -96,15 +97,15 @@ def get_approval_policy() -> ApprovalPolicy:
 def classify_shell_command(command: str) -> ToolRisk:
     cmd = command.strip()
     if not cmd:
-        return ToolRisk(level="safe", summary="(空命令)")
+        return ToolRisk(level="safe", summary=t("approval.empty_cmd"))
 
-    for pattern, reason in _BLOCKED_PATTERNS:
+    for pattern, reason_key in _BLOCKED_PATTERNS:
         if pattern.search(cmd):
-            return ToolRisk(level="blocked", reason=reason, summary=cmd)
+            return ToolRisk(level="blocked", reason=t(reason_key), summary=cmd)
 
-    for pattern, reason in _DANGEROUS_PATTERNS:
+    for pattern, reason_key in _DANGEROUS_PATTERNS:
         if pattern.search(cmd):
-            return ToolRisk(level="dangerous", reason=reason, summary=cmd)
+            return ToolRisk(level="dangerous", reason=t(reason_key), summary=cmd)
 
     return ToolRisk(level="safe", summary=cmd)
 
@@ -113,27 +114,33 @@ def classify_tool(name: str, arguments: dict[str, Any]) -> ToolRisk:
     if name == "run_shell":
         return classify_shell_command(str(arguments.get("command") or ""))
     if name == "write_file":
-        path = str(arguments.get("path") or "").strip() or "(未指定路径)"
+        path = str(arguments.get("path") or "").strip() or t("approval.path_unset")
         mode = str(arguments.get("mode") or "overwrite").strip().lower()
         content = str(arguments.get("content") or "")
         preview = content if len(content) <= 80 else f"{content[:80]}…"
-        action = "追加" if mode == "append" else "覆盖写入"
+        action = t("approval.write_append") if mode == "append" else t("approval.write_overwrite")
         return ToolRisk(
             level="dangerous",
-            reason=f"{action}本地文件",
-            summary=f"{path} ({action}, {len(content)} 字符)\n预览: {preview}",
+            reason=t("approval.write_reason", action=action),
+            summary=t(
+                "approval.write_summary",
+                path=path,
+                action=action,
+                n=len(content),
+                preview=preview,
+            ),
         )
     if name == "edit_file":
-        path = str(arguments.get("path") or "").strip() or "(未指定路径)"
+        path = str(arguments.get("path") or "").strip() or t("approval.path_unset")
         old = str(arguments.get("old_string") or "")
         new = str(arguments.get("new_string") or "")
         replace_all = bool(arguments.get("replace_all"))
         old_preview = old if len(old) <= 60 else f"{old[:60]}…"
         new_preview = new if len(new) <= 60 else f"{new[:60]}…"
-        scope = "全部替换" if replace_all else "单处替换"
+        scope = t("approval.edit_all") if replace_all else t("approval.edit_one")
         return ToolRisk(
             level="dangerous",
-            reason="精确编辑本地文件",
+            reason=t("approval.edit_reason"),
             summary=(
                 f"{path} ({scope})\n"
                 f"- old: {old_preview}\n"
@@ -160,22 +167,22 @@ def needs_approval(name: str, risk: ToolRisk, *, policy: ApprovalPolicy | None =
 
 def format_approval_prompt(name: str, arguments: dict[str, Any], risk: ToolRisk) -> str:
     if name == "run_shell":
-        label = "执行命令"
+        label = t("approval.label_shell")
     elif name == "edit_file":
-        label = "编辑文件"
+        label = t("approval.label_edit")
     else:
-        label = "写入文件"
-    lines = [f"⚠ Agent 请求{label}，需你确认后才会执行。"]
+        label = t("approval.label_write")
+    lines = [t("approval.request", label=label)]
     if risk.level == "dangerous" and risk.reason:
-        lines.append(f"风险: {risk.reason}")
+        lines.append(t("approval.risk_line", reason=risk.reason))
     if name == "run_shell":
         cmd = str(arguments.get("command") or "").strip()
-        lines.append(f"命令: {cmd}")
+        lines.append(t("approval.cmd_line", cmd=cmd))
         cwd = arguments.get("cwd")
         if cwd:
-            lines.append(f"目录: {cwd}")
+            lines.append(t("approval.cwd_line", cwd=cwd))
     elif name in {"write_file", "edit_file"}:
-        lines.append(f"目标: {risk.summary}")
+        lines.append(t("approval.target_line", summary=risk.summary))
     return "\n".join(lines)
 
 
@@ -205,13 +212,13 @@ def prompt_tool_approval(
     if risk.level == "dangerous":
         suffix = "[y/N]"
         default = False
-        question = "⚠ 这是潜在危险操作，确定要执行吗？"
+        question = t("approval.q_dangerous")
     elif allow_session:
         suffix = "[y/N/a]"
-        question = "是否允许执行？（a = 本会话同类安全操作不再询问）"
+        question = t("approval.q_session")
     else:
         suffix = "[y/N]"
-        question = "是否允许执行？"
+        question = t("approval.q_default")
 
     try:
         answer = input(f"{question} {suffix} ").strip().lower()
@@ -232,5 +239,8 @@ def prompt_tool_approval(
 
 def denied_message(*, blocked: bool = False, reason: str | None = None) -> str:
     if blocked:
-        return f"错误: {reason or '该操作已被安全策略禁止'}。"
-    return "用户拒绝执行该操作。"
+        return t(
+            "approval.blocked",
+            reason=reason or t("approval.blocked_default"),
+        )
+    return t("approval.denied")

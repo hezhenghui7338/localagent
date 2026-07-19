@@ -19,11 +19,18 @@ from localagent.aware.engagement import (
     tick_interval_minutes,
 )
 from localagent.aware.timewin import (
+    QueryWindow,
     format_now_local,
     format_period_span,
+    infer_query_window,
+    parse_since,
     parse_ts,
+    period_key,
+    since_token_to_hours,
+    to_local,
 )
 from localagent.aware.types import AwareEvent, utc_now
+from localagent.i18n import t
 
 _CODE_SUFFIXES = frozenset(
     {
@@ -90,9 +97,9 @@ class AwareEpisode:
             bits.append(" · " + ", ".join(self.entities[:5]))
         sig = self.signals
         if sig.get("chars_approx"):
-            bits.append(f" · ~{sig['chars_approx']}字")
+            bits.append(t("aware.episode_chars", n=sig["chars_approx"]))
         if sig.get("cmd_count"):
-            bits.append(f" · {sig['cmd_count']}条命令")
+            bits.append(t("aware.episode_cmds", n=sig["cmd_count"]))
         samples = sig.get("samples") if isinstance(sig.get("samples"), list) else []
         if self.source == "browser" and samples:
             short = [str(s)[:40] for s in samples[:3] if s]
@@ -144,6 +151,24 @@ def _maybe_rotate(path: Path) -> None:
         return
 
 
+def stamp_episode_time_signals(ep: AwareEpisode) -> AwareEpisode:
+    """Materialize local_day / period / tz_offset_min on write (time is first-class)."""
+    local = to_local(ep.start or ep.end)
+    if local is None:
+        return ep
+    sig = dict(ep.signals or {})
+    if not str(sig.get("local_day") or "").strip():
+        sig["local_day"] = local.date().isoformat()
+    if not str(sig.get("period") or "").strip():
+        sig["period"] = period_key(ep.start or ep.end)
+    if sig.get("tz_offset_min") is None:
+        off = local.utcoffset()
+        if off is not None:
+            sig["tz_offset_min"] = int(off.total_seconds() // 60)
+    ep.signals = sig
+    return ep
+
+
 def append_episodes(episodes: list[AwareEpisode]) -> int:
     if not episodes:
         return 0
@@ -153,7 +178,79 @@ def append_episodes(episodes: list[AwareEpisode]) -> int:
     _maybe_rotate(path)
     with path.open("a", encoding="utf-8") as fh:
         for ep in episodes:
+            stamp_episode_time_signals(ep)
             fh.write(json.dumps(ep.to_dict(), ensure_ascii=False) + "\n")
+    return len(episodes)
+
+
+def _session_collapse_key(ep: AwareEpisode) -> str:
+    fk = str(ep.signals.get("focus_key") or "").strip()
+    if fk:
+        return f"fk:{fk}"
+    # Growing tick snapshots share the same start + title prefix.
+    return f"{ep.source}|{ep.scene}|{ep.start}|{(ep.title or '')[:60]}"
+
+
+def collapse_session_episodes(episodes: list[AwareEpisode]) -> list[AwareEpisode]:
+    """Drop nested same-session snapshots; keep the longest (usually latest) row."""
+    groups: dict[str, list[AwareEpisode]] = {}
+    for ep in episodes:
+        groups.setdefault(_session_collapse_key(ep), []).append(ep)
+    out: list[AwareEpisode] = []
+    for rows in groups.values():
+        best = max(
+            rows,
+            key=lambda e: (
+                float(e.duration_min or 0),
+                e.end or "",
+                e.start or "",
+            ),
+        )
+        out.append(best)
+    return out
+
+
+def upsert_episodes(episodes: list[AwareEpisode]) -> int:
+    """Update open apps/browser sessions by focus_key; append the rest."""
+    if not episodes:
+        return 0
+    existing = _load_all_episodes()
+    # Prefer the latest row per focus_key so a restarted session does not
+    # keep updating a finished earlier one.
+    index_by_fk: dict[str, int] = {}
+    for i, ep in enumerate(existing):
+        fk = str(ep.signals.get("focus_key") or "").strip()
+        if not fk:
+            continue
+        prev = index_by_fk.get(fk)
+        if prev is None:
+            index_by_fk[fk] = i
+            continue
+        old = existing[prev]
+        if (ep.end or ep.start or "") >= (old.end or old.start or ""):
+            index_by_fk[fk] = i
+
+    changed = False
+    to_append: list[AwareEpisode] = []
+    for ep in episodes:
+        fk = str(ep.signals.get("focus_key") or "").strip()
+        if fk and fk in index_by_fk:
+            idx = index_by_fk[fk]
+            old = existing[idx]
+            # Same continuous session shares focus_since / start.
+            if (old.start or "") == (ep.start or ""):
+                ep.id = old.id or ep.id
+                existing[idx] = ep
+                changed = True
+                continue
+        to_append.append(ep)
+
+    if changed:
+        for i, ep in enumerate(existing):
+            existing[i] = stamp_episode_time_signals(ep)
+        _rewrite_episodes(existing)
+    if to_append:
+        append_episodes(to_append)
     return len(episodes)
 
 
@@ -190,7 +287,43 @@ def load_episodes(
     except OSError:
         return []
     rows.sort(key=lambda e: e.end or e.start, reverse=True)
+    if limit <= 0:
+        return list(reversed(rows))
     return list(reversed(rows[:limit]))
+
+
+def load_episodes_for_overview(
+    *,
+    since: datetime | None,
+    limit: int = 8,
+) -> list[AwareEpisode]:
+    """Load full since-window episodes, collapse sessions, stratify by day, rank."""
+    from localagent.aware.timewin import to_local
+
+    # limit=0 → no newest-N truncation so multi-day windows stay complete.
+    raw_limit = 0 if since is not None else max(limit * 4, 40)
+    raw = load_episodes(since=since, limit=raw_limit)
+    collapsed = collapse_session_episodes(filter_stale_episodes(raw))
+    if not collapsed:
+        return []
+
+    by_day: dict[str, list[AwareEpisode]] = {}
+    for ep in collapsed:
+        local = to_local(ep.end or ep.start)
+        day = local.date().isoformat() if local else "unknown"
+        by_day.setdefault(day, []).append(ep)
+
+    per_day = max(2, (limit + len(by_day) - 1) // max(1, len(by_day)))
+    picked: list[AwareEpisode] = []
+    for day in sorted(by_day.keys()):
+        day_rows = sorted(
+            by_day[day],
+            key=episode_attention_score,
+            reverse=True,
+        )[:per_day]
+        picked.extend(day_rows)
+    ranked = sorted(picked, key=episode_attention_score, reverse=True)
+    return ranked[: max(0, limit)]
 
 
 def _fs_scene(suffix: str) -> str:
@@ -226,7 +359,12 @@ def build_episodes_from_events(events: list[AwareEvent]) -> list[AwareEpisode]:
             start = rows[0].ts
             end = rows[-1].ts
             dur = _duration_min(start, end, fallback_min=max(1.0, len(rows) * 0.5))
-            title = f"{scene} · 新增{created}/编辑{modified}"
+            title = t(
+                "aware.episode_fs_title",
+                scene=scene,
+                created=created,
+                modified=modified,
+            )
             out.append(
                 AwareEpisode(
                     id=uuid.uuid4().hex[:12],
@@ -260,7 +398,7 @@ def build_episodes_from_events(events: list[AwareEvent]) -> list[AwareEpisode]:
                 end=end,
                 duration_min=_duration_min(start, end, fallback_min=float(len(cmds))),
                 source="terminal",
-                title=f"终端会话 · {len(cmds)} 条命令",
+                title=t("aware.episode_term_title", n=len(cmds)),
                 entities=_cmd_entities(cmds),
                 signals={"cmd_count": len(cmds), "commands": cmds[:20]},
                 evidence=cmds[:12],
@@ -286,7 +424,7 @@ def build_episodes_from_events(events: list[AwareEvent]) -> list[AwareEpisode]:
                     git_events[0].ts, git_events[-1].ts, fallback_min=1.0
                 ),
                 source="git",
-                title=f"git · {len(git_events)} 条变化",
+                title=t("aware.episode_git_title", n=len(git_events)),
                 entities=[e.title for e in git_events[:8]],
                 signals={"event_count": len(git_events)},
                 evidence=[f"{e.kind}:{e.title}" for e in git_events[:8]],
@@ -349,7 +487,7 @@ def _build_browser_episodes(browser_events: list[AwareEvent]) -> list[AwareEpiso
                     end=end,
                     duration_min=duration_min,
                     source="browser",
-                    title="敏感类浏览（仅时长信号）",
+                    title=t("aware.episode_sensitive_browse"),
                     entities=[],
                     signals=signals,
                     evidence=[],
@@ -403,7 +541,7 @@ def _build_browser_episodes(browser_events: list[AwareEvent]) -> list[AwareEpiso
                     end=end,
                     duration_min=duration_min,
                     source="browser",
-                    title="敏感类浏览页（仅时长信号）",
+                    title=t("aware.episode_sensitive_page"),
                     entities=[],
                     signals={
                         "dwell_sec": dwell_sec,
@@ -477,7 +615,7 @@ def _build_apps_episodes(
                     end=end,
                     duration_min=duration_min,
                     source="apps",
-                    title="敏感类前台活动（仅时长）",
+                    title=t("aware.episode_sensitive_fg"),
                     entities=[],
                     signals={
                         "dwell_sec": dwell_sec,
@@ -575,9 +713,9 @@ def filter_stale_episodes(episodes: list[AwareEpisode]) -> list[AwareEpisode]:
 def rank_episodes_by_attention(
     episodes: list[AwareEpisode], *, limit: int = 16
 ) -> list[AwareEpisode]:
-    """Highest attention first; drops stale browser rows."""
+    """Highest attention first; drops stale browser rows and nested sessions."""
     ranked = sorted(
-        filter_stale_episodes(episodes),
+        collapse_session_episodes(filter_stale_episodes(episodes)),
         key=episode_attention_score,
         reverse=True,
     )
@@ -592,7 +730,7 @@ def format_episode_cards(
     by_time: bool = False,
 ) -> str:
     if not episodes:
-        return "（近窗无 Episode）"
+        return t("aware.episode_empty")
     if by_attention:
         rows = rank_episodes_by_attention(episodes, limit=limit)
     elif by_time:
@@ -603,7 +741,7 @@ def format_episode_cards(
     else:
         rows = filter_stale_episodes(episodes)[-limit:]
     if not rows:
-        return "（近窗无 Episode）"
+        return t("aware.episode_empty")
     lines = [ep.to_card_line() for ep in rows]
     return "\n".join(f"- {ln}" for ln in lines)
 
@@ -726,10 +864,11 @@ def _browser_session_annotation(active_url: str, *, viewing: bool) -> str:
 
 
 def _format_browser_now_context(*, max_other_tabs: int = 8) -> list[str]:
-    """Render open-tab title/URL for chat injection (sensitive hosts redacted)."""
+    """Render viewing tab for chat injection; unattended open tabs are omitted."""
     from localagent.aware.browser_tabs import collect_open_tabs
     from localagent.aware.scenes import classify_host, host_from_url
 
+    _ = max_other_tabs  # kept for call-site compat; other open tabs are not attention
     snaps = collect_open_tabs()
     if not snaps:
         return []
@@ -741,120 +880,177 @@ def _format_browser_now_context(*, max_other_tabs: int = 8) -> list[str]:
             continue
         any_ok = True
         label = snap.browser or "browser"
-        active_host = host_from_url(snap.active_url)
-        active_scene = classify_host(active_host, title=snap.active_title) if active_host else ""
         viewing = bool(snap.frontmost)
-        focus_label = "正在看" if viewing else "后台选中"
-        sess_bit = _browser_session_annotation(snap.active_url, viewing=viewing)
+        if not viewing:
+            # Background-open tabs are not attention; omit titles/URLs.
+            tab_bit = f" · {snap.tabs}标签" if snap.tabs else ""
+            lines.append(f"- [{label}] 非正在看{tab_bit}")
+            continue
+        active_host = host_from_url(snap.active_url)
+        active_scene = (
+            classify_host(active_host, title=snap.active_title) if active_host else ""
+        )
+        sess_bit = _browser_session_annotation(snap.active_url, viewing=True)
         if active_scene == "sensitive_video":
             lines.append(
-                f"- [{label}] {focus_label}: 敏感类标签（已打开）"
+                f"- [{label}] 正在看: 敏感类标签（已打开）"
                 + (f" · {snap.tabs}标签" if snap.tabs else "")
                 + sess_bit
             )
         elif snap.active_title or snap.active_url:
             title = (snap.active_title or "(无标题)")[:80]
             url = (snap.active_url or "")[:120]
-            bit = f"- [{label}] {focus_label}: {title}"
+            bit = f"- [{label}] 正在看: {title}"
             if url:
                 bit += f"  {url}"
             bit += sess_bit
             lines.append(bit)
         else:
             lines.append(f"- [{label}] {snap.tabs}标签{sess_bit}")
-
-        others: list[str] = []
-        sensitive_others = 0
-        for it in snap.items:
-            if it.get("active"):
-                continue
-            host = host_from_url(str(it.get("url") or ""))
-            scene = classify_host(host, title=str(it.get("title") or "")) if host else ""
-            if scene == "sensitive_video":
-                sensitive_others += 1
-                continue
-            t = str(it.get("title") or "").strip()
-            u = str(it.get("url") or "").strip()
-            if not t and not u:
-                continue
-            if t:
-                others.append(f"{t[:50]}" + (f" ({host})" if host else ""))
-            elif host:
-                others.append(host)
-            elif u:
-                others.append(u[:60])
-            if len(others) >= max_other_tabs:
-                break
-        for o in others:
-            lines.append(f"  · {o}")
-        if sensitive_others:
-            lines.append(f"  · 另有 {sensitive_others} 个敏感类标签")
     if not any_ok and len(lines) == 1:
         return []
     return lines
 
 
 def _format_apps_now_context() -> list[str]:
-    """One-line current frontmost app for chat injection (if apps granted)."""
+    """Frontmost app + Now Playing observation for chat injection (if apps granted)."""
     try:
-        from localagent.aware.digest import _render_now_compact
-        from localagent.aware.profile import load_profile
+        from localagent.aware.profile import SourceGrant, load_profile
+        from localagent.aware.sensors.apps import AppsSensor
 
         if not load_profile().is_granted("apps"):
             return []
-        live = _render_now_compact("apps")
+        # Live read; do not inflate daily input-activity aggregates.
+        events, _ = AppsSensor(SourceGrant(granted=True)).collect(
+            {}, record_activity=False
+        )
     except Exception:
         return []
-    if not live:
-        return []
-    text = live[0].strip()
-    if text.startswith("当前:"):
-        text = text[len("当前:") :].strip()
-    if not text:
-        return []
-    return ["### 当前应用", f"- {text}"]
+
+    lines = ["### 当前应用"]
+    if not events:
+        lines.append("- （无法读取前台）")
+        lines.extend(
+            [
+                "### 正在播放",
+                "- 未观测到",
+            ]
+        )
+        return lines
+
+    e = events[0]
+    app = str(e.data.get("app") or "").strip()
+    win = str(e.data.get("window_title") or "").strip()
+    scene = str(e.data.get("scene") or "").strip()
+    eng = str(e.data.get("engagement") or "").strip()
+    media_title = str(e.data.get("media_title") or "").strip()
+    media_artist = str(e.data.get("media_artist") or "").strip()
+    media_app = str(e.data.get("media_app") or "").strip()
+
+    app_bits = [app or "(unknown)"]
+    if win:
+        app_bits.append(win[:80])
+    app_line = " · ".join(app_bits)
+    if scene:
+        tag = f"{scene}/{eng}" if eng else scene
+        app_line += f" [{tag}]"
+    lines.append(f"- {app_line}")
+
+    # Always emit an explicit media observation so models cannot infer from frontmost app.
+    lines.append("### 正在播放")
+    if media_title:
+        media_bits = [media_title[:80]]
+        if media_artist:
+            media_bits.append(media_artist[:60])
+        if media_app:
+            media_bits.append(f"via {media_app}")
+        lines.append("- " + " · ".join(media_bits))
+    else:
+        lines.append(
+            "- 未观测到（仅检测 Spotify/Music 播放中；"
+            "无此字段≠用户没在听其它来源）"
+        )
+    return lines
 
 
 def retrieve_aware_context(
     query: str = "",
     *,
-    since_hours: float = 3,
+    since_hours: float | None = None,
+    since: str | None = None,
     limit: int = 14,
     include_sensitive: bool = False,
 ) -> str:
-    """Compact card for aware> / optional chat injection."""
+    """Compact card for aware> / optional chat injection.
+
+    Time window: explicit ``since`` token > ``since_hours`` > infer from ``query``.
+    Longer horizons prefer daily rollups over raw episode dumps.
+    """
     del include_sensitive  # reserved; MVP has no sensitive episode titles
-    since = datetime.now(timezone.utc) - timedelta(hours=max(1.0, since_hours))
-    episodes = load_episodes(since=since, limit=80)
-    q = (query or "").strip().lower()
-    query_ranked = False
-    if q and episodes:
-        tokens = [t for t in re.split(r"\s+", q) if len(t) >= 2]
-        scored: list[tuple[int, AwareEpisode]] = []
-        for ep in episodes:
-            blob = " ".join(
-                [
-                    ep.scene,
-                    ep.title,
-                    ep.source,
-                    " ".join(ep.entities),
-                    " ".join(ep.evidence),
-                    json.dumps(ep.signals, ensure_ascii=False),
-                ]
-            ).lower()
-            score = sum(1 for t in tokens if t in blob)
-            if score:
-                scored.append((score, ep))
-        if scored:
-            scored.sort(key=lambda x: x[0], reverse=True)
-            episodes = [ep for _s, ep in scored[:limit]]
-            query_ranked = True
-        else:
-            episodes = episodes[-limit:]
+    win = infer_query_window(query, default_token="3h")
+    if since:
+        try:
+            tok = parse_since(since)
+            hours = since_token_to_hours(tok)
+            prefer_rollup = hours >= 72
+            tier = "rollup" if prefer_rollup else ("hot" if hours <= 3 else "episodes")
+            win = QueryWindow(
+                since_token=tok,
+                since_hours=hours,
+                tier=tier,
+                prefer_rollup=prefer_rollup,
+                label="explicit_since",
+            )
+        except ValueError:
+            pass
+    elif since_hours is not None:
+        hours = max(1.0, float(since_hours))
+        prefer_rollup = hours >= 72 or win.prefer_rollup
+        win = QueryWindow(
+            since_token=win.since_token,
+            since_hours=hours,
+            tier="rollup" if prefer_rollup else win.tier,
+            prefer_rollup=prefer_rollup,
+            label=win.label or "explicit_hours",
+        )
+
+    since_dt = datetime.now(timezone.utc) - timedelta(hours=max(1.0, win.since_hours))
+    ep_limit = max(4, min(limit, 8)) if win.prefer_rollup else limit
+    if win.prefer_rollup:
+        episodes = load_episodes_for_overview(since=since_dt, limit=ep_limit)
+        query_ranked = False
     else:
-        episodes = episodes[-limit:]
+        episodes = load_episodes(since=since_dt, limit=80)
+        q = (query or "").strip().lower()
+        query_ranked = False
+        if q and episodes:
+            tokens = [t for t in re.split(r"\s+", q) if len(t) >= 2]
+            scored: list[tuple[int, AwareEpisode]] = []
+            for ep in episodes:
+                blob = " ".join(
+                    [
+                        ep.scene,
+                        ep.title,
+                        ep.source,
+                        " ".join(ep.entities),
+                        " ".join(ep.evidence),
+                        json.dumps(ep.signals, ensure_ascii=False),
+                    ]
+                ).lower()
+                score = sum(1 for t in tokens if t in blob)
+                if score:
+                    scored.append((score, ep))
+            if scored:
+                scored.sort(key=lambda x: x[0], reverse=True)
+                episodes = [ep for _s, ep in scored[:ep_limit]]
+                query_ranked = True
+            else:
+                episodes = episodes[-ep_limit:]
+        else:
+            episodes = episodes[-ep_limit:]
 
     from localagent.aware.hypothesis import load_hypotheses
+    from localagent.aware.rollup import format_rollup_context_lines
     from localagent.aware.suggestion import load_suggestions
     from localagent.status.daily import format_daily_actions_lines
 
@@ -868,16 +1064,35 @@ def retrieve_aware_context(
     browser_now = _format_browser_now_context()
     apps_now = _format_apps_now_context()
 
+    from localagent.aware.context_store import (
+        format_diff_context_lines,
+        format_hot_as_of_note,
+        load_diff,
+        load_hot,
+    )
+
+    hot_note = format_hot_as_of_note(load_hot())
+    # Diff/hot live blocks matter for near-term; skip noisy diff on long history.
+    diff_lines = format_diff_context_lines(load_diff()) if win.since_hours <= 48 else []
+    rollup_lines = (
+        format_rollup_context_lines(since=since_dt, limit=14)
+        if win.prefer_rollup or win.tier == "rollup" or win.since_hours >= 48
+        else []
+    )
+
     hours_label = (
-        f"{int(since_hours)}"
-        if float(since_hours).is_integer()
-        else f"{since_hours:g}"
+        f"{int(win.since_hours)}"
+        if float(win.since_hours).is_integer()
+        else f"{win.since_hours:g}"
     )
     now_local = format_now_local()
     parts = [
         "## LocalAgent Aware 感知上下文",
         f"当前本地时间: {now_local}",
+        f"检索窗: {win.since_token} · tier={win.tier}"
+        + (" · 优先日摘要" if win.prefer_rollup else ""),
         "规则: 只根据下列本机感知证据回答；无证据不编造；"
+        "缺字段时答「未观测到」，禁止自信否定未列出的行为；"
         "发生时刻/时段是最重要元数据；回答「什么时候」必须引用证据中的本地钟面或时段"
         "（如晚上 22:15、白天上午），禁止仅用「最近/今天上午」等模糊说法；"
         "叙事优先按时段组织（白天/晚上 + 具体钟面），总时长次之；"
@@ -885,26 +1100,43 @@ def retrieve_aware_context(
         "用户询问本人本机行为时，须据证据如实回答敏感类的时段与时长，"
         "不得因主题敏感拒答或道德说教；"
         "参与度分 glance(掠过)/dwell(停留)/engage(操作)，勿把 glance 当深度使用；"
-        "当前应用(apps.focus)优先表示用户此刻注意力；"
-        "浏览器块仅在标注「正在看」时表示正在浏览，后台选中标签不等于浏览；"
-        "当前应用/正在看浏览器块优先于近期 Episode；"
+        "当前应用表示此刻前台，近窗 Episode 表示持续注意力；"
+        "「正在播放」无标题 ≠ 用户没在听歌；只能说未观测到播放中媒体"
+        "（当前仅检测 Spotify/Music），不得用前台应用推断或否定后台媒体；"
+        "询问音乐/正在听什么时，只依据「正在播放」块或 scene=music 的 Episode；"
+        "浏览器块仅在标注「正在看」时表示正在浏览；"
+        "非正在看/后台打开标签不播报标题，不等于浏览；"
+        "前台应用不能用来否定后台浏览器标签；"
+        "「自上次 tick 以来的变化」为空时不要编造其它活动；"
+        "日摘要为历史聚合，粒度粗于 Episode，勿编造摘要未列出的细节；"
         f"Episode 仅为近 {hours_label} 小时活动，勿当成此刻仍在做的事；"
         "做朋友式建议，不评判。需要改记忆时请用户明确说「记住」。",
         "",
     ]
+    if hot_note and win.since_hours <= 48:
+        parts.extend([*hot_note, ""])
     # Apps (true frontmost) before browser tabs so attention signal leads.
-    if apps_now:
+    if apps_now and win.tier in {"hot", "episodes"} and win.since_hours <= 48:
         parts.extend([*apps_now, ""])
-    if browser_now:
+    if browser_now and win.tier in {"hot", "episodes"} and win.since_hours <= 48:
         parts.extend([*browser_now, ""])
+    if diff_lines:
+        parts.extend([*diff_lines, ""])
+    if rollup_lines:
+        parts.extend([*rollup_lines, ""])
     ep_cards = (
-        format_episode_cards(episodes, limit=limit)
+        format_episode_cards(episodes, limit=ep_limit)
         if query_ranked
-        else format_episode_cards(episodes, limit=limit, by_time=True)
+        else format_episode_cards(episodes, limit=ep_limit, by_time=True)
+    )
+    ep_heading = (
+        f"### 抽样 Episode（近 {hours_label} 小时 · 历史窗已压缩）"
+        if win.prefer_rollup
+        else f"### 近期 Episode（时间线 · 最近 {hours_label} 小时）"
     )
     parts.extend(
         [
-            f"### 近期 Episode（时间线 · 最近 {hours_label} 小时）",
+            ep_heading,
             ep_cards,
             "",
             "### 近期状态",
@@ -964,7 +1196,7 @@ def maybe_enqueue_active_hours_wellness() -> str | None:
 def ingest_tick_episodes(events: list[AwareEvent]) -> list[AwareEpisode]:
     """Build + persist episodes from a tick; maybe enqueue wellness / hypotheses."""
     episodes = build_episodes_from_events(events)
-    append_episodes(episodes)
+    upsert_episodes(episodes)
     try:
         maybe_enqueue_active_hours_wellness()
     except Exception:

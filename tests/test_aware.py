@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -32,9 +33,13 @@ from localagent.aware.types import AwareEvent
 
 @pytest.fixture()
 def aware_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    from localagent.i18n import reset_lang_cache
+
     data = tmp_path / "data"
     data.mkdir(exist_ok=True)
     monkeypatch.setenv("LA_DATA_DIR", str(data))
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     import localagent.config as config
 
     monkeypatch.setattr(config, "DATA_DIR", data)
@@ -49,6 +54,10 @@ def aware_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(config, "AWARE_SUGGESTIONS_FILE", data / "aware" / "suggestions.json")
     monkeypatch.setattr(config, "AWARE_SESSIONS_DIR", data / "aware" / "sessions")
     monkeypatch.setattr(config, "AWARE_NOW_DIR", data / "aware" / "now")
+    monkeypatch.setattr(config, "AWARE_CONTEXT_DIR", data / "aware" / "context")
+    monkeypatch.setattr(config, "AWARE_HOT_FILE", data / "aware" / "context" / "hot.json")
+    monkeypatch.setattr(config, "AWARE_DIFF_FILE", data / "aware" / "context" / "diff.json")
+    monkeypatch.setattr(config, "AWARE_ROLLUPS_FILE", data / "aware" / "rollups.jsonl")
     monkeypatch.setattr(config, "AWARE_TICK_LOCK_FILE", data / "aware" / "tick.lock")
     monkeypatch.setattr(config, "AWARE_ACTIVE_HOURS_WELLNESS", 3)
     monkeypatch.setattr(config, "AWARE_TICK_INTERVAL_MINUTES", 15)
@@ -58,12 +67,17 @@ def aware_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(config, "TASK_LOGS_DIR", data / "task_logs")
     (data / "aware").mkdir(parents=True, exist_ok=True)
     (data / "aware" / "now").mkdir(parents=True, exist_ok=True)
+    (data / "aware" / "context").mkdir(parents=True, exist_ok=True)
     (data / "kb").mkdir(parents=True, exist_ok=True)
     (data / "audit").mkdir(parents=True, exist_ok=True)
     return data
 
 
-def test_timewin_parse() -> None:
+def test_timewin_parse(monkeypatch: pytest.MonkeyPatch) -> None:
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     assert parse_since(None) == "1w"
     assert parse_since("1d") == "1d"
     assert parse_since("2d") == "2d"
@@ -83,7 +97,11 @@ def test_timewin_parse() -> None:
         pass
 
 
-def test_timewin_period_and_span() -> None:
+def test_timewin_period_and_span(monkeypatch: pytest.MonkeyPatch) -> None:
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     # 14:00 UTC → evening in UTC+8 / afternoon-ish elsewhere; period must be non-empty.
     start = "2026-07-18T14:00:00+00:00"
     end = "2026-07-18T14:30:00+00:00"
@@ -91,6 +109,95 @@ def test_timewin_period_and_span() -> None:
     span = format_span(start, end)
     assert "–" in span
     assert format_period_span(start, end).startswith(period_label(start))
+
+
+def test_infer_query_window() -> None:
+    from localagent.aware.timewin import infer_query_window, period_key
+
+    now = infer_query_window("你知道我现在在听什么歌吗")
+    assert now.tier == "hot"
+    assert now.since_token == "3h"
+    assert now.prefer_rollup is False
+
+    today = infer_query_window("今天下午改了哪些文件")
+    assert today.since_token == "1d"
+    assert today.tier == "episodes"
+
+    week = infer_query_window("这周我都在忙什么")
+    assert week.since_token == "1w"
+    assert week.prefer_rollup is True
+    assert week.tier == "rollup"
+
+    last = infer_query_window("上周编码多吗")
+    assert last.prefer_rollup is True
+
+    assert period_key("2026-07-18T06:00:00+08:00") == "dawn"
+    assert period_key("2026-07-18T22:00:00+08:00") == "night"
+
+
+def test_episode_time_signals_and_rollup(aware_home: Path) -> None:
+    from localagent.aware.episode import (
+        AwareEpisode,
+        append_episodes,
+        load_episodes,
+        retrieve_aware_context,
+        stamp_episode_time_signals,
+    )
+    from localagent.aware.rollup import refresh_recent_rollups
+    from localagent.aware.store import append_events
+    from localagent.aware.types import AwareEvent
+
+    ep = AwareEpisode(
+        id="t1",
+        scene="coding",
+        start="2026-07-18T06:00:00+08:00",
+        end="2026-07-18T08:00:00+08:00",
+        duration_min=120,
+        source="apps",
+        title="Cursor",
+        entities=["repo:LocalAgent"],
+        signals={"engagement": "engage"},
+    )
+    stamp_episode_time_signals(ep)
+    assert ep.signals.get("local_day") == "2026-07-18"
+    assert ep.signals.get("period") == "dawn"
+    assert ep.signals.get("tz_offset_min") == 480
+
+    append_episodes([ep])
+    loaded = load_episodes(limit=5)
+    assert loaded and loaded[0].signals.get("local_day") == "2026-07-18"
+
+    ev = AwareEvent(source="fs", kind="file.created", title="a.md", ts="2026-07-18T07:00:00+08:00")
+    append_events([ev])
+    assert ev.data.get("tick_at")
+    assert ev.data.get("observed_at")
+    # event_time preserved
+    assert ev.ts.startswith("2026-07-18")
+
+    # Place episode on "today" local so rollup refresh picks it up.
+    today = datetime.now().astimezone().date().isoformat()
+    append_episodes(
+        [
+            AwareEpisode(
+                id="t2",
+                scene="coding",
+                start=f"{today}T10:00:00+08:00",
+                end=f"{today}T11:00:00+08:00",
+                duration_min=60,
+                source="apps",
+                title="Today coding",
+                entities=["app:Cursor"],
+                signals={"engagement": "engage"},
+            )
+        ]
+    )
+    written = refresh_recent_rollups(days=2)
+    assert today in written
+
+    ctx = retrieve_aware_context("这周我在忙什么")
+    assert "优先日摘要" in ctx or "tier=rollup" in ctx
+    assert "日摘要" in ctx
+    assert "日摘要为历史聚合" in ctx
 
 
 def test_grant_ungrant_blocks_ungranted(aware_home: Path) -> None:
@@ -262,10 +369,10 @@ def test_format_view_now_keeps_activity_as_lines(
 
     monkeypatch.setattr("localagent.aware.engagement.tick_interval_minutes", lambda: 15.0)
     grant_source("apps")
-    record_input_activity(app="Cursor", idle_seconds=10.0)
+    record_input_activity(app="Cursor", idle_seconds=10.0, scene="coding")
 
     text = format_view(mode="now", use_llm=False)
-    assert "今日输入活跃" in text
+    assert "输入活跃" in text
     # activity section should still be list bullets, not one char per line
     after = text.split("最近 3 小时（按注意力）", 1)[1]
     for stop in ("近期 Episode", "系统"):
@@ -352,7 +459,9 @@ def test_format_view_llm_fallback(
     grant_source("terminal", history_files=[])
     import localagent.aware.summary as summary_mod
 
-    monkeypatch.setattr(summary_mod, "llm_summarize_facts", lambda _card: None)
+    monkeypatch.setattr(
+        summary_mod, "llm_summarize_facts", lambda _card, **_kw: None
+    )
     text = format_view(mode="window", since="1w", source="terminal", use_llm=True)
     assert "感知动态" in text
     assert "系统" in text
@@ -530,9 +639,9 @@ def test_input_activity_idle_and_by_app(
 
     monkeypatch.setattr("localagent.aware.engagement.tick_interval_minutes", lambda: 15.0)
 
-    record_input_activity(app="Cursor", idle_seconds=10.0)
-    record_input_activity(app="Terminal", idle_seconds=20.0)
-    record_input_activity(app="Safari", idle_seconds=400.0)  # idle high → no minutes
+    record_input_activity(app="Cursor", idle_seconds=10.0, scene="coding")
+    record_input_activity(app="Terminal", idle_seconds=20.0, scene="coding")
+    record_input_activity(app="Safari", idle_seconds=400.0, scene="browser")  # idle high
     day = load_day()
     assert day["ticks_total"] == 3
     assert day["ticks_active"] == 2
@@ -657,6 +766,7 @@ def test_should_enter_aware_chat(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_tick_with_fs_grant(
     aware_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from localagent.aware.context_store import load_diff, load_hot
     from localagent.aware.episode import load_episodes
     from localagent.aware.suggestion import load_suggestions
     import localagent.config as config
@@ -667,6 +777,9 @@ def test_tick_with_fs_grant(
     kb_before = {p.name for p in config.KB_DIR.iterdir()} if config.KB_DIR.is_dir() else set()
     r1 = run_tick()
     assert r1.event_count == 0
+    hot1 = load_hot()
+    assert hot1 is not None
+    assert "as_of" in hot1
     (watch / "n.pdf").write_bytes(b"%PDF")
     (watch / "note.md").write_text("hello world\n", encoding="utf-8")
     r2 = run_tick()
@@ -674,12 +787,48 @@ def test_tick_with_fs_grant(
     kb_after = {p.name for p in config.KB_DIR.iterdir()} if config.KB_DIR.is_dir() else set()
     assert kb_after == kb_before  # aware must not auto-link into kb/
     assert any(s.source == "fs" for s in load_suggestions())
+    diff2 = load_diff()
+    assert diff2 is not None
+    assert diff2.get("empty") is False
+    assert diff2.get("new_files")
     # second tick after modify should record size delta / episode
     (watch / "note.md").write_text("hello world\nmore\n", encoding="utf-8")
     r3 = run_tick()
     assert r3.event_count >= 1
     eps = load_episodes(limit=20)
     assert any(e.source == "fs" for e in eps)
+
+
+def test_context_store_diff_empty_and_inject(aware_home: Path) -> None:
+    from localagent.aware.context_store import (
+        build_diff,
+        build_hot,
+        format_diff_context_lines,
+        refresh_context_artifacts,
+    )
+    from localagent.aware.episode import retrieve_aware_context
+    from localagent.aware.types import AwareEvent
+
+    hot = refresh_context_artifacts([])
+    assert hot.get("as_of")
+    assert build_diff(hot, []).get("empty") is True
+    lines = format_diff_context_lines()
+    assert any("自上次 tick" in ln for ln in lines)
+    assert any("无新事件" in ln for ln in lines)
+
+    ev = AwareEvent(
+        source="fs",
+        kind="file.created",
+        title="note.md",
+        data={"path": "/tmp/note.md"},
+    )
+    refresh_context_artifacts([ev])
+    d2 = build_diff(build_hot([]), [ev])
+    assert d2["empty"] is False
+    assert "/tmp/note.md" in d2["new_files"]
+    ctx = retrieve_aware_context("刚才发生了什么")
+    assert "自上次 tick 以来的变化" in ctx
+    assert "为空时不要编造" in ctx
 
 
 def test_browser_episode_keeps_title_samples(aware_home: Path) -> None:
@@ -761,7 +910,7 @@ def test_retrieve_aware_context_injects_open_tabs(
         tabs=2,
         active_title="每日大赛 - 投稿页 | 51吃瓜网",
         active_url="https://51cg1.com/category/mrds/",
-        frontmost=False,
+        frontmost=True,
         items=[
             {
                 "title": "每日大赛 - 投稿页 | 51吃瓜网",
@@ -784,13 +933,51 @@ def test_retrieve_aware_context_injects_open_tabs(
     assert "时间线 · 最近 3 小时" in ctx or "最近 3 小时" in ctx
     assert "当前本地时间:" in ctx
     assert "发生时刻/时段是最重要元数据" in ctx
+    assert "正在看" in ctx
     assert "每日大赛" in ctx
     assert "51cg1.com" in ctx
-    assert "GitHub" in ctx
-    assert "后台选中" in ctx
-    assert "前台:" not in ctx
-    assert "30min" not in ctx
-    assert "后台选中标签不等于浏览" in ctx
+    # Unattended open tabs are not part of the attention story.
+    assert "GitHub" not in ctx
+    assert "非正在看/后台打开标签不播报标题" in ctx
+
+
+def test_retrieve_aware_context_omits_background_tab_titles(
+    aware_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from localagent.aware.browser_tabs import BrowserNow
+    from localagent.aware.episode import retrieve_aware_context
+
+    snap = BrowserNow(
+        browser="chrome",
+        windows=1,
+        tabs=2,
+        active_title="每日大赛 - 投稿页 | 51吃瓜网",
+        active_url="https://51cg1.com/category/mrds/",
+        frontmost=False,
+        items=[
+            {
+                "title": "每日大赛 - 投稿页 | 51吃瓜网",
+                "url": "https://51cg1.com/category/mrds/",
+                "active": "true",
+            },
+            {
+                "title": "GitHub",
+                "url": "https://github.com/",
+                "active": "",
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        "localagent.aware.browser_tabs.collect_open_tabs",
+        lambda: [snap],
+    )
+    ctx = retrieve_aware_context("我在看什么")
+    assert "### 当前浏览器" in ctx
+    assert "非正在看" in ctx
+    assert "每日大赛" not in ctx
+    assert "51cg1.com" not in ctx
+    assert "GitHub" not in ctx
+    assert "后台选中=" not in ctx
 
 
 def test_retrieve_aware_context_redacts_sensitive_open_tabs(
@@ -805,7 +992,7 @@ def test_retrieve_aware_context_redacts_sensitive_open_tabs(
         tabs=2,
         active_title="Secret Adult Title",
         active_url="https://www.pornhub.com/video/123",
-        frontmost=False,
+        frontmost=True,
         items=[
             {
                 "title": "Secret Adult Title",
@@ -827,7 +1014,7 @@ def test_retrieve_aware_context_redacts_sensitive_open_tabs(
     assert "### 当前浏览器" in ctx
     assert "最近 3 小时" in ctx
     assert "敏感类标签" in ctx
-    assert "后台选中" in ctx
+    assert "正在看" in ctx
     assert "Secret Adult Title" not in ctx
     assert "Other Secret" not in ctx
     assert "pornhub.com" not in ctx.lower()
@@ -886,6 +1073,83 @@ def test_retrieve_aware_context_sensitive_episode_keeps_time(
     assert "pornhub" not in ctx.lower()
     assert "不得因主题敏感拒答" in ctx
     assert "–" in ctx
+
+
+def _mock_apps_focus(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    app: str = "Cursor",
+    window_title: str = "LocalAgent",
+    media_title: str = "",
+    media_artist: str = "",
+    media_app: str = "",
+) -> None:
+    payload = json.dumps(
+        {
+            "app": app,
+            "bundle_id": "com.todesktop.xxx",
+            "window_title": window_title,
+            "media_title": media_title,
+            "media_artist": media_artist,
+            "media_app": media_app,
+            "error": "",
+        }
+    )
+
+    class _Proc:
+        returncode = 0
+        stdout = payload
+        stderr = ""
+
+    monkeypatch.setattr("localagent.aware.sensors.apps.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "localagent.aware.sensors.apps.subprocess.run",
+        lambda *a, **k: _Proc(),
+    )
+    monkeypatch.setattr(
+        "localagent.aware.sensors.apps._idle_seconds",
+        lambda: 12.0,
+    )
+
+
+def test_retrieve_aware_context_media_unobserved(
+    aware_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from localagent.aware.episode import retrieve_aware_context
+    from localagent.aware.profile import grant_source
+
+    grant_source("apps")
+    _mock_apps_focus(monkeypatch, app="Cursor", media_title="")
+    ctx = retrieve_aware_context("你知道我现在在听什么歌吗")
+    assert "### 当前应用" in ctx
+    assert "Cursor" in ctx
+    assert "### 正在播放" in ctx
+    assert "未观测到" in ctx
+    assert "不得用前台应用推断或否定后台媒体" in ctx
+    assert "缺字段时答「未观测到」" in ctx
+    assert "只依据「正在播放」块" in ctx
+
+
+def test_retrieve_aware_context_media_playing(
+    aware_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from localagent.aware.episode import retrieve_aware_context
+    from localagent.aware.profile import grant_source
+
+    grant_source("apps")
+    _mock_apps_focus(
+        monkeypatch,
+        app="Cursor",
+        media_title="情书",
+        media_artist="张学友",
+        media_app="Spotify",
+    )
+    ctx = retrieve_aware_context("我在听什么歌")
+    assert "### 正在播放" in ctx
+    assert "情书" in ctx
+    assert "张学友" in ctx
+    assert "Spotify" in ctx
+    assert "未观测到" not in ctx.split("### 正在播放", 1)[1].split("###", 1)[0]
 
 
 def test_digest_browser_now_redacts_sensitive(
@@ -1254,8 +1518,10 @@ def test_format_browser_now_context_hides_dwell_when_background(
     )
     lines = _format_browser_now_context()
     text = "\n".join(lines)
-    assert "后台选中" in text
-    assert "前台" not in text
+    assert "非正在看" in text
+    assert "Adult" not in text
+    assert "51cg1.com" not in text
+    assert "后台选中" not in text
     assert "dwell" not in text
     assert "30min" not in text
 
@@ -1493,6 +1759,126 @@ def test_overview_hides_legacy_foreground_episode(aware_home: Path) -> None:
     assert "主注意力" in text
 
 
+def test_primary_attention_prefers_near_window_episode_over_apps(
+    aware_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from localagent.aware.browser_tabs import BrowserNow
+    from localagent.aware.episode import AwareEpisode, append_episodes
+    from localagent.aware.types import utc_now
+
+    grant_source("apps")
+    grant_source("browser")
+    ts = utc_now()
+    append_episodes(
+        [
+            AwareEpisode(
+                id="chrome-engage",
+                scene="browser",
+                start=ts,
+                end=ts,
+                duration_min=90,
+                source="browser",
+                title="Google Chrome",
+                entities=["Google Chrome"],
+                signals={"engagement": "engage", "viewing": True},
+            ),
+            AwareEpisode(
+                id="cursor-short",
+                scene="coding",
+                start=ts,
+                end=ts,
+                duration_min=5,
+                source="apps",
+                title="Cursor",
+                entities=["Cursor"],
+                signals={"engagement": "glance"},
+            ),
+        ]
+    )
+    monkeypatch.setattr(
+        "localagent.aware.digest._render_apps_now",
+        lambda: ["Cursor"],
+    )
+    monkeypatch.setattr(
+        "localagent.aware.digest.collect_open_tabs",
+        lambda: [
+            BrowserNow(
+                browser="chrome",
+                windows=1,
+                tabs=17,
+                active_title="亚洲性欲狂 9 | AV 娱乐",
+                active_url="https://example-adult.test/x",
+                frontmost=False,
+                items=[
+                    {
+                        "title": "亚洲性欲狂 9 | AV 娱乐",
+                        "url": "https://example-adult.test/x",
+                        "active": "1",
+                    }
+                ],
+            )
+        ],
+    )
+    text = format_view(mode="now", use_llm=False)
+    # Near-window sustained attention wins over instantaneous Cursor frontmost.
+    primary = text.split("主注意力", 1)[1].split("当前状态", 1)[0]
+    assert "Google Chrome" in primary
+    assert "Cursor" not in primary
+    assert "亚洲性欲狂" not in text
+    assert "AV 娱乐" not in text
+    assert "非正在看" in text
+
+
+def test_render_now_compact_omits_background_tab_title(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from localagent.aware.browser_tabs import BrowserNow
+    from localagent.aware.digest import _render_now_compact
+
+    monkeypatch.setattr(
+        "localagent.aware.digest.collect_open_tabs",
+        lambda: [
+            BrowserNow(
+                browser="chrome",
+                windows=1,
+                tabs=17,
+                active_title="亚洲性欲狂 9 | AV 娱乐",
+                active_url="https://example-adult.test/x",
+                frontmost=False,
+            )
+        ],
+    )
+    lines = _render_now_compact("browser")
+    text = "\n".join(lines)
+    assert "chrome 17标签" in text
+    assert "非正在看" in text
+    assert "后台选中" not in text
+    assert "亚洲性欲狂" not in text
+
+
+def test_summarize_browser_events_omits_selected_titles() -> None:
+    from localagent.aware.digest import _summarize_browser_events
+
+    events = [
+        AwareEvent(
+            source="browser",
+            kind="browser.selected",
+            title="选中标签: 亚洲性欲狂",
+            data={
+                "active_url": "https://example-adult.test/x",
+                "active_title": "亚洲性欲狂 9 | AV 娱乐",
+                "host": "example-adult.test",
+                "scene": "browser",
+                "viewing": False,
+            },
+        )
+    ]
+    text = "\n".join(_summarize_browser_events(events))
+    assert "非正在看" in text
+    assert "亚洲性欲狂" not in text
+    assert "后台选中:" not in text
+
+
 def test_browser_active_without_viewing_flag_skipped(aware_home: Path) -> None:
     from localagent.aware.episode import build_episodes_from_events
 
@@ -1677,3 +2063,256 @@ def test_engine_visit_to_iso() -> None:
 
     ff = _engine_visit_to_iso("firefox", 1_577_836_800_000_000)  # 2020-01-01 UTC
     assert "2020-01-01" in ff
+
+
+def test_input_activity_browser_is_presence_not_input(
+    aware_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from localagent.aware.input_activity import load_day, record_input_activity
+
+    monkeypatch.setattr("localagent.aware.engagement.tick_interval_minutes", lambda: 15.0)
+    record_input_activity(
+        app="Google Chrome", idle_seconds=10.0, scene="browser"
+    )
+    record_input_activity(app="Cursor", idle_seconds=10.0, scene="coding")
+    day = load_day()
+    assert day["by_app"].get("Cursor") == 15.0
+    assert "Google Chrome" not in day["by_app"]
+    assert day["presence_by_app"].get("Google Chrome") == 15.0
+    assert day["active_minutes"] == 15.0
+
+
+def test_input_activity_corroborated_browser_counts(
+    aware_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from localagent.aware.input_activity import load_day, record_input_activity
+
+    monkeypatch.setattr("localagent.aware.engagement.tick_interval_minutes", lambda: 15.0)
+    record_input_activity(
+        app="Google Chrome",
+        idle_seconds=10.0,
+        scene="browser",
+        corroborated=True,
+    )
+    day = load_day()
+    assert day["by_app"].get("Google Chrome") == 15.0
+    assert day["active_minutes"] == 15.0
+
+
+def test_input_activity_window_aggregate(
+    aware_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import date, timedelta
+
+    from localagent.aware.input_activity import (
+        format_input_activity_line,
+        record_input_activity,
+    )
+
+    monkeypatch.setattr("localagent.aware.engagement.tick_interval_minutes", lambda: 15.0)
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    record_input_activity(
+        app="Cursor", idle_seconds=10.0, scene="coding", day=yesterday
+    )
+    record_input_activity(app="Cursor", idle_seconds=10.0, scene="coding", day=today)
+    line = format_input_activity_line(since="2d")
+    assert line is not None
+    assert "约 30 分钟" in line or "30" in line
+    assert "Cursor" in line
+    assert "输入活跃" in line
+
+
+def test_collapse_nested_session_episodes(aware_home: Path) -> None:
+    from localagent.aware.episode import (
+        AwareEpisode,
+        append_episodes,
+        collapse_session_episodes,
+        load_episodes_for_overview,
+        rank_episodes_by_attention,
+    )
+
+    start = "2026-07-18T11:29:00+00:00"
+    rows = []
+    for i, mins in enumerate((45, 60, 75, 90, 105)):
+        end_h = 11 + (mins // 60)
+        end_m = 29 + (mins % 60)
+        if end_m >= 60:
+            end_h += 1
+            end_m -= 60
+        rows.append(
+            AwareEpisode(
+                id=f"chrome{i}",
+                scene="browser",
+                start=start,
+                end=f"2026-07-18T{end_h:02d}:{end_m:02d}:00+00:00",
+                duration_min=float(mins),
+                source="apps",
+                title="Google Chrome",
+                entities=["Google Chrome"],
+                signals={
+                    "focus_key": "Google Chrome||",
+                    "engagement": "engage",
+                    "dwell_sec": mins * 60,
+                },
+            )
+        )
+    append_episodes(rows)
+    collapsed = collapse_session_episodes(rows)
+    assert len(collapsed) == 1
+    assert collapsed[0].duration_min == 105.0
+    ranked = rank_episodes_by_attention(rows, limit=8)
+    assert len(ranked) == 1
+    assert ranked[0].duration_min == 105.0
+
+
+def test_overview_window_includes_yesterday_episode(aware_home: Path) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    from localagent.aware.episode import AwareEpisode, append_episodes
+    from localagent.aware.episode import load_episodes_for_overview
+
+    now = datetime.now(timezone.utc)
+    yesterday = (now - timedelta(days=1)).isoformat()
+    recent = (now - timedelta(minutes=30)).isoformat()
+    append_episodes(
+        [
+            AwareEpisode(
+                id="yest",
+                scene="coding",
+                start=yesterday,
+                end=yesterday,
+                duration_min=90,
+                source="apps",
+                title="Cursor · yesterday",
+                entities=["Cursor"],
+                signals={
+                    "focus_key": "Cursor|y|",
+                    "engagement": "engage",
+                },
+            ),
+            AwareEpisode(
+                id="today",
+                scene="browser",
+                start=recent,
+                end=recent,
+                duration_min=20,
+                source="apps",
+                title="Google Chrome · now",
+                entities=["Google Chrome"],
+                signals={
+                    "focus_key": "Chrome|n|",
+                    "engagement": "engage",
+                },
+            ),
+        ]
+    )
+    since = now - timedelta(days=2)
+    eps = load_episodes_for_overview(since=since, limit=8)
+    titles = [e.title for e in eps]
+    assert any("yesterday" in t for t in titles)
+
+
+def test_apps_rollup_covers_old_and_new_sessions(aware_home: Path) -> None:
+    from localagent.aware.digest import _rollup_apps_events
+    from localagent.aware.store import append_events
+
+    old_ts = "2026-07-17T04:00:00+00:00"
+    new_ts = "2026-07-19T12:00:00+00:00"
+    events = [
+        AwareEvent(
+            source="apps",
+            kind="apps.focus",
+            title="Cursor",
+            ts=old_ts,
+            data={
+                "app": "Cursor",
+                "scene": "coding",
+                "focus_key": "Cursor|old|",
+                "focus_since": old_ts,
+                "dwell_sec": 3600,
+                "engagement": "engage",
+                "ticks_seen": 4,
+            },
+        ),
+        AwareEvent(
+            source="apps",
+            kind="apps.focus",
+            title="Google Chrome",
+            ts=new_ts,
+            data={
+                "app": "Google Chrome",
+                "scene": "browser",
+                "focus_key": "Chrome|new|",
+                "focus_since": new_ts,
+                "dwell_sec": 900,
+                "engagement": "dwell",
+                "ticks_seen": 2,
+            },
+        ),
+    ]
+    # Build many nested chrome samples (should collapse to one session in rollup)
+    for mins in (15, 30, 45):
+        events.append(
+            AwareEvent(
+                source="apps",
+                kind="apps.focus",
+                title="Google Chrome",
+                ts=new_ts,
+                data={
+                    "app": "Google Chrome",
+                    "scene": "browser",
+                    "focus_key": "Chrome|new|",
+                    "focus_since": new_ts,
+                    "dwell_sec": mins * 60,
+                    "engagement": "engage",
+                    "ticks_seen": mins // 15,
+                },
+            )
+        )
+    append_events(events)
+    lines = _rollup_apps_events(events)
+    text = "\n".join(lines)
+    assert "Cursor" in text
+    assert "Google Chrome" in text
+    assert "前台会话汇总" in text
+    # Nested chrome should not appear as 3 separate 15/30/45 lines for same key
+    chrome_lines = [ln for ln in lines if "Google Chrome" in ln]
+    assert len(chrome_lines) == 1
+
+
+def test_upsert_episodes_updates_same_focus_key(aware_home: Path) -> None:
+    from localagent.aware.episode import (
+        AwareEpisode,
+        load_episodes,
+        upsert_episodes,
+    )
+
+    start = "2026-07-19T10:00:00+00:00"
+    ep1 = AwareEpisode(
+        id="a1",
+        scene="browser",
+        start=start,
+        end="2026-07-19T10:15:00+00:00",
+        duration_min=15,
+        source="apps",
+        title="Google Chrome",
+        signals={"focus_key": "Chrome|x|", "engagement": "engage"},
+    )
+    ep2 = AwareEpisode(
+        id="a2",
+        scene="browser",
+        start=start,
+        end="2026-07-19T11:00:00+00:00",
+        duration_min=60,
+        source="apps",
+        title="Google Chrome",
+        signals={"focus_key": "Chrome|x|", "engagement": "engage"},
+    )
+    upsert_episodes([ep1])
+    upsert_episodes([ep2])
+    eps = load_episodes(limit=20)
+    chrome = [e for e in eps if e.signals.get("focus_key") == "Chrome|x|"]
+    assert len(chrome) == 1
+    assert chrome[0].duration_min == 60.0
+    assert chrome[0].id == "a1"

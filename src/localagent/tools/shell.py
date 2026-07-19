@@ -5,7 +5,8 @@ from __future__ import annotations
 import subprocess
 
 from localagent import config
-from localagent.tools.approval import classify_shell_command
+from localagent.i18n import resolve_lang
+from localagent.tools.approval import classify_shell_command, denied_message
 from localagent.workspace.context import resolve_workspace
 
 _DEFAULT_TIMEOUT = 30.0
@@ -49,11 +50,15 @@ def run_shell_command(
     """Execute a shell command in the workspace and return combined output."""
     cmd = command.strip()
     if not cmd:
-        return "错误: 命令不能为空。"
+        return (
+            "Error: command must not be empty."
+            if resolve_lang() == "en"
+            else "错误: 命令不能为空。"
+        )
 
     blocked = _check_blocked(cmd)
     if blocked:
-        return f"错误: {blocked}。"
+        return denied_message(blocked=True, reason=blocked)
 
     workspace = resolve_workspace(cwd)
     if not workspace.is_dir():

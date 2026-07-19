@@ -115,27 +115,29 @@ def cmd_add(_args: argparse.Namespace) -> int:
 
 
 def cmd_memory_pending(args: argparse.Namespace) -> int:
+    from localagent.i18n import t
     from localagent.pending import list_pending, pending_count
 
     limit = getattr(args, "limit", None)
     items = list_pending(limit=limit)
     total = pending_count()
     if not items:
-        print("[memory pending] 队列为空")
+        print(t("memory.pending_empty"))
         return 0
-    print(f"[memory pending] {len(items)}/{total} 条待确认：")
+    print(t("memory.pending_count", shown=len(items), total=total))
     for item in items:
         src = (item.metadata or {}).get("source", "")
         src_hint = f" · {src}" if src else ""
         print(f"  {item.id}  {item.text[:80]}{src_hint}")
     if limit is not None and total > len(items):
-        print(f"  … 另有 {total - len(items)} 条，去掉 --limit 查看全部")
-    print("  批准: LA memory approve <id>|--all")
-    print("  拒绝: LA memory reject <id>|--all")
+        print(t("memory.pending_more", n=total - len(items)))
+    print(t("memory.pending_approve_hint"))
+    print(t("memory.pending_reject_hint"))
     return 0
 
 
 def cmd_memory_approve(args: argparse.Namespace) -> int:
+    from localagent.i18n import t
     from localagent.pending import approve_all, approve_ids, pending_count
 
     if getattr(args, "all", False):
@@ -143,14 +145,15 @@ def cmd_memory_approve(args: argparse.Namespace) -> int:
     else:
         ids = list(getattr(args, "ids", None) or [])
         if not ids:
-            print("[memory approve] 请指定 id 或 --all")
+            print(t("memory.approve_need_id"))
             return 2
         warm_ids = approve_ids(ids)
-    print(f"[memory approve] 已写入 Warm {len(warm_ids)} 条；剩余待确认 {pending_count()}")
+    print(t("memory.approve_done", n=len(warm_ids), pending=pending_count()))
     return 0 if warm_ids or getattr(args, "all", False) else 1
 
 
 def cmd_memory_reject(args: argparse.Namespace) -> int:
+    from localagent.i18n import t
     from localagent.pending import pending_count, reject_all, reject_ids
 
     if getattr(args, "all", False):
@@ -158,10 +161,10 @@ def cmd_memory_reject(args: argparse.Namespace) -> int:
     else:
         ids = list(getattr(args, "ids", None) or [])
         if not ids:
-            print("[memory reject] 请指定 id 或 --all")
+            print(t("memory.reject_need_id"))
             return 2
         n = reject_ids(ids)
-    print(f"[memory reject] 已丢弃 {n} 条；剩余待确认 {pending_count()}")
+    print(t("memory.reject_done", n=n, pending=pending_count()))
     return 0
 
 
@@ -179,8 +182,8 @@ def _format_file_size(path: str | Path) -> str:
 
 def cmd_summarize(args: argparse.Namespace) -> int:
     """Summarize file(s): default enters document dialogue; --no-chat is atomic only."""
+    from localagent.i18n import t
     from localagent.summarize.document import (
-        KEEP_HINT,
         DocumentTooLongError,
         SummarizeError,
         summarize_path,
@@ -197,18 +200,16 @@ def cmd_summarize(args: argparse.Namespace) -> int:
         new_summarize_session_id,
     )
 
-    prefix = "summarize"
-
     if getattr(args, "list", False):
         rows = list_sessions(limit=int(getattr(args, "limit", 20) or 20))
         if not rows:
-            print(f"[{prefix}] 暂无文档对话会话")
+            print(t("summarize.no_sessions"))
             return 0
         print(f"{'id':<14} {'updated':<22} {'kept':<5} file")
         for row in rows:
             kept = "yes" if row.kept else "no"
             print(f"{row.id:<14} {row.updated_at:<22} {kept:<5} {row.filename}")
-        print(f"[{prefix}] 续聊: la summarize <path> --resume  或  la summarize --id <id>")
+        print(t("summarize.resume_hint"))
         return 0
 
     resume_id = (getattr(args, "id", None) or "").strip()
@@ -228,39 +229,37 @@ def cmd_summarize(args: argparse.Namespace) -> int:
     if resume_id:
         record = get_session(resume_id)
         if record is None:
-            print(f"[{prefix}] error: 未找到会话 {resume_id}")
+            print(t("summarize.session_not_found", id=resume_id))
             return 1
         source = Path(record.path)
         if not source.is_file():
-            print(f"[{prefix}] error: 会话文件不存在: {source}")
+            print(t("summarize.session_file_missing", path=source))
             return 1
         return _summarize_resume_one(
             source,
             record=record,
-            prefix=prefix,
             provider=provider,
             heuristic=heuristic,
             keep=keep,
         )
 
     if not paths_raw:
-        print(f"[{prefix}] error: 请指定文件路径，或使用 --list / --id")
+        print(t("summarize.need_path"))
         return 1
 
     paths = [Path(p).expanduser().resolve() for p in paths_raw]
     if len(paths) > 1 and not no_chat:
-        print(f"[{prefix}] error: 多文件仅支持仅速读模式，请加 --no-chat")
+        print(t("summarize.multi_no_chat"))
         return 1
 
     if do_resume and len(paths) == 1 and not no_chat:
         record = find_session_by_path(paths[0])
         if record is None:
-            print(f"[{prefix}] 无既有会话，将新建文档对话")
+            print(t("summarize.no_existing"))
         else:
             return _summarize_resume_one(
                 paths[0],
                 record=record,
-                prefix=prefix,
                 provider=provider,
                 heuristic=heuristic,
                 keep=keep,
@@ -270,18 +269,18 @@ def cmd_summarize(args: argparse.Namespace) -> int:
     failures = 0
     last_result = None
     for source in paths:
-        print(f"[{prefix}] 文件: {source}")
+        print(t("summarize.file", path=source))
         try:
             result = summarize_path(source, keep=keep, use_llm=not heuristic)
         except KeyboardInterrupt:
-            print(f"\n[{prefix}] 已中断")
+            print(t("summarize.interrupted"))
             return 130
         except (DocumentTooLongError, SummarizeError) as exc:
-            print(f"[{prefix}] error: {exc}")
+            print(t("summarize.error", exc=exc))
             failures += 1
             continue
         except Exception as exc:
-            print(f"[{prefix}] error: {exc}")
+            print(t("summarize.error", exc=exc))
             failures += 1
             continue
 
@@ -296,23 +295,23 @@ def cmd_summarize(args: argparse.Namespace) -> int:
         print()
         print(block)
         print()
-        meta_bits = [f"{result.char_count} 字"]
+        meta_bits = [t("summarize.chars", n=result.char_count)]
         if result.page_count is not None:
-            meta_bits.append(f"{result.page_count} 页")
-        meta_bits.append("LLM" if result.used_llm else "启发式")
-        print(f"[{prefix}] {' · '.join(meta_bits)}")
+            meta_bits.append(t("summarize.pages", n=result.page_count))
+        meta_bits.append(t("summarize.llm") if result.used_llm else t("summarize.heuristic"))
+        print(f"[summarize] {' · '.join(meta_bits)}")
         if result.warnings:
             for warning in result.warnings:
-                print(f"[{prefix}] 注意: {warning}")
+                print(t("summarize.warning", warning=warning))
         if result.kept:
-            print(f"[{prefix}] 已收藏到知识库: {result.keep_target}")
+            print(t("summarize.kept", target=result.keep_target))
         else:
-            print(f"[{prefix}] 未收藏（默认）。{KEEP_HINT}")
+            print(t("summarize.not_kept", hint=t("summarize.keep_hint")))
 
     if out_path and results_md:
         out = Path(out_path).expanduser().resolve()
         out.write_text("\n\n".join(results_md).rstrip() + "\n", encoding="utf-8")
-        print(f"[{prefix}] 已写入: {out}")
+        print(t("summarize.wrote", path=out))
 
     if failures and not last_result:
         return 1
@@ -333,11 +332,11 @@ def _summarize_resume_one(
     source: Path,
     *,
     record,
-    prefix: str,
     provider: str,
     heuristic: bool,
     keep: bool,
 ) -> int:
+    from localagent.i18n import t
     from localagent.summarize.document import summarize_path
     from localagent.summarize.repl import (
         _history_from_conversation,
@@ -349,13 +348,13 @@ def _summarize_resume_one(
     current_mtime = file_mtime(source)
     history = _history_from_conversation(record.conversation_session_id)
     if abs(current_mtime - float(record.mtime or 0.0)) > 1e-6:
-        print(f"[{prefix}] 文件已更新，重新生成速读卡…")
+        print(t("summarize.file_updated"))
         result = summarize_path(source, keep=keep or record.kept, use_llm=not heuristic)
         if record.kept and not result.kept:
             result.kept = True
             result.keep_target = Path(record.keep_target) if record.keep_target else result.keep_target
     else:
-        print(f"[{prefix}] 续聊会话 {record.id} · {record.filename}")
+        print(t("summarize.resume_session", id=record.id, filename=record.filename))
         result = rebuild_result_from_disk(
             source,
             summary_md=record.summary_md,
@@ -375,9 +374,9 @@ def _summarize_resume_one(
     print(result.markdown.rstrip())
     print()
     if result.kept:
-        print(f"[{prefix}] 已收藏到知识库: {result.keep_target}")
+        print(t("summarize.kept", target=result.keep_target))
     else:
-        print(f"[{prefix}] 未收藏（默认）。会话内输入 /keep 可收藏到知识库。")
+        print(t("summarize.not_kept_resume"))
 
     if not history:
         history = None
@@ -392,14 +391,14 @@ def _summarize_resume_one(
 
 def _resolve_polish_text(args: argparse.Namespace) -> str:
     """Resolve draft text from --file, positional args, or stdin."""
-    import sys
+    from localagent.i18n import t
 
     chunks: list[str] = []
     file_path = getattr(args, "file", None)
     if file_path:
         path = Path(file_path).expanduser().resolve()
         if not path.is_file():
-            raise FileNotFoundError(f"文件不存在: {path}")
+            raise FileNotFoundError(t("polish.file_missing", path=path))
         chunks.append(path.read_text(encoding="utf-8"))
     text_parts = getattr(args, "text", None) or []
     if text_parts:
@@ -413,37 +412,38 @@ def _resolve_polish_text(args: argparse.Namespace) -> str:
 
 def cmd_polish(args: argparse.Namespace) -> int:
     """One-click scene-aware text polish; copies primary rewrite to clipboard by default."""
+    from localagent.i18n import t
     from localagent.ui.console import ActivityIndicator
     from localagent.writing.polish import PolishError, apply_clipboard, polish_text
     from localagent.writing.scenes import SCENE_IDS, normalize_scene
 
-    prefix = "polish"
     try:
         draft = _resolve_polish_text(args)
     except FileNotFoundError as exc:
-        print(f"[{prefix}] error: {exc}")
+        print(t("polish.error", exc=exc))
         return 1
     if not draft:
-        print(
-            f"[{prefix}] 用法: la polish [--scene email|moments|resume|biz] "
-            "[--tone …] [--no-copy] [--file path] <草稿>\n"
-            "       echo \"草稿\" | la polish\n"
-            "会话内: /polish <草稿>"
-        )
+        print(t("polish.usage"))
         return 1
 
     scene_raw = getattr(args, "scene", None)
     if scene_raw:
         scene = normalize_scene(scene_raw)
         if scene is None:
-            print(f"[{prefix}] error: 未知场景 {scene_raw!r}（可用: {', '.join(SCENE_IDS)}）")
+            print(
+                t(
+                    "polish.unknown_scene",
+                    scene=scene_raw,
+                    scenes=", ".join(SCENE_IDS),
+                )
+            )
             return 1
     else:
         scene = None
     tone = (getattr(args, "tone", None) or "").strip() or None
     want_copy = not bool(getattr(args, "no_copy", False))
 
-    with ActivityIndicator(prefix, "识别场景并改写…") as activity:
+    with ActivityIndicator("polish", t("polish.status_working")) as activity:
         try:
             result = polish_text(
                 draft,
@@ -452,13 +452,13 @@ def cmd_polish(args: argparse.Namespace) -> int:
                 on_status=activity.update,
             )
         except KeyboardInterrupt:
-            print(f"\n[{prefix}] 已中断")
+            print(t("polish.interrupted"))
             return 130
         except PolishError as exc:
-            print(f"[{prefix}] error: {exc}")
+            print(t("polish.error", exc=exc))
             return 1
         except Exception as exc:
-            print(f"[{prefix}] error: {exc}")
+            print(t("polish.error", exc=exc))
             return 1
 
     print()
@@ -966,6 +966,8 @@ def cmd_forget(args: argparse.Namespace) -> int:
 
 
 def cmd_search(args: argparse.Namespace) -> int:
+    from localagent.i18n import t
+
     emit("memory search", f"检索记忆: {args.query}")
     backend = get_memory_backend()
     hits = backend.recall(args.query, max_results=args.top_k)
@@ -978,7 +980,7 @@ def cmd_search(args: argparse.Namespace) -> int:
     )
     print(result)
     if hits:
-        print("→ LA memory forget <id>  删除某条记忆")
+        print(t("memory.search_forget_hint"))
     return 0
 
 
@@ -1083,75 +1085,126 @@ def cmd_memory_graph(args: argparse.Namespace) -> int:
 
 
 def cmd_memory_status(_args: argparse.Namespace) -> int:
+    from localagent.i18n import t
     from localagent.persist.conversations import list_sessions
 
     info = describe_memory_backend()
-    print("[memory status] Warm 层记忆引擎诊断")
-    print(f"  当前后端:     {info['active_backend']} ({info.get('backend_class', '?')})")
-    print(f"  配置偏好:     {info['preference']} (LA_MEMORY_BACKEND)")
-    print(f"  Python:       {info['python_version']}")
-    print(f"  Mem0:         {'已安装' if info.get('mem0_installed') else '未安装'}")
+    print(t("memory.status_title"))
+    print(
+        t(
+            "memory.status_backend",
+            backend=info["active_backend"],
+            cls=info.get("backend_class", "?"),
+        )
+    )
+    print(t("memory.status_preference", preference=info["preference"]))
+    print(t("memory.status_python", version=info["python_version"]))
+    print(
+        t(
+            "memory.status_mem0",
+            state=t("memory.installed") if info.get("mem0_installed") else t("memory.not_installed"),
+        )
+    )
     if info.get("mem0_installed"):
-        print(f"  Infer:        {'开启' if info.get('mem0_infer') else '关闭'} (LA_MEM0_INFER)")
         print(
-            f"  LLM:          {info.get('mem0_llm_provider', '?')}/{info.get('mem0_llm_model', '?')}"
+            t(
+                "memory.status_infer",
+                state=t("memory.on") if info.get("mem0_infer") else t("memory.off"),
+            )
         )
         print(
-            f"  Embedder:     {info.get('mem0_embedder_provider', '?')}/"
-            f"{info.get('mem0_embedder_model', '?')} (dims={info.get('mem0_embedder_dims', '?')})"
+            t(
+                "memory.status_llm",
+                provider=info.get("mem0_llm_provider", "?"),
+                model=info.get("mem0_llm_model", "?"),
+            )
         )
         print(
-            f"  Retain 降级:  {'开启' if info.get('retain_json_fallback') else '关闭'} "
-            "(LA_MEM0_RETAIN_JSON_FALLBACK)"
+            t(
+                "memory.status_embedder",
+                provider=info.get("mem0_embedder_provider", "?"),
+                model=info.get("mem0_embedder_model", "?"),
+                dims=info.get("mem0_embedder_dims", "?"),
+            )
         )
-        print(f"  Mem0 数据:    {info.get('mem0_dir', '?')}")
-    print(f"  记忆条数:     {info['memory_count']}")
+        print(
+            t(
+                "memory.status_retain_fallback",
+                state=t("memory.on") if info.get("retain_json_fallback") else t("memory.off"),
+            )
+        )
+        print(t("memory.status_mem0_dir", path=info.get("mem0_dir", "?")))
+    print(t("memory.status_count", n=info["memory_count"]))
     if info.get("unindexed_count"):
-        print(
-            f"  未入向量:     {info['unindexed_count']} "
-            "（JSON 有记录但未进 Mem0/Qdrant，可 LA memory reindex）"
-        )
+        print(t("memory.status_unindexed", n=info["unindexed_count"]))
 
     sources = _memory_source_counts()
     print(
-        f"  来源分布:     chat={sources['chat']}  chatgpt={sources['chatgpt']}  "
-        f"file={sources['file']}  other={sources['other']}"
+        t(
+            "memory.status_sources",
+            chat=sources["chat"],
+            chatgpt=sources["chatgpt"],
+            file=sources["file"],
+            other=sources["other"],
+        )
     )
     chat_sessions = len(list_sessions())
     chat_ingested = _ingest_index_count(config.CHAT_INGEST_INDEX_FILE)
     chatgpt_imported = _ingest_index_count(config.CHATGPT_IMPORT_INDEX_FILE)
-    print(f"  LA 对话档案:  {chat_sessions} 个会话（已记忆化索引 {chat_ingested}）")
-    print(f"  ChatGPT 导入: 已处理 {chatgpt_imported} 条")
+    print(
+        t(
+            "memory.status_chat_sessions",
+            sessions=chat_sessions,
+            ingested=chat_ingested,
+        )
+    )
+    print(t("memory.status_chatgpt", n=chatgpt_imported))
     try:
         from localagent.ingest.conversation_cold import count_chunks_by_origin
 
         cold = count_chunks_by_origin()
         print(
-            f"  Cold 对话块:  chat={cold.get('chat', 0)}  chatgpt={cold.get('chatgpt', 0)}  "
-            f"(LA rag search 可召回)"
+            t(
+                "memory.status_cold",
+                chat=cold.get("chat", 0),
+                chatgpt=cold.get("chatgpt", 0),
+            )
         )
     except Exception:
         pass
-    print(f"  Hot 画像:     {'已配置' if _core_profile_configured() else '未配置'} ({config.CORE_PROFILE_FILE})")
     print(
-        f"  关系图:       {'开启' if config.MEMORY_GRAPH else '关闭'} "
-        f"(LA_MEMORY_GRAPH；LA memory graph stats)"
+        t(
+            "memory.status_hot_profile",
+            state=t("memory.configured") if _core_profile_configured() else t("memory.not_configured"),
+            path=config.CORE_PROFILE_FILE,
+        )
+    )
+    print(
+        t(
+            "memory.status_graph",
+            state=t("memory.on") if config.MEMORY_GRAPH else t("memory.off"),
+        )
     )
 
-    print(f"  Profile pin:  {'LLM' if info.get('profile_pin_llm') else '正则'} (LA_PROFILE_PIN_LLM)")
-    print(f"  Bank ID:      {info['bank_id']}")
-    print(f"  本地索引:     {info['store_file']}")
+    print(
+        t(
+            "memory.status_profile_pin",
+            mode=t("memory.pin_llm") if info.get("profile_pin_llm") else t("memory.pin_regex"),
+        )
+    )
+    print(t("memory.status_bank", bank_id=info["bank_id"]))
+    print(t("memory.status_store", path=info["store_file"]))
     if info.get("error"):
-        print(f"  错误:         {info['error']}")
+        print(t("memory.status_error", error=info["error"]))
     if info["active_backend"] == "json" and info["preference"] != "json":
-        print("\n提示: Mem0 初始化失败时会回退到 JSON。检查 Ollama 嵌入模型或 LA_MEM0_EMBEDDER_*。")
+        print(t("memory.status_json_fallback_hint"))
     if info.get("unindexed_count"):
-        print("提示: 存在未入向量索引的记忆，语义召回可能不完整。")
+        print(t("memory.status_unindexed_hint"))
 
-    print("\n下一步:")
-    print("  LA memory query              浏览最近记忆")
-    print("  LA memory search <q>         语义搜索")
-    print("  LA ingest chat|chatgpt|text  持久记忆化（写入入口）")
+    print(t("memory.status_next"))
+    print(t("memory.status_next_query"))
+    print(t("memory.status_next_search"))
+    print(t("memory.status_next_ingest"))
     return 0
 
 
@@ -1258,6 +1311,7 @@ def cmd_status(_args: argparse.Namespace) -> int:
 
 def cmd_workspace(args: argparse.Namespace) -> int:
     _apply_workspace_cwd(getattr(args, "cwd", None))
+    from localagent.i18n import t
     from localagent.workspace.context import (
         format_diagnostic_todos,
         format_workspace_summary,
@@ -1293,14 +1347,14 @@ def cmd_workspace(args: argparse.Namespace) -> int:
                 root,
                 older_than_days=int(older) if older is not None else None,
             )
-            print(f"[workspace] 已清理 {removed} 条终态待办")
+            print(t("workspace.purged", removed=removed))
             return 0
         if getattr(args, "all", False):
             items = load_tasks(root)
             if not items:
-                print(f"[workspace] 无任务记录（{root}）")
+                print(t("workspace.no_tasks", root=root))
                 return 0
-            print(f"[workspace] 全部任务 ({root}) · {len(items)} 条")
+            print(t("workspace.all_tasks", root=root, n=len(items)))
             for item in items:
                 print(f"  [{item.id}] ({item.status}) {item.title}")
             return 0
@@ -1320,37 +1374,37 @@ def cmd_workspace(args: argparse.Namespace) -> int:
                 complete_hint=hint,
             )
         except TaskRejected as exc:
-            print(f"[workspace] 未创建: {exc}")
+            print(t("workspace.rejected", exc=exc))
             return 1
-        print(f"[workspace] 已添加 [{task.id}] {task.title}")
-        print(f"  为何: {task.rationale}")
-        print(f"  → la workspace done {task.id}")
+        print(t("workspace.added", id=task.id, title=task.title))
+        print(t("workspace.why", rationale=task.rationale))
+        print(t("workspace.done_hint", id=task.id))
         return 0
 
     if action == "done":
         task = done(getattr(args, "task_id", ""), workspace=root)
         if task is None:
-            print("[workspace] 未找到该待办")
+            print(t("workspace.not_found"))
             return 1
-        print(f"[workspace] 已完成 [{task.id}] {task.title}")
+        print(t("workspace.done", id=task.id, title=task.title))
         return 0
 
     if action == "dismiss":
         task = dismiss(getattr(args, "task_id", ""), workspace=root)
         if task is None:
-            print("[workspace] 未找到该待办")
+            print(t("workspace.not_found"))
             return 1
-        print(f"[workspace] 已丢弃 [{task.id}] {task.title}")
+        print(t("workspace.dismissed", id=task.id, title=task.title))
         return 0
 
     if action == "snooze":
         snooze_days = int(getattr(args, "snooze_days", None) or 1)
         task = snooze(getattr(args, "task_id", ""), days=snooze_days, workspace=root)
         if task is None:
-            print("[workspace] 未找到该待办")
+            print(t("workspace.not_found"))
             return 1
         until = (task.snooze_until or "")[:10]
-        print(f"[workspace] 已搁置 [{task.id}] {task.title} → {until}")
+        print(t("workspace.snoozed", id=task.id, title=task.title, until=until))
         return 0
 
     if action == "purge":
@@ -1359,7 +1413,7 @@ def cmd_workspace(args: argparse.Namespace) -> int:
             root,
             older_than_days=int(older) if older is not None else None,
         )
-        print(f"[workspace] 已清理 {removed} 条终态待办")
+        print(t("workspace.purged", removed=removed))
         return 0
 
     print(
@@ -1385,9 +1439,11 @@ def cmd_audit(args: argparse.Namespace) -> int:
             return 1
 
     if args.report:
+        from localagent.i18n import t
+
         out = Path(args.report).expanduser()
         write_report(out, since=args.since, workspace_days=args.days)
-        print(f"[audit] 报告已写入 {out}")
+        print(t("audit.report_written", path=out))
         return 0
 
     print(print_audit_summary(since=args.since, workspace_days=args.days))
@@ -1710,173 +1766,137 @@ def cmd_config(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     from localagent import __version__
+    from localagent.i18n import H, t
 
     parser = argparse.ArgumentParser(
         prog="LA",
-        description=(
-            "LocalAgent — The AI that lives on your computer · 栖居在你电脑里的 AI。\n"
-            "Local First. Memory Forever. Actions Automated.\n\n"
-            "主路径（少即是多）：\n"
-            "  la / la chat     对话\n"
-            "  la setup [-y]    安装/拉取本地 Ollama 模型\n"
-            "  la config …      纯本地或自有 API 配置\n"
-            "  la status        今日信号 + 数据层（Hot/Warm/Cold/Aware）\n\n"
-            "日常能力见 memory / rag / audit；运维与实验见 tasks / logs / graph 等。"
-        ),
+        description=t("cli.description"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "示例：\n"
-            "  la                  # 进入对话（等同 la chat）\n"
-            "  la setup -y         # 一键装好本地模型\n"
-            "  la config list      # 查看配置\n"
-            "  la memory pending   # 确认待写入记忆\n"
-            "  la ingest doc notes.md  # 文档持久记忆化\n"
-            "  la ingest text \"…\" # 单条写入\n"
-            "  la summarize doc.md # 一键总结（默认不入库）\n"
-            "  la news brief       # 今日新闻简报（先 la news sync）\n"
-            "  la aware                  # 当前状态 + 近 3h 动态（--since / tick）\n"
-            "  la polish \"催进度草稿\"  # 一键润色（默认复制主推）\n"
-            "\n"
-            "进入对话后可用 /<command>（输入 /help；: 为兼容别名）。\n"
-            "使用 LA <command> -h 查看某个命令的完整说明。"
-        ),
+        epilog=t("cli.epilog"),
     )
     parser.add_argument(
         "-V",
         "--version",
         action="version",
         version=f"la-localagent {__version__}",
-        help="显示版本号并退出",
+        help=t("cli.version_help"),
     )
     parser.add_argument(
         "--debug",
         action="store_true",
-        help="启用 DEBUG 诊断日志（同时写入文件并输出到 stderr）",
+        help=t("cli.debug_help"),
     )
     sub = parser.add_subparsers(
         dest="cmd",
         required=False,
         metavar="<command>",
-        title="命令",
-        description=(
-            "主路径：chat · setup · config；其余为高级能力（memory / rag / audit …）。"
-            "省略子命令时默认 chat："
-        ),
+        title=H("命令", "commands"),
+        description=H("主路径：chat · setup · config；其余为高级能力（memory / rag / audit …）。省略子命令时默认 chat：", "Main path: chat · setup · config; others are advanced (memory / rag / audit …). Defaults to chat when omitted:"),
     )
 
     p_status = sub.add_parser(
         "status",
-        help="今日信号 + 数据层（Hot/Warm/Cold/Aware）",
-        description=(
-            "统一状态：Daily Actions（新闻 sync / pending / workspace 待办 / aware）"
-            "与数据层库存（Hot 画像 / Warm 事实 / Cold kb·对话·收藏 / Aware），"
-            "并说明综合召回优先级。会话内等价命令：/status。"
-        ),
+        help=H("今日信号 + 数据层（Hot/Warm/Cold/Aware）", "Today's signals + data layers (Hot/Warm/Cold/Aware)"),
+        description=H("统一状态：Daily Actions（新闻 sync / pending / workspace 待办 / aware）与数据层库存（Hot 画像 / Warm 事实 / Cold kb·对话·收藏 / Aware），并说明综合召回优先级。会话内等价命令：/status。", "Unified status: Daily Actions (news sync / pending / workspace todos / aware) and data inventory (Hot profile / Warm facts / Cold kb·chats·bookmarks / Aware), plus recall priority. In-session: /status."),
     )
     p_status.set_defaults(func=cmd_status)
 
     p_chat = sub.add_parser(
         "chat",
-        help=f"[--session-id ID] [-p auto|{'|'.join(config.VALID_PROVIDERS)}]  【主路径】交互式对话",
-        description="启动交互式对话 REPL（主路径）",
+        help=t("cli.chat_help", providers="|".join(config.VALID_PROVIDERS)),
+        description=t("cli.chat_desc"),
     )
-    p_chat.add_argument("--session-id", help="恢复指定对话档案 id")
+    p_chat.add_argument("--session-id", help=H("恢复指定对话档案 id", "resume a chat archive by id"))
     p_chat.add_argument(
         "--provider",
         "-p",
         default="auto",
-        help=f"模型路径: auto（默认）, {', '.join(config.VALID_PROVIDERS)}",
+        help=H(
+            f"模型路径: auto（默认）, {', '.join(config.VALID_PROVIDERS)}",
+            f"model path: auto (default), {', '.join(config.VALID_PROVIDERS)}",
+        ),
     )
     p_chat.add_argument(
         "--cwd",
-        help="工作区根目录（等同 LA_WORKSPACE，用于 git/文件/todo 上下文）",
+        help=H("工作区根目录（等同 LA_WORKSPACE，用于 git/文件/todo 上下文）", "workspace root (same as LA_WORKSPACE; for git/files/todo context)"),
     )
     p_chat.set_defaults(func=cmd_chat)
 
     p_tasks = sub.add_parser(
         "tasks",
-        help=(
-            "[高级] [--limit N] [--tail N] "
-            "[list | <task_id> | delete|pause|resume|restart|logs <task_id>]  "
-            "后台索引任务"
-        ),
-        description="[高级] 查看和管理后台索引任务",
+        help=H("[高级] [--limit N] [--tail N] [list | <task_id> | delete|pause|resume|restart|logs <task_id>]  后台索引任务", "[advanced] [--limit N] [--tail N] [list | <task_id> | delete|pause|resume|restart|logs <task_id>]  background index tasks"),
+        description=H("[高级] 查看和管理后台索引任务", "[advanced] list and manage background index tasks"),
     )
     p_tasks.add_argument(
         "positional",
         nargs="*",
         metavar="[action] [task_id]",
-        help="list | <task_id> | <action> <task_id>（delete/pause/resume/restart/logs）",
+        help=H(
+            "list | <task_id> | <action> <task_id>（delete/pause/resume/restart/logs）",
+            "list | <task_id> | <action> <task_id> (delete/pause/resume/restart/logs)",
+        ),
     )
-    p_tasks.add_argument("--limit", type=int, default=10, help="最近任务显示条数（默认 10）")
-    p_tasks.add_argument("--tail", type=int, default=50, help="logs 操作输出的行数（默认 50）")
+    p_tasks.add_argument("--limit", type=int, default=10, help=H("最近任务显示条数（默认 10）", "recent tasks to show (default 10)"))
+    p_tasks.add_argument("--tail", type=int, default=50, help=H("logs 操作输出的行数（默认 50）", "lines for logs action (default 50)"))
     p_tasks.set_defaults(func=cmd_tasks)
 
     p_memory = sub.add_parser(
         "memory",
-        help="[status]|query|search|pending|…  无参显示概览；Warm 查询与运维",
-        description=(
-            "Warm 记忆查询与运维。写入请用 LA ingest。\n"
-            "  LA memory\n"
-            "  LA memory query / search / consolidate / forget / status / reset / reindex\n"
-            "  LA memory pending / approve / reject\n"
-            "  LA memory reflect <query>（亦可用一级命令 LA reflect）\n"
-            "  LA memory graph stats|rebuild|neo4j|query\n"
-            "持久记忆化: LA ingest chat|chatgpt|doc|kb|text|all"
-        ),
+        help=H("[status]|query|search|pending|…  无参显示概览；Warm 查询与运维", "[status]|query|search|pending|…  overview if bare; Warm query & ops"),
+        description=H("Warm 记忆查询与运维。写入请用 LA ingest。\n  LA memory\n  LA memory query / search / consolidate / forget / status / reset / reindex\n  LA memory pending / approve / reject\n  LA memory reflect <query>（亦可用一级命令 LA reflect）\n  LA memory graph stats|rebuild|neo4j|query\n持久记忆化: LA ingest chat|chatgpt|doc|kb|text|all", "Warm memory query & ops. Write via LA ingest.\n  LA memory\n  LA memory query / search / consolidate / forget / status / reset / reindex\n  LA memory pending / approve / reject\n  LA memory reflect <query> (or top-level LA reflect)\n  LA memory graph stats|rebuild|neo4j|query\nPersist: LA ingest chat|chatgpt|doc|kb|text|all"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     mem_sub = p_memory.add_subparsers(
         dest="memory_cmd",
         required=False,
         metavar="<action>",
-        title="操作",
+        title=H("操作", "actions"),
     )
     p_memory.set_defaults(func=cmd_memory_status)
 
     p_mem_add = mem_sub.add_parser(
         "add",
-        help="[已移除] 请改用 LA ingest text",
+        help=H("[已移除] 请改用 LA ingest text", "[removed] use LA ingest text"),
     )
     p_mem_add.add_argument("text", nargs="?", default="", help=argparse.SUPPRESS)
     p_mem_add.set_defaults(func=cmd_add)
 
     p_mem_pending = mem_sub.add_parser(
         "pending",
-        help="[--limit N]  列出待确认的 Warm 记忆候选",
+        help=H("[--limit N]  列出待确认的 Warm 记忆候选", "[--limit N]  list pending Warm memory candidates"),
     )
-    p_mem_pending.add_argument("--limit", type=int, default=None, help="最多显示条数")
+    p_mem_pending.add_argument("--limit", type=int, default=None, help=H("最多显示条数", "max items to show"))
     p_mem_pending.set_defaults(func=cmd_memory_pending)
 
     p_mem_approve = mem_sub.add_parser(
         "approve",
-        help="<id…> | --all  批准待确认记忆并写入 Warm",
+        help=H("<id…> | --all  批准待确认记忆并写入 Warm", "<id…> | --all  approve pending memories into Warm"),
     )
-    p_mem_approve.add_argument("ids", nargs="*", help="pending id（可多个）")
-    p_mem_approve.add_argument("--all", action="store_true", help="批准全部")
+    p_mem_approve.add_argument("ids", nargs="*", help=H("pending id（可多个）", "pending id(s)"))
+    p_mem_approve.add_argument("--all", action="store_true", help=H("批准全部", "approve all"))
     p_mem_approve.set_defaults(func=cmd_memory_approve)
 
     p_mem_reject = mem_sub.add_parser(
         "reject",
-        help="<id…> | --all  拒绝待确认记忆（不写入 Warm）",
+        help=H("<id…> | --all  拒绝待确认记忆（不写入 Warm）", "<id…> | --all  reject pending memories (no Warm write)"),
     )
-    p_mem_reject.add_argument("ids", nargs="*", help="pending id（可多个）")
-    p_mem_reject.add_argument("--all", action="store_true", help="拒绝全部")
+    p_mem_reject.add_argument("ids", nargs="*", help=H("pending id（可多个）", "pending id(s)"))
+    p_mem_reject.add_argument("--all", action="store_true", help=H("拒绝全部", "reject all"))
     p_mem_reject.set_defaults(func=cmd_memory_reject)
 
     p_mem_forget = mem_sub.add_parser(
         "forget",
-        help="<id> [--yes]  删除一条记忆",
-        description="删除一条记忆（先用 LA memory search / query 查看 id）",
+        help=H("<id> [--yes]  删除一条记忆", "<id> [--yes]  delete one memory"),
+        description=H("删除一条记忆（先用 LA memory search / query 查看 id）", "delete one memory (find id via LA memory search / query)"),
     )
-    p_mem_forget.add_argument("id", help="记忆 id（支持前缀匹配）")
-    p_mem_forget.add_argument("--yes", "-y", action="store_true", help="跳过确认")
+    p_mem_forget.add_argument("id", help=H("记忆 id（支持前缀匹配）", "memory id (prefix match ok)"))
+    p_mem_forget.add_argument("--yes", "-y", action="store_true", help=H("跳过确认", "skip confirmation"))
     p_mem_forget.set_defaults(func=cmd_forget)
 
     p_mem_ingest = mem_sub.add_parser(
         "ingest",
-        help="[已移除] 请改用 LA ingest …",
-        description="已移除。请改用: LA ingest chat|chatgpt|doc|kb|text|all",
+        help=H("[已移除] 请改用 LA ingest …", "[removed] use LA ingest …"),
+        description=H("已移除。请改用: LA ingest chat|chatgpt|doc|kb|text|all", "Removed. Use: LA ingest chat|chatgpt|doc|kb|text|all"),
     )
     p_mem_ingest.add_argument(
         "source",
@@ -1895,178 +1915,154 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_mem_reset = mem_sub.add_parser(
         "reset",
-        help="[chat|chatgpt|all]  按来源清空 Warm 记忆",
-        description="按来源清空记忆；默认 all。知识库请用 LA rag reset。",
+        help=H("[chat|chatgpt|all]  按来源清空 Warm 记忆", "[chat|chatgpt|all]  clear Warm memories by source"),
+        description=H("按来源清空记忆；默认 all。知识库请用 LA rag reset。", "clear memories by source; default all. For knowledge base use LA rag reset."),
     )
     p_mem_reset.add_argument(
         "source",
         nargs="?",
         default="all",
         choices=("chat", "chatgpt", "all"),
-        help="清空范围（默认 all）",
+        help=H("清空范围（默认 all）", "clear scope (default all)"),
     )
     p_mem_reset.set_defaults(func=cmd_reset_memory)
 
     p_mem_status = mem_sub.add_parser(
         "status",
-        help="诊断 Warm 层记忆后端（Mem0 / JSON）",
+        help=H("诊断 Warm 层记忆后端（Mem0 / JSON）", "diagnose Warm memory backend (Mem0 / JSON)"),
     )
     p_mem_status.set_defaults(func=cmd_memory_status)
 
     mem_sub.add_parser(
         "reindex",
-        help="从 memory_store.json 重建 Mem0 向量索引（不删事实）",
-        description="保留 JSON 注册表，清空并重建 Mem0 Warm 引擎索引",
+        help=H("从 memory_store.json 重建 Mem0 向量索引（不删事实）", "rebuild Mem0 vector index from memory_store.json (facts kept)"),
+        description=H("保留 JSON 注册表，清空并重建 Mem0 Warm 引擎索引", "keep JSON registry; wipe and rebuild Mem0 Warm engine index"),
     ).set_defaults(func=cmd_reindex_memory)
 
     p_mem_graph = mem_sub.add_parser(
         "graph",
-        help="[stats|rebuild|neo4j|query]  记忆关系图 / 精确图查询",
-        description=(
-            "SQLite 召回 hop 图（LA_MEMORY_GRAPH）与 Neo4j 精确查询（LA_NEO4J）。"
-            "stats/rebuild 管本地图；neo4j stats|rebuild 管 Neo4j；"
-            "query 对计数/聚合/多跳跑 Cypher 模板。"
-        ),
+        help=H("[stats|rebuild|neo4j|query]  记忆关系图 / 精确图查询", "[stats|rebuild|neo4j|query]  memory graph / precise graph query"),
+        description=H("SQLite 召回 hop 图（LA_MEMORY_GRAPH）与 Neo4j 精确查询（LA_NEO4J）。stats/rebuild 管本地图；neo4j stats|rebuild 管 Neo4j；query 对计数/聚合/多跳跑 Cypher 模板。", "SQLite recall hop graph (LA_MEMORY_GRAPH) and Neo4j precise query (LA_NEO4J). stats/rebuild for local graph; neo4j stats|rebuild for Neo4j; query runs Cypher templates for counts/aggregates/multi-hop."),
     )
     p_mem_graph.add_argument(
         "graph_action",
         nargs="?",
         default="stats",
         choices=("stats", "rebuild", "neo4j", "query"),
-        help="stats|rebuild|neo4j|query（默认 stats）",
+        help=H("stats|rebuild|neo4j|query（默认 stats）", "stats|rebuild|neo4j|query (default stats)"),
     )
     p_mem_graph.add_argument(
         "graph_arg",
         nargs="?",
         default=None,
-        help="neo4j 时为 stats|rebuild；query 时为问题文本",
+        help=H("neo4j 时为 stats|rebuild；query 时为问题文本", "for neo4j: stats|rebuild; for query: question text"),
     )
     p_mem_graph.set_defaults(func=cmd_memory_graph)
 
     p_mem_search = mem_sub.add_parser(
         "search",
-        help="<query> [--top-k N] [--verbose]  语义搜索 Warm 记忆",
+        help=H("<query> [--top-k N] [--verbose]  语义搜索 Warm 记忆", "<query> [--top-k N] [--verbose]  semantic search Warm memories"),
     )
-    p_mem_search.add_argument("query", help="搜索关键词")
-    p_mem_search.add_argument("--top-k", type=int, default=5, help="返回条数（默认 5）")
-    p_mem_search.add_argument("--verbose", action="store_true", help="显示记忆锚点等详情")
+    p_mem_search.add_argument("query", help=H("搜索关键词", "search query"))
+    p_mem_search.add_argument("--top-k", type=int, default=5, help=H("返回条数（默认 5）", "results to return (default 5)"))
+    p_mem_search.add_argument("--verbose", action="store_true", help=H("显示记忆锚点等详情", "show memory anchors and details"))
     p_mem_search.set_defaults(func=cmd_search)
 
     p_mem_consolidate = mem_sub.add_parser(
         "consolidate",
-        help="巩固近期记忆（ADD/UPDATE/DELETE，默认后台）",
-        description="扫描近期记忆，合并冲突/重复；默认后台任务，可用 la tasks 查看进度",
+        help=H("巩固近期记忆（ADD/UPDATE/DELETE，默认后台）", "consolidate recent memories (ADD/UPDATE/DELETE; background by default)"),
+        description=H("扫描近期记忆，合并冲突/重复；默认后台任务，可用 la tasks 查看进度", "scan recent memories, merge conflicts/dupes; background by default (see la tasks)"),
     )
     p_mem_consolidate.add_argument(
         "--limit",
         type=int,
         default=40,
-        help="扫描最近 N 条记忆（默认 40）",
+        help=H("扫描最近 N 条记忆（默认 40）", "scan last N memories (default 40)"),
     )
     p_mem_consolidate.add_argument(
         "--foreground",
         "-f",
         action="store_true",
-        help="前台同步执行（默认后台）",
+        help=H("前台同步执行（默认后台）", "run in foreground (default background)"),
     )
     p_mem_consolidate.set_defaults(func=cmd_consolidate)
 
     p_mem_query = mem_sub.add_parser(
         "query",
-        help="[query] [--tag TAG] [--since DATE] [--sort …]  条件浏览/查询记忆",
-        description="浏览或查询记忆库：标签过滤、时间范围、排序、语义匹配",
+        help=H("[query] [--tag TAG] [--since DATE] [--sort …]  条件浏览/查询记忆", "[query] [--tag TAG] [--since DATE] [--sort …]  browse/query memories"),
+        description=H("浏览或查询记忆库：标签过滤、时间范围、排序、语义匹配", "browse or query memories: tags, date range, sort, semantic match"),
     )
-    p_mem_query.add_argument("query", nargs="?", default="", help="可选，语义搜索关键词")
+    p_mem_query.add_argument("query", nargs="?", default="", help=H("可选，语义搜索关键词", "optional semantic search query"))
     p_mem_query.add_argument(
         "--tag",
         action="append",
         dest="tag",
         metavar="TAG",
-        help="按标签过滤（可多次指定）",
+        help=H("按标签过滤（可多次指定）", "filter by tag (repeatable)"),
     )
-    p_mem_query.add_argument("--since", help="起始日期，如 2024-01-01")
-    p_mem_query.add_argument("--until", help="结束日期，如 2024-12-31")
+    p_mem_query.add_argument("--since", help=H("起始日期，如 2024-01-01", "start date, e.g. 2024-01-01"))
+    p_mem_query.add_argument("--until", help=H("结束日期，如 2024-12-31", "end date, e.g. 2024-12-31"))
     p_mem_query.add_argument(
         "--sort",
         choices=("newest", "oldest", "relevance"),
         default="newest",
-        help="排序方式（默认 newest；有 query 时可用 relevance）",
+        help=H("排序方式（默认 newest；有 query 时可用 relevance）", "sort order (default newest; relevance when query set)"),
     )
-    p_mem_query.add_argument("--limit", type=int, default=20, help="返回条数（默认 20）")
-    p_mem_query.add_argument("--verbose", action="store_true", help="显示评分细节")
-    p_mem_query.add_argument("--json", action="store_true", help="以 JSON 输出")
+    p_mem_query.add_argument("--limit", type=int, default=20, help=H("返回条数（默认 20）", "results to return (default 20)"))
+    p_mem_query.add_argument("--verbose", action="store_true", help=H("显示评分细节", "show scoring details"))
+    p_mem_query.add_argument("--json", action="store_true", help=H("以 JSON 输出", "output as JSON"))
     p_mem_query.add_argument(
         "--list-tags",
         action="store_true",
-        help="列出所有记忆标签及数量",
+        help=H("列出所有记忆标签及数量", "list all memory tags and counts"),
     )
     p_mem_query.set_defaults(func=cmd_memories)
 
     p_mem_reflect = mem_sub.add_parser(
         "reflect",
-        help="[高级] <query>  综合推理（记忆 → 知识库 → 归纳）",
-        description=(
-            "[高级] 先多跳召回长期记忆，再检索知识库，最后综合推理。\n"
-            "  LA memory reflect \"我最近状态怎么样？\""
-        ),
+        help=H("[高级] <query>  综合推理（记忆 → 知识库 → 归纳）", "[advanced] <query>  reflect (memory → knowledge → synthesis)"),
+        description=H("[高级] 先多跳召回长期记忆，再检索知识库，最后综合推理。\n  LA memory reflect \"我最近状态怎么样？\"", "[advanced] multi-hop memory recall, then knowledge search, then synthesize.\n  LA memory reflect \"How have I been lately?\""),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_mem_reflect.add_argument("query", help="需要推理的问题")
+    p_mem_reflect.add_argument("query", help=H("需要推理的问题", "question to reason about"))
     p_mem_reflect.set_defaults(func=cmd_reflect)
 
     p_reflect = sub.add_parser(
         "reflect",
-        help="[高级] <query>  综合推理（兼容别名；推荐 LA memory reflect）",
-        description=(
-            "[高级] 先多跳召回长期记忆，再检索知识库，最后综合推理给出答案。\n"
-            "  LA reflect \"我最近状态怎么样？\"\n"
-            "  等价：LA memory reflect \"…\""
-        ),
+        help=H("[高级] <query>  综合推理（兼容别名；推荐 LA memory reflect）", "[advanced] <query>  reflect (alias; prefer LA memory reflect)"),
+        description=H("[高级] 先多跳召回长期记忆，再检索知识库，最后综合推理给出答案。\n  LA reflect \"我最近状态怎么样？\"\n  等价：LA memory reflect \"…\"", "[advanced] multi-hop memory recall, then knowledge search, then answer.\n  LA reflect \"How have I been lately?\"\n  same as: LA memory reflect \"…\""),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_reflect.add_argument("query", help="需要推理的问题")
+    p_reflect.add_argument("query", help=H("需要推理的问题", "question to reason about"))
     p_reflect.set_defaults(func=cmd_reflect)
 
     p_websearch = sub.add_parser(
         "websearch",
-        help="[高级] <query> [--top-k N]  联网搜索（亦可用会话内自动联网）",
-        description=(
-            "[高级] 直接联网检索并输出结果摘要与来源链接。\n"
-            "默认后端 ddgs（免费）；可用 LA_WEB_SEARCH_PROVIDER / Tavily / SearXNG。\n"
-            "多步深度研究请用会话内 /deepsearch。\n"
-            "  LA websearch \"今天深圳天气\"\n"
-            "  LA websearch \"最新 AI 进展\" --top-k 8"
-        ),
+        help=H("[高级] <query> [--top-k N]  联网搜索（亦可用会话内自动联网）", "[advanced] <query> [--top-k N]  web search (or auto in session)"),
+        description=H("[高级] 直接联网检索并输出结果摘要与来源链接。\n默认后端 ddgs（免费）；可用 LA_WEB_SEARCH_PROVIDER / Tavily / SearXNG。\n多步深度研究请用会话内 /deepsearch。\n  LA websearch \"今天深圳天气\"\n  LA websearch \"最新 AI 进展\" --top-k 8", "[advanced] web search with summaries and source links.\nDefault backend ddgs (free); or LA_WEB_SEARCH_PROVIDER / Tavily / SearXNG.\nFor multi-step research use in-session /deepsearch.\n  LA websearch \"Shenzhen weather today\"\n  LA websearch \"latest AI news\" --top-k 8"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_websearch.add_argument("query", help="联网搜索关键词")
-    p_websearch.add_argument("--top-k", type=int, default=5, help="返回条数（默认 5）")
+    p_websearch.add_argument("query", help=H("联网搜索关键词", "web search query"))
+    p_websearch.add_argument("--top-k", type=int, default=5, help=H("返回条数（默认 5）", "results to return (default 5)"))
     p_websearch.set_defaults(func=cmd_websearch)
 
     p_rag = sub.add_parser(
         "rag",
-        help="[status]|search|reset  无参显示概览；Cold 知识库检索与运维",
-        description=(
-            "Cold 知识库检索与运维。写入/重建请用 LA ingest。\n"
-            "无子命令时显示 status 概览。\n"
-            "  LA rag\n"
-            "  LA rag search <query>\n"
-            "  LA rag status | reset\n"
-            "持久记忆化: LA ingest doc|kb|rebuild"
-        ),
+        help=H("[status]|search|reset  无参显示概览；Cold 知识库检索与运维", "[status]|search|reset  overview if bare; Cold knowledge ops"),
+        description=H("Cold 知识库检索与运维。写入/重建请用 LA ingest。\n无子命令时显示 status 概览。\n  LA rag\n  LA rag search <query>\n  LA rag status | reset\n持久记忆化: LA ingest doc|kb|rebuild", "Cold knowledge search & ops. Write/rebuild via LA ingest.\nBare command shows status overview.\n  LA rag\n  LA rag search <query>\n  LA rag status | reset\nPersist: LA ingest doc|kb|rebuild"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     rag_sub = p_rag.add_subparsers(
         dest="rag_cmd",
         required=False,
         metavar="<action>",
-        title="操作",
+        title=H("操作", "actions"),
     )
     p_rag.set_defaults(func=cmd_rag_status)
 
     p_rag_add = rag_sub.add_parser(
         "add",
-        help="[已移除] 请改用 LA ingest doc",
+        help=H("[已移除] 请改用 LA ingest doc", "[removed] use LA ingest doc"),
     )
     p_rag_add.add_argument("path", nargs="?", default="", help=argparse.SUPPRESS)
     p_rag_add.add_argument("--background", "-b", action="store_true", help=argparse.SUPPRESS)
@@ -2074,261 +2070,231 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_rag_ingest = rag_sub.add_parser(
         "ingest",
-        help="[已移除] 请改用 LA ingest kb",
+        help=H("[已移除] 请改用 LA ingest kb", "[removed] use LA ingest kb"),
     )
     p_rag_ingest.add_argument("--force", action="store_true", help=argparse.SUPPRESS)
     p_rag_ingest.set_defaults(func=cmd_ingest_file)
 
     p_rag_search = rag_sub.add_parser(
         "search",
-        help="<query> [--top-k N]  检索知识库原文",
+        help=H("<query> [--top-k N]  检索知识库原文", "<query> [--top-k N]  search knowledge base text"),
     )
-    p_rag_search.add_argument("query", help="搜索关键词")
-    p_rag_search.add_argument("--top-k", type=int, default=5, help="返回条数（默认 5）")
+    p_rag_search.add_argument("query", help=H("搜索关键词", "search query"))
+    p_rag_search.add_argument("--top-k", type=int, default=5, help=H("返回条数（默认 5）", "results to return (default 5)"))
     p_rag_search.set_defaults(func=cmd_rag_search)
 
-    rag_sub.add_parser("status", help="诊断知识库索引状态").set_defaults(func=cmd_rag_status)
+    rag_sub.add_parser("status", help=H("诊断知识库索引状态", "diagnose knowledge index status")).set_defaults(func=cmd_rag_status)
     rag_sub.add_parser(
         "reset",
-        help="清空知识库索引（保留 kb/ 软链；并清理旧 ingest 记忆）",
+        help=H("清空知识库索引（保留 kb/ 软链；并清理旧 ingest 记忆）", "clear knowledge index (keep kb/ symlinks; purge old ingest memories)"),
     ).set_defaults(func=cmd_rag_reset)
     rag_sub.add_parser(
         "rebuild",
-        help="[已移除] 请改用 LA ingest rebuild",
+        help=H("[已移除] 请改用 LA ingest rebuild", "[removed] use LA ingest rebuild"),
     ).set_defaults(func=cmd_rag_rebuild)
 
     p_ingest = sub.add_parser(
         "ingest",
-        help="status|chat|chatgpt|doc|kb|text|all|rebuild|…  统一持久记忆化",
-        description=(
-            "统一持久记忆化：落盘 → Cold → Warm → core-profile。\n"
-            "  LA ingest status\n"
-            "  LA ingest chat [--force] [--session ID]\n"
-            "  LA ingest chatgpt [path] [--file …] [--dir …] [--force]\n"
-            "  LA ingest doc [-b] <path>\n"
-            "  LA ingest kb [--force]\n"
-            "  LA ingest text \"…\"\n"
-            "  LA ingest all [--force]\n"
-            "  LA ingest rebuild\n"
-            "  LA ingest reset [chat|chatgpt|doc|kb|text|all]\n"
-            "查询面仍用: LA memory search · LA rag search"
-        ),
+        help=H("status|chat|chatgpt|doc|kb|text|all|rebuild|…  统一持久记忆化", "status|chat|chatgpt|doc|kb|text|all|rebuild|…  unified persist ingest"),
+        description=H("统一持久记忆化：落盘 → Cold → Warm → core-profile。\n  LA ingest status\n  LA ingest chat [--force] [--session ID]\n  LA ingest chatgpt [path] [--file …] [--dir …] [--force]\n  LA ingest doc [-b] <path>\n  LA ingest kb [--force]\n  LA ingest text \"…\"\n  LA ingest all [--force]\n  LA ingest rebuild\n  LA ingest reset [chat|chatgpt|doc|kb|text|all]\n查询面仍用: LA memory search · LA rag search", "Unified persist ingest: disk → Cold → Warm → core-profile.\n  LA ingest status\n  LA ingest chat [--force] [--session ID]\n  LA ingest chatgpt [path] [--file …] [--dir …] [--force]\n  LA ingest doc [-b] <path>\n  LA ingest kb [--force]\n  LA ingest text \"…\"\n  LA ingest all [--force]\n  LA ingest rebuild\n  LA ingest reset [chat|chatgpt|doc|kb|text|all]\nQuery via: LA memory search · LA rag search"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_ingest.add_argument(
         "source",
         nargs="?",
         default="status",
-        help=(
-            "来源或动作: status|chat|chatgpt|doc|kb|text|all|rebuild|reset|"
-            "aware|news|summarize|polish"
-        ),
+        help=H("来源或动作: status|chat|chatgpt|doc|kb|text|all|rebuild|reset|aware|news|summarize|polish", "source or action: status|chat|chatgpt|doc|kb|text|all|rebuild|reset|aware|news|summarize|polish"),
     )
     p_ingest.add_argument(
         "path_or_text",
         nargs="*",
-        help="文档/导出路径，或 text 的正文；reset 时为目标来源",
+        help=H("文档/导出路径，或 text 的正文；reset 时为目标来源", "doc/export path, or text body; for reset: target source"),
     )
-    p_ingest.add_argument("--force", action="store_true", help="强制重新消费已处理内容")
-    p_ingest.add_argument("--session", help="仅处理指定对话 session id（source=chat）")
+    p_ingest.add_argument("--force", action="store_true", help=H("强制重新消费已处理内容", "force re-ingest already processed content"))
+    p_ingest.add_argument("--session", help=H("仅处理指定对话 session id（source=chat）", "only process given chat session id (source=chat)"))
     p_ingest.add_argument(
         "--interactive",
         action="store_true",
-        help="逐条确认是否保存 Warm（chat/chatgpt）",
+        help=H("逐条确认是否保存 Warm（chat/chatgpt）", "confirm each Warm save (chat/chatgpt)"),
     )
     p_ingest.add_argument(
         "--file",
         dest="files",
         nargs="+",
         metavar="PATH",
-        help="一个或多个文件路径（chatgpt/doc）",
+        help=H("一个或多个文件路径（chatgpt/doc）", "one or more file paths (chatgpt/doc)"),
     )
     p_ingest.add_argument(
         "--dir",
         dest="directory",
-        help="批量导入目录下全部 *.json（chatgpt；默认 data/chatGPTdata/）",
+        help=H("批量导入目录下全部 *.json（chatgpt；默认 data/chatGPTdata/）", "import all *.json under a directory (chatgpt; default data/chatGPTdata/)"),
     )
     p_ingest.add_argument(
         "--include-disabled",
         action="store_true",
-        help="同时导入 ChatGPT 中已关闭（enabled=false）的记忆",
+        help=H("同时导入 ChatGPT 中已关闭（enabled=false）的记忆", "also import ChatGPT memories with enabled=false"),
     )
     p_ingest.add_argument(
         "--background",
         "-b",
         action="store_true",
-        help="doc：创建软链后在后台索引",
+        help=H("doc：创建软链后在后台索引", "doc: symlink then index in background"),
     )
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_workspace = sub.add_parser(
         "workspace",
-        help="[高级] 工作区摘要 / 托管待办 / 诊断扫描",
-        description=(
-            "[高级] 工作区最近变更、Git 状态与托管待办。"
-            "正式待办: tasks / add / done / dismiss / snooze；"
-            "代码 TODO 扫描仅诊断（--todos-only / scan），不自动入队。"
-        ),
+        help=H("[高级] 工作区摘要 / 托管待办 / 诊断扫描", "[advanced] workspace summary / managed todos / diagnostic scan"),
+        description=H("[高级] 工作区最近变更、Git 状态与托管待办。正式待办: tasks / add / done / dismiss / snooze；代码 TODO 扫描仅诊断（--todos-only / scan），不自动入队。", "[advanced] recent workspace changes, Git status, managed todos. Todos: tasks / add / done / dismiss / snooze; code TODO scan is diagnostic only (--todos-only / scan), never auto-queued."),
     )
-    p_workspace.add_argument("--days", type=int, default=7, help="最近 N 天内的文件变更（默认 7）")
-    p_workspace.add_argument("--cwd", help="工作区根目录")
+    p_workspace.add_argument("--days", type=int, default=7, help=H("最近 N 天内的文件变更（默认 7）", "file changes in last N days (default 7)"))
+    p_workspace.add_argument("--cwd", help=H("工作区根目录", "workspace root"))
     p_workspace.add_argument(
         "--todos-only",
         action="store_true",
-        help="诊断扫描代码 TODO/checkbox（未入队；等同 scan）",
+        help=H("诊断扫描代码 TODO/checkbox（未入队；等同 scan）", "diagnostic scan of code TODO/checkbox (not queued; same as scan)"),
     )
     p_workspace.add_argument(
         "--detail",
         action="store_true",
-        help="摘要末尾附带诊断扫描命中（未入队）",
+        help=H("摘要末尾附带诊断扫描命中（未入队）", "append diagnostic scan hits to summary (not queued)"),
     )
-    p_workspace.add_argument("--limit", type=int, default=80, help="列表/扫描上限（默认 80）")
+    p_workspace.add_argument("--limit", type=int, default=80, help=H("列表/扫描上限（默认 80）", "list/scan limit (default 80)"))
     ws_sub = p_workspace.add_subparsers(dest="workspace_action", metavar="action")
 
-    p_ws_tasks = ws_sub.add_parser("tasks", help="列出托管待办（open）")
-    p_ws_tasks.add_argument("--all", action="store_true", help="含 done/dismissed/expired/snoozed")
-    p_ws_tasks.add_argument("--cwd", help="工作区根目录")
-    p_ws_tasks.add_argument("--limit", type=int, default=80, help="显示上限")
+    p_ws_tasks = ws_sub.add_parser("tasks", help=H("列出托管待办（open）", "list managed todos (open)"))
+    p_ws_tasks.add_argument("--all", action="store_true", help=H("含 done/dismissed/expired/snoozed", "include done/dismissed/expired/snoozed"))
+    p_ws_tasks.add_argument("--cwd", help=H("工作区根目录", "workspace root"))
+    p_ws_tasks.add_argument("--limit", type=int, default=80, help=H("显示上限", "display limit"))
     tasks_sub = p_ws_tasks.add_subparsers(dest="tasks_action", metavar="action")
-    p_ws_tasks_purge = tasks_sub.add_parser("purge", help="清理终态待办")
+    p_ws_tasks_purge = tasks_sub.add_parser("purge", help=H("清理终态待办", "purge terminal-state todos"))
     p_ws_tasks_purge.add_argument(
         "--older-than",
         type=int,
         default=None,
         metavar="DAYS",
-        help="仅清理创建超过 N 天的终态",
+        help=H("仅清理创建超过 N 天的终态", "only purge terminal todos older than N days"),
     )
-    p_ws_tasks_purge.add_argument("--cwd", help="工作区根目录")
+    p_ws_tasks_purge.add_argument("--cwd", help=H("工作区根目录", "workspace root"))
     p_ws_tasks.set_defaults(func=cmd_workspace)
     p_ws_tasks_purge.set_defaults(func=cmd_workspace)
 
-    p_ws_add = ws_sub.add_parser("add", help="添加托管待办（须 --why）")
-    p_ws_add.add_argument("title", help="可读标题")
+    p_ws_add = ws_sub.add_parser("add", help=H("添加托管待办（须 --why）", "add managed todo (requires --why)"))
+    p_ws_add.add_argument("title", help=H("可读标题", "readable title"))
     p_ws_add.add_argument(
         "--why",
         required=True,
-        help="为何值得占用注意力（必填）",
+        help=H("为何值得占用注意力（必填）", "why it deserves attention (required)"),
     )
-    p_ws_add.add_argument("--hint", default="", help="如何办完（可选）")
-    p_ws_add.add_argument("--cwd", help="工作区根目录")
+    p_ws_add.add_argument("--hint", default="", help=H("如何办完（可选）", "how to finish (optional)"))
+    p_ws_add.add_argument("--cwd", help=H("工作区根目录", "workspace root"))
     p_ws_add.set_defaults(func=cmd_workspace)
 
-    p_ws_done = ws_sub.add_parser("done", help="完成一条待办")
-    p_ws_done.add_argument("task_id", help="待办 id（支持前缀）")
-    p_ws_done.add_argument("--cwd", help="工作区根目录")
+    p_ws_done = ws_sub.add_parser("done", help=H("完成一条待办", "mark a todo done"))
+    p_ws_done.add_argument("task_id", help=H("待办 id（支持前缀）", "todo id (prefix ok)"))
+    p_ws_done.add_argument("--cwd", help=H("工作区根目录", "workspace root"))
     p_ws_done.set_defaults(func=cmd_workspace)
 
-    p_ws_dismiss = ws_sub.add_parser("dismiss", help="丢弃一条待办")
-    p_ws_dismiss.add_argument("task_id", help="待办 id（支持前缀）")
-    p_ws_dismiss.add_argument("--cwd", help="工作区根目录")
+    p_ws_dismiss = ws_sub.add_parser("dismiss", help=H("丢弃一条待办", "dismiss a todo"))
+    p_ws_dismiss.add_argument("task_id", help=H("待办 id（支持前缀）", "todo id (prefix ok)"))
+    p_ws_dismiss.add_argument("--cwd", help=H("工作区根目录", "workspace root"))
     p_ws_dismiss.set_defaults(func=cmd_workspace)
 
-    p_ws_snooze = ws_sub.add_parser("snooze", help="搁置一条待办")
-    p_ws_snooze.add_argument("task_id", help="待办 id（支持前缀）")
+    p_ws_snooze = ws_sub.add_parser("snooze", help=H("搁置一条待办", "snooze a todo"))
+    p_ws_snooze.add_argument("task_id", help=H("待办 id（支持前缀）", "todo id (prefix ok)"))
     p_ws_snooze.add_argument(
         "--days",
         type=int,
         default=1,
         dest="snooze_days",
-        help="搁置天数（默认 1）",
+        help=H("搁置天数（默认 1）", "snooze days (default 1)"),
     )
-    p_ws_snooze.add_argument("--cwd", help="工作区根目录")
+    p_ws_snooze.add_argument("--cwd", help=H("工作区根目录", "workspace root"))
     p_ws_snooze.set_defaults(func=cmd_workspace)
 
-    p_ws_scan = ws_sub.add_parser("scan", help="诊断扫描代码 TODO（未入队）")
-    p_ws_scan.add_argument("--cwd", help="工作区根目录")
-    p_ws_scan.add_argument("--limit", type=int, default=80, help="扫描上限")
+    p_ws_scan = ws_sub.add_parser("scan", help=H("诊断扫描代码 TODO（未入队）", "diagnostic scan of code TODOs (not queued)"))
+    p_ws_scan.add_argument("--cwd", help=H("工作区根目录", "workspace root"))
+    p_ws_scan.add_argument("--limit", type=int, default=80, help=H("扫描上限", "scan limit"))
     p_ws_scan.set_defaults(func=cmd_workspace)
 
-    p_ws_purge = ws_sub.add_parser("purge", help="清理终态待办")
+    p_ws_purge = ws_sub.add_parser("purge", help=H("清理终态待办", "purge terminal-state todos"))
     p_ws_purge.add_argument(
         "--older-than",
         type=int,
         default=None,
         metavar="DAYS",
-        help="仅清理创建超过 N 天的终态",
+        help=H("仅清理创建超过 N 天的终态", "only purge terminal todos older than N days"),
     )
-    p_ws_purge.add_argument("--cwd", help="工作区根目录")
+    p_ws_purge.add_argument("--cwd", help=H("工作区根目录", "workspace root"))
     p_ws_purge.set_defaults(func=cmd_workspace)
 
     p_workspace.set_defaults(func=cmd_workspace)
 
     p_audit = sub.add_parser(
         "audit",
-        help="[高级] [--since 7d] [--report PATH] [--cwd PATH]  审计摘要与报告",
-        description="[高级] Token/费用、文件安全、记忆健康审计",
+        help=H("[高级] [--since 7d] [--report PATH] [--cwd PATH]  审计摘要与报告", "[advanced] [--since 7d] [--report PATH] [--cwd PATH]  audit summary & report"),
+        description=H("[高级] Token/费用、文件安全、记忆健康审计", "[advanced] token/cost, file safety, memory health audit"),
     )
-    p_audit.add_argument("--since", help="统计起始，如 7d、24h、30m")
+    p_audit.add_argument("--since", help=H("统计起始，如 7d、24h、30m", "stats window start, e.g. 7d, 24h, 30m"))
     p_audit.add_argument(
         "--report",
-        help="导出报告路径（.md Markdown；.html HTML）",
+        help=H("导出报告路径（.md Markdown；.html HTML）", "export report path (.md Markdown; .html HTML)"),
     )
-    p_audit.add_argument("--days", type=int, default=7, help="报告中工作区快照天数（默认 7）")
-    p_audit.add_argument("--cwd", help="工作区根目录")
+    p_audit.add_argument("--days", type=int, default=7, help=H("报告中工作区快照天数（默认 7）", "workspace snapshot days in report (default 7)"))
+    p_audit.add_argument("--cwd", help=H("工作区根目录", "workspace root"))
     p_audit.set_defaults(func=cmd_audit)
 
     p_logs = sub.add_parser(
         "logs",
-        help="[高级] [--tail N] [--level LEVEL] [--path]  查看诊断日志",
-        description=(
-            "[高级] 查看本地诊断日志（data/logs/localagent.log）。\n"
-            "与 LA audit（用量/护栏问责）不同：logs 用于排查运行时决策与降级。\n"
-            "开发时可 LA --debug <command> 或设置 LA_LOG_LEVEL=DEBUG 盯 stderr。"
-        ),
+        help=H("[高级] [--tail N] [--level LEVEL] [--path]  查看诊断日志", "[advanced] [--tail N] [--level LEVEL] [--path]  view diagnostic logs"),
+        description=H("[高级] 查看本地诊断日志（data/logs/localagent.log）。\n与 LA audit（用量/护栏问责）不同：logs 用于排查运行时决策与降级。\n开发时可 LA --debug <command> 或设置 LA_LOG_LEVEL=DEBUG 盯 stderr。", "[advanced] view local diagnostic logs (data/logs/localagent.log).\nUnlike LA audit (usage/guardrails): logs debug runtime decisions & fallbacks.\nDev: LA --debug <command> or LA_LOG_LEVEL=DEBUG on stderr."),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_logs.add_argument(
         "--tail",
         type=int,
         default=80,
-        help="显示最近 N 行（默认 80；0 表示全部）",
+        help=H("显示最近 N 行（默认 80；0 表示全部）", "show last N lines (default 80; 0 = all)"),
     )
     p_logs.add_argument(
         "--level",
-        help="仅显示不低于该级别的行（如 DEBUG、INFO、WARNING）",
+        help=H("仅显示不低于该级别的行（如 DEBUG、INFO、WARNING）", "only lines at or above this level (e.g. DEBUG, INFO, WARNING)"),
     )
     p_logs.add_argument(
         "--path",
         action="store_true",
-        help="只打印日志文件路径",
+        help=H("只打印日志文件路径", "print log file path only"),
     )
     p_logs.set_defaults(func=cmd_logs)
 
     p_config = sub.add_parser(
         "config",
-        help="[--provider …] | <file.json> | init|list|…  【主路径】快速配置 / 管理模型",
-        description=(
-            "【主路径】快速写入模型与 API Key。\n"
-            "  la config --provider ollama --base_url http://localhost:11434 --model qwen3.5:4b\n"
-            "  la config --TAVILY_API_KEY tvly-...\n"
-            "  la config my.json\n"
-            "  la config-example\n"
-            "亦支持 init / list / add / remove / set-key 子命令。"
-        ),
+        help=H("[--provider …] | <file.json> | init|list|…  【主路径】快速配置 / 管理模型", "[--provider …] | <file.json> | init|list|…  [main] quick config / model mgmt"),
+        description=H("【主路径】快速写入模型与 API Key。\n  la config --provider ollama --base_url http://localhost:11434 --model qwen3.5:4b\n  la config --TAVILY_API_KEY tvly-...\n  la config my.json\n  la config-example\n亦支持 init / list / add / remove / set-key 子命令。", "[main] quickly set model and API keys.\n  la config --provider ollama --base_url http://localhost:11434 --model qwen3.5:4b\n  la config --TAVILY_API_KEY tvly-...\n  la config my.json\n  la config-example\nAlso: init / list / add / remove / set-key."),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     def _add_simple_config_flags(parser: argparse.ArgumentParser) -> None:
-        parser.add_argument("--provider", help="模型路径，如 ollama / openrouter / cursor")
+        parser.add_argument("--provider", help=H("模型路径，如 ollama / openrouter / cursor", "model path, e.g. ollama / openrouter / cursor"))
         parser.add_argument(
             "--base_url",
             "--base-url",
             dest="base_url",
             help="API base URL",
         )
-        parser.add_argument("--model", help="模型名称，如 qwen3.5:4b")
+        parser.add_argument("--model", help=H("模型名称，如 qwen3.5:4b", "model name, e.g. qwen3.5:4b"))
         parser.add_argument(
             "--api_key",
             "--api-key",
             dest="api_key",
-            help="该 provider 的 API Key",
+            help=H("该 provider 的 API Key", "API key for this provider"),
         )
-        parser.add_argument("--timeout", type=float, help="请求超时秒数")
+        parser.add_argument("--timeout", type=float, help=H("请求超时秒数", "request timeout seconds"))
         parser.add_argument(
             "--TAVILY_API_KEY",
             "--tavily-api-key",
             dest="tavily_api_key",
-            help="Tavily 联网搜索 Key（可为空字符串）",
+            help=H("Tavily 联网搜索 Key（可为空字符串）", "Tavily web-search key (empty string ok)"),
         )
         parser.add_argument(
             "--OPENROUTER_API_KEY",
@@ -2354,241 +2320,230 @@ def build_parser() -> argparse.ArgumentParser:
         dest="config_cmd",
         required=False,
         metavar="<action>",
-        title="操作",
+        title=H("操作", "actions"),
     )
     p_config_init = config_sub.add_parser(
         "init",
-        help="初始化或重新加载 config/model_servers.yaml",
+        help=H("初始化或重新加载 config/model_servers.yaml", "init or reload config/model_servers.yaml"),
     )
-    p_config_init.add_argument("--force", action="store_true", help="用模板覆盖已有配置文件")
+    p_config_init.add_argument("--force", action="store_true", help=H("用模板覆盖已有配置文件", "overwrite existing config with template"))
     p_config_init.set_defaults(func=cmd_config)
-    p_config_list = config_sub.add_parser("list", help="列出模型服务与独立 Key（脱敏）")
+    p_config_list = config_sub.add_parser("list", help=H("列出模型服务与独立 Key（脱敏）", "list model servers and standalone keys (redacted)"))
     p_config_list.set_defaults(func=cmd_config)
 
     p_config_set = config_sub.add_parser(
         "set",
-        help="极简写入：--provider / --base_url / --model / --TAVILY_API_KEY …",
+        help=H("极简写入：--provider / --base_url / --model / --TAVILY_API_KEY …", "minimal set: --provider / --base_url / --model / --TAVILY_API_KEY …"),
     )
     _add_simple_config_flags(p_config_set)
     p_config_set.set_defaults(func=cmd_config)
 
     p_config_apply = config_sub.add_parser(
         "apply",
-        help="<file.json>  从 JSON 文件加载配置",
+        help=H("<file.json>  从 JSON 文件加载配置", "<file.json>  load config from JSON file"),
     )
-    p_config_apply.add_argument("config_file", help="JSON 配置文件路径")
+    p_config_apply.add_argument("config_file", help=H("JSON 配置文件路径", "JSON config file path"))
     p_config_apply.set_defaults(func=cmd_config)
 
     p_config_add = config_sub.add_parser(
         "add",
-        help="添加/更新一条模型服务（JSON 或 --provider 参数）",
+        help=H("添加/更新一条模型服务（JSON 或 --provider 参数）", "add/update a model server (JSON or --provider flags)"),
     )
-    p_config_add.add_argument("json", nargs="?", help='JSON 对象，如 \'{"provider":"aiping",...}\'')
-    p_config_add.add_argument("--provider", help="provider 名称（与 --model 等配合使用）")
-    p_config_add.add_argument("--base-url", dest="base_url", help="OpenAI 兼容 API base URL")
+    p_config_add.add_argument("json", nargs="?", help=H("JSON 对象，如 '{\"provider\":\"aiping\",...}'", "JSON object, e.g. '{\"provider\":\"aiping\",...}'"))
+    p_config_add.add_argument("--provider", help=H("provider 名称（与 --model 等配合使用）", "provider name (use with --model etc.)"))
+    p_config_add.add_argument(
+        "--base-url",
+        dest="base_url",
+        help=H("OpenAI 兼容 API base URL", "OpenAI-compatible API base URL"),
+    )
     p_config_add.add_argument("--api-key", dest="api_key", help="API Key")
-    p_config_add.add_argument("--model", help="模型名称")
-    p_config_add.add_argument("--timeout", type=float, help="请求超时秒数（默认 120）")
+    p_config_add.add_argument("--model", help=H("模型名称", "model name"))
+    p_config_add.add_argument("--timeout", type=float, help=H("请求超时秒数（默认 120）", "request timeout seconds (default 120)"))
     p_config_add.set_defaults(func=cmd_config)
 
-    p_config_remove = config_sub.add_parser("remove", help="<provider>  从列表删除一条模型服务")
-    p_config_remove.add_argument("provider", help="provider 名称，如 openai / aiping")
+    p_config_remove = config_sub.add_parser("remove", help=H("<provider>  从列表删除一条模型服务", "<provider>  remove a model server from the list"))
+    p_config_remove.add_argument("provider", help=H("provider 名称，如 openai / aiping", "provider name, e.g. openai / aiping"))
     p_config_remove.set_defaults(func=cmd_config)
 
     p_config_set_key = config_sub.add_parser(
         "set-key",
-        help="<provider> [key]  仅更新 api_key（key 省略或 - 时从 stdin 读取）",
+        help=H("<provider> [key]  仅更新 api_key（key 省略或 - 时从 stdin 读取）", "<provider> [key]  update api_key only (omit or - to read stdin)"),
     )
     p_config_set_key.add_argument(
         "provider",
-        help="LA_MODEL_SERVERS 中的 provider，或 tavily / mem0",
+        help=H("LA_MODEL_SERVERS 中的 provider，或 tavily / mem0", "provider in LA_MODEL_SERVERS, or tavily / mem0"),
     )
     p_config_set_key.add_argument(
         "value",
         nargs="?",
-        help="API Key；省略或传 - 时从 stdin 读取",
+        help=H("API Key；省略或传 - 时从 stdin 读取", "API key; omit or pass - to read from stdin"),
     )
     p_config_set_key.set_defaults(func=cmd_config)
     p_config.set_defaults(func=cmd_config)
 
     p_config_example = sub.add_parser(
         "config-example",
-        help="打印 config.example.json（复制后改写再用 la config <file>）",
-        description="输出极简配置模板 JSON",
+        help=H("打印 config.example.json（复制后改写再用 la config <file>）", "print config.example.json (copy, edit, then la config <file>)"),
+        description=H("输出极简配置模板 JSON", "print minimal config template JSON"),
     )
     p_config_example.set_defaults(func=cmd_config_example)
 
     p_setup = sub.add_parser(
         "setup",
-        help="[--yes]  【主路径】安装 Ollama 并拉取 qwen3.5:4b（可跳过）",
-        description=(
-            "【主路径】检查本机 Ollama；未安装时询问是否本地安装，"
-            "缺少默认模型时询问是否拉取。加 -y 跳过确认。"
-        ),
+        help=H("[--yes]  【主路径】安装 Ollama 并拉取 qwen3.5:4b（可跳过）", "[--yes]  [main] install Ollama and pull qwen3.5:4b (skippable)"),
+        description=H("【主路径】检查本机 Ollama；未安装时询问是否本地安装，缺少默认模型时询问是否拉取。加 -y 跳过确认。", "[main] check local Ollama; offer install if missing, pull default model if needed. Use -y to skip prompts."),
     )
     p_setup.add_argument(
         "--yes",
         "-y",
         action="store_true",
-        help="无需确认，直接安装/拉取",
+        help=H("无需确认，直接安装/拉取", "install/pull without confirmation"),
     )
     p_setup.set_defaults(func=cmd_setup)
 
     p_summarize = sub.add_parser(
         "summarize",
-        help="<path…> [--no-chat] [--keep] [--resume]  文档速读；默认进入文档对话",
-        description=(
-            "针对本地文档的速读与文档对话（与 la chat「和助手聊」不同）。\n"
-            "  默认：打印速读卡后进入 sum> 文档对话（TTY）。\n"
-            "  --no-chat：仅速读（可多文件），不进入对话。\n"
-            "支持 .txt / .md / .pdf / .xlsx。\n"
-            "默认不入库；会话内 /keep 或 --keep 收藏到知识库（不每次追问）。\n"
-            "  la summarize --list                 # 最近文档对话\n"
-            "  la summarize <path> --resume        # 续聊\n"
-        ),
+        help=H("<path…> [--no-chat] [--keep] [--resume]  文档速读；默认进入文档对话", "<path…> [--no-chat] [--keep] [--resume]  doc skim; enter doc chat by default"),
+        description=H("针对本地文档的速读与文档对话（与 la chat「和助手聊」不同）。\n  默认：打印速读卡后进入 sum> 文档对话（TTY）。\n  --no-chat：仅速读（可多文件），不进入对话。\n支持 .txt / .md / .pdf / .xlsx。\n默认不入库；会话内 /keep 或 --keep 收藏到知识库（不每次追问）。\n  la summarize --list                 # 最近文档对话\n  la summarize <path> --resume        # 续聊\n", "Local document skim and doc chat (unlike la chat with the assistant).\n  Default: print skim card then enter sum> doc chat (TTY).\n  --no-chat: skim only (multi-file ok), no chat.\nSupports .txt / .md / .pdf / .xlsx.\nNot ingested by default; /keep or --keep bookmarks to knowledge (no prompt each time).\n  la summarize --list                 # recent doc chats\n  la summarize <path> --resume        # resume\n"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_summarize.add_argument(
         "paths",
         nargs="*",
         metavar="path",
-        help="本地文件路径（多文件须加 --no-chat）",
+        help=H("本地文件路径（多文件须加 --no-chat）", "local file path(s) (multi-file requires --no-chat)"),
     )
     p_summarize.add_argument(
         "--keep",
         action="store_true",
-        help="速读后写入知识库（等同 LA ingest doc；默认不入库）",
+        help=H("速读后写入知识库（等同 LA ingest doc；默认不入库）", "ingest after skim (same as LA ingest doc; off by default)"),
     )
     p_summarize.add_argument(
         "--no-chat",
         action="store_true",
-        help="只输出速读卡，不进入文档对话（可多文件）",
+        help=H("只输出速读卡，不进入文档对话（可多文件）", "print skim card only, no doc chat (multi-file ok)"),
     )
     p_summarize.add_argument(
         "--out",
         metavar="FILE",
-        help="将速读卡写入 Markdown 文件（常与 --no-chat 同用）",
+        help=H("将速读卡写入 Markdown 文件（常与 --no-chat 同用）", "write skim card to Markdown file (often with --no-chat)"),
     )
     p_summarize.add_argument(
         "--list",
         action="store_true",
-        help="列出最近的文档对话会话",
+        help=H("列出最近的文档对话会话", "list recent document chat sessions"),
     )
     p_summarize.add_argument(
         "--limit",
         type=int,
         default=20,
-        help="--list 显示条数（默认 20）",
+        help=H("--list 显示条数（默认 20）", "--list display count (default 20)"),
     )
     p_summarize.add_argument(
         "--resume",
         action="store_true",
-        help="按路径续聊已有文档对话",
+        help=H("按路径续聊已有文档对话", "resume existing doc chat by path"),
     )
     p_summarize.add_argument(
         "--id",
         dest="id",
         metavar="SESSION_ID",
-        help="按会话 id 续聊",
+        help=H("按会话 id 续聊", "resume by session id"),
     )
     p_summarize.add_argument(
         "--provider",
         "-p",
         default="auto",
-        help=f"文档对话模型路径: auto（默认）, {', '.join(config.VALID_PROVIDERS)}",
+        help=H(
+            f"文档对话模型路径: auto（默认）, {', '.join(config.VALID_PROVIDERS)}",
+            f"doc-chat model path: auto (default), {', '.join(config.VALID_PROVIDERS)}",
+        ),
     )
     p_summarize.add_argument(
         "--heuristic",
         action="store_true",
-        help="强制使用本地启发式摘要（不调用模型；便于离线/测试）",
+        help=H("强制使用本地启发式摘要（不调用模型；便于离线/测试）", "force local heuristic summary (no model; offline/testing)"),
     )
     p_summarize.set_defaults(func=cmd_summarize)
 
     p_news = sub.add_parser(
         "news",
-        help="新闻嗅探：sync / brief / read / schedule …",
-        description=(
-            "从 BestBlogs RSS 同步精选 AI 资讯，生成今日简报并支持精读。\n"
-            "  la news sync              # 拉取 RSS（TTY 下随后进入简报）\n"
-            "  la news brief             # 今日简报（TTY 交互；--no-ui 刷屏）\n"
-            "  la news read <id|url>     # 精读卡片（--keep 入库）\n"
-            "  la news schedule on       # 每天 08:00 自动 sync（可 off）\n"
-            "进入 la/chat 后，若早间已 sync，会提示「今日更新已准备好」。"
-        ),
+        help=H("新闻嗅探：sync / brief / read / schedule …", "news sniff: sync / brief / read / schedule …"),
+        description=H("从 BestBlogs RSS 同步精选 AI 资讯，生成今日简报并支持精读。\n  la news sync              # 拉取 RSS（TTY 下随后进入简报）\n  la news brief             # 今日简报（TTY 交互；--no-ui 刷屏）\n  la news read <id|url>     # 精读卡片（--keep 入库）\n  la news schedule on       # 每天 08:00 自动 sync（可 off）\n进入 la/chat 后，若早间已 sync，会提示「今日更新已准备好」。", "Sync curated AI news from BestBlogs RSS, daily brief, and deep-read.\n  la news sync              # pull RSS (then brief on TTY)\n  la news brief             # today's brief (TTY; --no-ui dump)\n  la news read <id|url>     # deep-read card (--keep to ingest)\n  la news schedule on       # daily 08:00 auto sync (or off)\nAfter la/chat, morning sync prompts that today's update is ready."),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     news_sub = p_news.add_subparsers(dest="news_action", metavar="action")
 
     p_news_sync = news_sub.add_parser(
         "sync",
-        help="从 RSS 同步最新条目（TTY 下随后进入简报）",
+        help=H("从 RSS 同步最新条目（TTY 下随后进入简报）", "sync latest RSS items (then brief on TTY)"),
     )
-    p_news_sync.add_argument("--url", default=None, help="覆盖默认 LA_NEWS_RSS_URL")
+    p_news_sync.add_argument("--url", default=None, help=H("覆盖默认 LA_NEWS_RSS_URL", "override default LA_NEWS_RSS_URL"))
     p_news_sync.add_argument(
         "--no-ui",
         action="store_true",
-        help="仅同步，不进入交互简报（定时任务/脚本常用）",
+        help=H("仅同步，不进入交互简报（定时任务/脚本常用）", "sync only, no interactive brief (for cron/scripts)"),
     )
     p_news_sync.add_argument(
         "--provider",
         "-p",
         default="auto",
-        help="随后进入简报时，精读深聊的模型路径（默认 auto）",
+        help=H("随后进入简报时，精读深聊的模型路径（默认 auto）", "model path for deep-read chat after brief (default auto)"),
     )
     p_news_sync.set_defaults(func=_cmd_news)
 
     p_news_brief = news_sub.add_parser(
         "brief",
-        help="今日简报（TTY 下交互浏览；--no-ui 一次性输出）",
+        help=H("今日简报（TTY 下交互浏览；--no-ui 一次性输出）", "today's brief (interactive on TTY; --no-ui one-shot)"),
     )
-    p_news_brief.add_argument("--date", default=None, help="日期 YYYY-MM-DD（默认今天）")
-    p_news_brief.add_argument("--limit", type=int, default=None, help="条数上限")
+    p_news_brief.add_argument("--date", default=None, help=H("日期 YYYY-MM-DD（默认今天）", "date YYYY-MM-DD (default today)"))
+    p_news_brief.add_argument("--limit", type=int, default=None, help=H("条数上限", "item limit"))
     p_news_brief.add_argument(
         "--plain",
         action="store_true",
-        help="强制 Markdown 链接（不要 OSC 8）；常与 --no-ui 合用",
+        help=H("强制 Markdown 链接（不要 OSC 8）；常与 --no-ui 合用", "force Markdown links (no OSC 8); often with --no-ui"),
     )
     p_news_brief.add_argument(
         "--no-ui",
         action="store_true",
-        help="不进入交互浏览器，一次性打印全部简报",
+        help=H("不进入交互浏览器，一次性打印全部简报", "print full brief once; no interactive browser"),
     )
     p_news_brief.add_argument(
         "--provider",
         "-p",
         default="auto",
-        help="精读深聊时的模型路径（默认 auto）",
+        help=H("精读深聊时的模型路径（默认 auto）", "model path for deep-read chat (default auto)"),
     )
     p_news_brief.set_defaults(func=_cmd_news)
 
-    p_news_skim = news_sub.add_parser("skim", help="<id|url>  速读卡片")
-    p_news_skim.add_argument("target", help="文章 id 或 URL")
+    p_news_skim = news_sub.add_parser("skim", help=H("<id|url>  速读卡片", "<id|url>  skim card"))
+    p_news_skim.add_argument("target", help=H("文章 id 或 URL", "article id or URL"))
     p_news_skim.add_argument("--plain", action="store_true")
     p_news_skim.set_defaults(func=_cmd_news)
 
-    p_news_read = news_sub.add_parser("read", help="<id|url> [--keep]  精读卡片")
-    p_news_read.add_argument("target", help="文章 id 或 URL")
-    p_news_read.add_argument("--keep", action="store_true", help="精读后写入知识库")
+    p_news_read = news_sub.add_parser("read", help=H("<id|url> [--keep]  精读卡片", "<id|url> [--keep]  deep-read card"))
+    p_news_read.add_argument("target", help=H("文章 id 或 URL", "article id or URL"))
+    p_news_read.add_argument("--keep", action="store_true", help=H("精读后写入知识库", "ingest after deep-read"))
     p_news_read.add_argument(
         "--heuristic",
         action="store_true",
-        help="强制启发式摘要（不调模型）",
+        help=H("强制启发式摘要（不调模型）", "force heuristic summary (no model)"),
     )
     p_news_read.add_argument("--plain", action="store_true")
     p_news_read.set_defaults(func=_cmd_news)
 
     p_news_mark = news_sub.add_parser("mark", help="<id> bookmark|skip|read")
-    p_news_mark.add_argument("target", help="文章 id 或 URL")
+    p_news_mark.add_argument("target", help=H("文章 id 或 URL", "article id or URL"))
     p_news_mark.add_argument(
         "mark_action",
         choices=["bookmark", "skip", "read"],
-        help="动作",
+        help=H("动作", "action"),
     )
     p_news_mark.set_defaults(func=_cmd_news)
 
     p_news_sched = news_sub.add_parser(
         "schedule",
-        help="on|off|status  配置早间自动 sync",
+        help=H("on|off|status  配置早间自动 sync", "on|off|status  morning auto-sync"),
     )
     p_news_sched.add_argument(
         "schedule_action",
@@ -2600,37 +2555,25 @@ def build_parser() -> argparse.ArgumentParser:
     p_news_sched.add_argument("--minute", type=int, default=None)
     p_news_sched.set_defaults(func=_cmd_news)
 
-    p_news_int = news_sub.add_parser("interests", help="查看/设置兴趣标签")
+    p_news_int = news_sub.add_parser("interests", help=H("查看/设置兴趣标签", "view/set interest tags"))
     p_news_int.add_argument(
         "--set",
         dest="set_interests",
         default=None,
-        help="逗号分隔覆盖 interests",
+        help=H("逗号分隔覆盖 interests", "comma-separated overwrite interests"),
     )
-    p_news_int.add_argument("--add", default=None, help="追加一个兴趣词")
-    p_news_int.add_argument("--mute", default=None, help="追加 mute 关键词")
+    p_news_int.add_argument("--add", default=None, help=H("追加一个兴趣词", "append one interest term"))
+    p_news_int.add_argument("--mute", default=None, help=H("追加 mute 关键词", "append a mute keyword"))
     p_news_int.set_defaults(func=_cmd_news)
 
-    news_sub.add_parser("status", help="同步与定时状态").set_defaults(func=_cmd_news)
-    news_sub.add_parser("sources", help="查看默认 RSS 源").set_defaults(func=_cmd_news)
+    news_sub.add_parser("status", help=H("同步与定时状态", "sync and schedule status")).set_defaults(func=_cmd_news)
+    news_sub.add_parser("sources", help=H("查看默认 RSS 源", "show default RSS sources")).set_defaults(func=_cmd_news)
     p_news.set_defaults(func=_cmd_news)
 
     p_aware = sub.add_parser(
         "aware",
-        help="本机世界感知（智能总结 / aware> 对话 / --detail / tick · 授权）",
-        description=(
-            "Aware：按源授权后感知本机变化（fs / browser / git / terminal）。\n"
-            "  la aware                      # 智能总结后进入 aware> 感知对话\n"
-            "  la aware --no-chat            # 只打印概览，不进对话\n"
-            "  la aware --detail             # 展开分源探测明细（仍可进对话）\n"
-            "  la aware --since 1w           # 时间窗内智能总结（如 3h/2d/1w/3m/1y，默认 1w）\n"
-            "  la aware tick                 # 采集后总结；TTY 下可进 aware>\n"
-            "  la aware grant all            # 授权（ungrant 解除）\n"
-            "  la aware ungrant browser      # 停止监测某一源\n"
-            "  la aware suggestion           # 查看建议\n"
-            "  la aware suggestion approve|reject <id>|all\n"
-            "可索引文件仅进 suggestion（须用户确认后 LA ingest doc）；绝不自动写入 kb/Cold。"
-        ),
+        help=H("本机世界感知（智能总结 / aware> 对话 / --detail / tick · 授权）", "local world awareness (smart summary / aware> chat / --detail / tick · grants)"),
+        description=H("Aware：按源授权后感知本机变化（fs / browser / git / terminal）。\n  la aware                      # 智能总结后进入 aware> 感知对话\n  la aware --no-chat            # 只打印概览，不进对话\n  la aware --detail             # 展开分源探测明细（仍可进对话）\n  la aware --since 1w           # 时间窗内智能总结（如 3h/2d/1w/3m/1y，默认 1w）\n  la aware tick                 # 采集后总结；TTY 下可进 aware>\n  la aware grant all            # 授权（ungrant 解除）\n  la aware ungrant browser      # 停止监测某一源\n  la aware suggestion           # 查看建议\n  la aware suggestion approve|reject <id>|all\n可索引文件仅进 suggestion（须用户确认后 LA ingest doc）；绝不自动写入 kb/Cold。", "Aware: sense local changes after per-source grants (fs / browser / git / terminal).\n  la aware                      # smart summary then aware> chat\n  la aware --no-chat            # overview only, no chat\n  la aware --detail             # expand per-source probe details\n  la aware --since 1w           # windowed summary (3h/2d/1w/3m/1y; default 1w)\n  la aware tick                 # collect then summarize; TTY may enter aware>\n  la aware grant all            # grant (ungrant to revoke)\n  la aware ungrant browser      # stop monitoring a source\n  la aware suggestion           # list suggestions\n  la aware suggestion approve|reject <id>|all\nIndexable files only enter suggestion (confirm then LA ingest doc); never auto-write kb/Cold."),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_aware.add_argument(
@@ -2639,34 +2582,34 @@ def build_parser() -> argparse.ArgumentParser:
         const="1w",
         default=None,
         metavar="WINDOW",
-        help="查看时间窗内变化：<N>h|<N>d|<N>w|<N>m|<N>y（如 3h、2d、1w；单独 --since 等同 1w）",
+        help=H("查看时间窗内变化：<N>h|<N>d|<N>w|<N>m|<N>y（如 3h、2d、1w；单独 --since 等同 1w）", "changes in window: <N>h|<N>d|<N>w|<N>m|<N>y (e.g. 3h, 2d, 1w; bare --since = 1w)"),
     )
     p_aware.add_argument(
         "--source",
         default=None,
         choices=["fs", "git", "terminal", "browser", "apps", "all"],
-        help="只展示某一感知源（all=全部）",
+        help=H("只展示某一感知源（all=全部）", "show only one sense source (all = everything)"),
     )
     p_aware.add_argument(
         "--detail",
         action="store_true",
-        help="展开分源探测明细（默认只显示智能总结）",
+        help=H("展开分源探测明细（默认只显示智能总结）", "expand per-source probe details (default: smart summary only)"),
     )
     p_aware.add_argument(
         "--no-chat",
         action="store_true",
-        help="只打印概览，不进入 aware> 感知对话",
+        help=H("只打印概览，不进入 aware> 感知对话", "print overview only; no aware> chat"),
     )
     p_aware.add_argument(
         "--provider",
         default="auto",
-        help="感知对话模型路径（默认 auto）",
+        help=H("感知对话模型路径（默认 auto）", "aware chat model path (default auto)"),
     )
     aware_sub = p_aware.add_subparsers(dest="aware_action", metavar="action")
 
-    aware_sub.add_parser("status", help="授权与定时状态").set_defaults(func=_cmd_aware)
+    aware_sub.add_parser("status", help=H("授权与定时状态", "grants and schedule status")).set_defaults(func=_cmd_aware)
 
-    p_aware_grant = aware_sub.add_parser("grant", help="授权一个或多个传感器")
+    p_aware_grant = aware_sub.add_parser("grant", help=H("授权一个或多个传感器", "grant one or more sensors"))
     p_aware_grant.add_argument(
         "sources",
         nargs="+",
@@ -2676,26 +2619,26 @@ def build_parser() -> argparse.ArgumentParser:
         "-y",
         "--yes",
         action="store_true",
-        help="敏感源跳过交互确认",
+        help=H("敏感源跳过交互确认", "skip interactive confirm for sensitive sources"),
     )
     p_aware_grant.set_defaults(func=_cmd_aware)
 
-    p_aware_ungrant = aware_sub.add_parser("ungrant", help="解除授权（停止监测）")
-    p_aware_ungrant.add_argument("sources", nargs="+", help="<source> 或 all")
+    p_aware_ungrant = aware_sub.add_parser("ungrant", help=H("解除授权（停止监测）", "revoke grant (stop monitoring)"))
+    p_aware_ungrant.add_argument("sources", nargs="+", help=H("<source> 或 all", "<source> or all"))
     p_aware_ungrant.set_defaults(func=_cmd_aware)
 
-    p_aware_paths = aware_sub.add_parser("paths", help="管理 fs 监视路径")
+    p_aware_paths = aware_sub.add_parser("paths", help=H("管理 fs 监视路径", "manage fs watch paths"))
     paths_sub = p_aware_paths.add_subparsers(dest="paths_action", metavar="action")
-    paths_sub.add_parser("list", help="列出路径").set_defaults(func=_cmd_aware)
-    p_paths_add = paths_sub.add_parser("add", help="添加目录")
-    p_paths_add.add_argument("path", help="目录路径")
+    paths_sub.add_parser("list", help=H("列出路径", "list paths")).set_defaults(func=_cmd_aware)
+    p_paths_add = paths_sub.add_parser("add", help=H("添加目录", "add directory"))
+    p_paths_add.add_argument("path", help=H("目录路径", "directory path"))
     p_paths_add.set_defaults(func=_cmd_aware)
-    p_paths_rm = paths_sub.add_parser("rm", help="移除目录")
-    p_paths_rm.add_argument("path", help="目录路径")
+    p_paths_rm = paths_sub.add_parser("rm", help=H("移除目录", "remove directory"))
+    p_paths_rm.add_argument("path", help=H("目录路径", "directory path"))
     p_paths_rm.set_defaults(func=_cmd_aware)
     p_aware_paths.set_defaults(func=_cmd_aware)
 
-    p_aware_sched = aware_sub.add_parser("schedule", help="on|off|status  定时 tick")
+    p_aware_sched = aware_sub.add_parser("schedule", help=H("on|off|status  定时 tick", "on|off|status  scheduled tick"))
     p_aware_sched.add_argument(
         "schedule_action",
         nargs="?",
@@ -2706,39 +2649,39 @@ def build_parser() -> argparse.ArgumentParser:
         "--interval",
         type=int,
         default=None,
-        help="间隔分钟（默认 15）",
+        help=H("间隔分钟（默认 15）", "interval minutes (default 15)"),
     )
     p_aware_sched.set_defaults(func=_cmd_aware)
 
     p_aware_tick = aware_sub.add_parser(
-        "tick", help="采集并报告自上次探测以来的变化"
+        "tick", help=H("采集并报告自上次探测以来的变化", "collect and report changes since last probe")
     )
     p_aware_tick.add_argument(
         "--source",
         default=None,
         choices=["fs", "git", "terminal", "browser", "apps"],
-        help="只展示某一源",
+        help=H("只展示某一源", "show only one source"),
     )
     p_aware_tick.add_argument(
         "--detail",
         action="store_true",
-        help="展开分源探测明细（默认只显示智能总结）",
+        help=H("展开分源探测明细（默认只显示智能总结）", "expand per-source probe details (default: smart summary only)"),
     )
     p_aware_tick.add_argument(
         "--no-chat",
         action="store_true",
-        help="只打印 tick 结果，不进入 aware> 感知对话",
+        help=H("只打印 tick 结果，不进入 aware> 感知对话", "print tick result only; no aware> chat"),
     )
     p_aware_tick.add_argument(
         "--provider",
         default="auto",
-        help="感知对话模型路径（默认 auto）",
+        help=H("感知对话模型路径（默认 auto）", "aware chat model path (default auto)"),
     )
     p_aware_tick.set_defaults(func=_cmd_aware)
 
     p_aware_sug = aware_sub.add_parser(
         "suggestion",
-        help="建议：list | approve | reject",
+        help=H("建议：list | approve | reject", "suggestions: list | approve | reject"),
         description=(
             "  la aware suggestion\n"
             "  la aware suggestion list\n"
@@ -2748,28 +2691,28 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sug_sub = p_aware_sug.add_subparsers(dest="suggestion_action", metavar="action")
-    sug_sub.add_parser("list", help="列出建议").set_defaults(func=_cmd_aware)
-    p_sug_approve = sug_sub.add_parser("approve", help="批准并执行建议")
-    p_sug_approve.add_argument("target", help="<id> 或 all")
+    sug_sub.add_parser("list", help=H("列出建议", "list suggestions")).set_defaults(func=_cmd_aware)
+    p_sug_approve = sug_sub.add_parser("approve", help=H("批准并执行建议", "approve and run suggestion"))
+    p_sug_approve.add_argument("target", help=H("<id> 或 all", "<id> or all"))
     p_sug_approve.set_defaults(func=_cmd_aware)
-    p_sug_reject = sug_sub.add_parser("reject", help="拒绝建议")
-    p_sug_reject.add_argument("target", help="<id> 或 all")
+    p_sug_reject = sug_sub.add_parser("reject", help=H("拒绝建议", "reject suggestion"))
+    p_sug_reject.add_argument("target", help=H("<id> 或 all", "<id> or all"))
     p_sug_reject.set_defaults(func=_cmd_aware)
     p_aware_sug.set_defaults(func=_cmd_aware)
 
-    p_aware_events = aware_sub.add_parser("events", help="事件日志（调试）")
-    p_aware_events.add_argument("--source", default=None, help="按 source 过滤")
+    p_aware_events = aware_sub.add_parser("events", help=H("事件日志（调试）", "event log (debug)"))
+    p_aware_events.add_argument("--source", default=None, help=H("按 source 过滤", "filter by source"))
     p_aware_events.add_argument(
         "--since-hours",
         type=int,
         default=24,
-        help="回溯小时数（默认 24）",
+        help=H("回溯小时数（默认 24）", "lookback hours (default 24)"),
     )
     p_aware_events.add_argument("--limit", type=int, default=50)
     p_aware_events.add_argument(
         "--raw",
         action="store_true",
-        help="扁平明细（默认按源摘要）",
+        help=H("扁平明细（默认按源摘要）", "flat details (default: per-source summary)"),
     )
     p_aware_events.set_defaults(func=_cmd_aware)
 
@@ -2777,41 +2720,34 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_polish = sub.add_parser(
         "polish",
-        help="[--scene …] [--tone …] [--no-copy]  一键润色文案（默认复制主推到剪贴板）",
-        description=(
-            "一键润色：识别邮件 / 朋友圈 / 简历 / 商务对话场景与态度，"
-            "给出主推 + 两个备选，并默认将主推复制到剪贴板。\n"
-            "  la polish \"催一下进度的草稿\"\n"
-            "  la polish --scene email --tone 更正式 --file draft.txt\n"
-            "  echo \"草稿\" | la polish --no-copy\n"
-            "会话内: /polish <草稿>"
-        ),
+        help=H("[--scene …] [--tone …] [--no-copy]  一键润色文案（默认复制主推到剪贴板）", "[--scene …] [--tone …] [--no-copy]  one-shot polish (copies pick to clipboard)"),
+        description=H("一键润色：识别邮件 / 朋友圈 / 简历 / 商务对话场景与态度，给出主推 + 两个备选，并默认将主推复制到剪贴板。\n  la polish \"催一下进度的草稿\"\n  la polish --scene email --tone 更正式 --file draft.txt\n  echo \"草稿\" | la polish --no-copy\n会话内: /polish <草稿>", "One-shot polish: detect email / moments / resume / biz tone, pick + 2 alts, copy pick to clipboard by default.\n  la polish \"nudge on progress draft\"\n  la polish --scene email --tone more formal --file draft.txt\n  echo \"draft\" | la polish --no-copy\nIn session: /polish <draft>"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_polish.add_argument(
         "text",
         nargs="*",
-        help="待润色草稿（也可 --file 或 stdin）",
+        help=H("待润色草稿（也可 --file 或 stdin）", "draft to polish (or --file / stdin)"),
     )
     p_polish.add_argument(
         "--file",
         "-f",
         dest="file",
-        help="从文件读取草稿",
+        help=H("从文件读取草稿", "read draft from file"),
     )
     p_polish.add_argument(
         "--scene",
         choices=["email", "moments", "resume", "biz"],
-        help="强制场景（默认自动识别）",
+        help=H("强制场景（默认自动识别）", "force scene (default: auto-detect)"),
     )
     p_polish.add_argument(
         "--tone",
-        help="语气要求，如：更正式 / 更口语 / 更短",
+        help=H("语气要求，如：更正式 / 更口语 / 更短", "tone hint, e.g. more formal / more casual / shorter"),
     )
     p_polish.add_argument(
         "--no-copy",
         action="store_true",
-        help="不写入剪贴板（脚本/管道场景）",
+        help=H("不写入剪贴板（脚本/管道场景）", "do not write clipboard (scripts/pipes)"),
     )
     p_polish.set_defaults(func=cmd_polish)
 

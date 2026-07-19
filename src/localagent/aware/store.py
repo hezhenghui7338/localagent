@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from localagent import config
-from localagent.aware.types import AwareEvent
+from localagent.aware.types import AwareEvent, utc_now
 
 
 def _cursors_path() -> Path:
@@ -67,8 +67,16 @@ def append_events(events: list[AwareEvent]) -> int:
     path = _events_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     _maybe_rotate_events(path)
+    tick_at = utc_now()
     with path.open("a", encoding="utf-8") as fh:
         for event in events:
+            data = dict(event.data or {})
+            # observed_at / tick_at = when collected; event.ts stays event_time.
+            if not str(data.get("observed_at") or "").strip():
+                data["observed_at"] = tick_at
+            if not str(data.get("tick_at") or "").strip():
+                data["tick_at"] = tick_at
+            event.data = data
             fh.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
     return len(events)
 
