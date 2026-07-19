@@ -184,12 +184,23 @@ def test_e2e_safety_no_intent_precheck_before_tools(la_env):
     assert "OK_DIRECT" in result.stdout
 
 
-def test_e2e_safety_dangerous_prompt_mentions_risk():
+def test_e2e_safety_dangerous_prompt_mentions_risk(monkeypatch):
     """Tour §7: dangerous ops surface a risk hint in the approval prompt text."""
+    from localagent.i18n import reset_lang_cache
     from localagent.tools.approval import classify_shell_command, format_approval_prompt
 
+    # Bilingual: zh uses 风险/危险; en uses Risk: (not "warning").
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     risk = classify_shell_command("rm -rf ./build")
     assert risk.level == "dangerous"
     text = format_approval_prompt("run_shell", {"command": "rm -rf ./build"}, risk)
     assert "rm -rf ./build" in text
-    assert "危险" in text or "风险" in text or "warning" in text.lower() or "潜在" in text
+    assert "危险" in text or "风险" in text or "risk" in text.lower() or "warning" in text.lower() or "潜在" in text
+
+    monkeypatch.setenv("LA_LANG", "en")
+    reset_lang_cache()
+    risk_en = classify_shell_command("rm -rf ./build")
+    text_en = format_approval_prompt("run_shell", {"command": "rm -rf ./build"}, risk_en)
+    assert "rm -rf ./build" in text_en
+    assert "risk" in text_en.lower()
