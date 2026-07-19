@@ -18,6 +18,7 @@ PREFETCH_PRIORITY = (
     "session",
     "web",
     "workspace",
+    "aware",
 )
 
 # When the user asks about STM (today / last session), keep session first.
@@ -27,6 +28,7 @@ PREFETCH_PRIORITY_SESSION_FIRST = (
     "archive",
     "web",
     "workspace",
+    "aware",
 )
 
 _HIT_CARD_SPLIT = re.compile(r"\n[─-]{3,}\n")

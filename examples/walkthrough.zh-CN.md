@@ -25,15 +25,16 @@ la setup
 
 ## 亮点：Local First
 
-LocalAgent 的核心链路——**对话、记忆写入、记忆召回、文档检索、工作区感知、审计统计**——均可只依赖本地 Ollama，无需任何付费 API。打开时可 `la status` 查看 Daily Actions 信号。
+LocalAgent 的核心链路——**对话、记忆写入、记忆召回、文档检索、工作区感知、审计统计**——均可只依赖本地 Ollama，无需任何付费 API。打开时可 `la status` / `/status` 查看今日信号与数据层（Hot/Warm/Cold/Aware）。
 
 | 能力 | 是否需要联网 API | 说明 |
 |------|------------------|------|
 | 对话 `LA chat` | 否 | 默认 `qwen3.5:4b`，本机可跑 |
-| 单条记忆 `LA memory add` | 否 | 本地模型提取标题/标签 |
-| 文件导入 `LA rag add` | 否 | 默认启发式提取，不调用 LLM |
+| 单条记忆 `LA ingest text` | 否 | 本地模型提取标题/标签 |
+| 文件导入 `LA ingest doc` | 否 | 默认启发式提取，不调用 LLM |
 | 记忆/知识检索 `LA memory search` | 否 | BM25 + Chroma 本地检索 |
 | 工作区 `LA workspace` | 否 | 读本地 Git / 文件 / TODO |
+| 本机感知 `la aware` | 否（本地模型可选） | 默认：当前状态 + 近 3 小时动态；`--detail` 分源明细 |
 | 审计 `LA audit` | 否 | 读本地 usage.jsonl |
 | 一键总结 `la summarize` | 否（本地模型） | 速读卡 + `sum>` 文档对话 |
 | 新闻嗅探 `la news` | 仅 sync 时需联网 | RSS → 简报；精读可本地总结 |
@@ -55,7 +56,7 @@ LA chat --provider ollama
 
 ```bash
 # 写入一条记忆
-LA memory add "2026年7月决定为 LocalAgent 补充 examples 目录，方便新用户快速上手"
+LA ingest text "2026年7月决定为 LocalAgent 补充 examples 目录，方便新用户快速上手"
 
 # 召回验证
 LA memory search "examples 目录"
@@ -72,7 +73,7 @@ LA memory search "examples 目录"
 
 2026年7月决定为 LocalAgent 补充 examples 目录，方便新用户快速上手
 
-来源: LA memory add · id: a1b2c3d4
+来源: LA ingest text · id: a1b2c3d4
 → LA memory forget <id>  删除某条记忆
 ```
 
@@ -91,19 +92,17 @@ LA memory search "examples 目录"
 
 ```bash
 # 导入示例文档（仓库自带）
-LA rag add examples/sample-project-notes.md
+LA ingest doc examples/sample-project-notes.md
 
 # 从知识库召回原文片段（Cold 层）
 LA rag search "三层记忆架构"
 ```
 
-**预期输出（rag add）：**
+**预期输出（ingest doc）：**
 
 ```text
-[rag add] 源文件: .../examples/sample-project-notes.md (1.1 KB)
-[rag add] 软链: data/kb/sample-project-notes.md
-  + sample-project-notes.md: new, chunks=5
-[rag add] done（仅知识库，不提取记忆）
+[ingest doc] source=doc · cold=5 · warm=0 · files=1
+[ingest doc] archived: data/kb/sample-project-notes.md
 ```
 
 **预期输出（知识库检索）：**
@@ -174,10 +173,10 @@ LA_MODEL_PROVIDER_PRIORITY=ollama # 不降级到云端
 
 | 系统内存 | 模型 | 说明 |
 |------|------|------|
-| &lt; 6 GB | `qwen2.5:0.5b`（Mini） | 基础对话；多工具 Agent 较弱 |
-| 6–10 GB | `qwen2.5:1.5b` | 轻量问答 |
-| 10–14 GB | `qwen2.5:3b` | 过渡档 |
-| ≥ 14 GB | `qwen3.5:4b` | 主推质量档 |
+| &lt; 6 GB | `qwen3.5:0.8b`（Mini） | 基础对话；多工具 Agent 较弱 |
+| 6–10 GB | `qwen3.5:2b` | 轻量问答 |
+| 10–18 GB | `qwen3.5:4b` | 主推质量档 |
+| ≥ 18 GB | `qwen3.5:9b` | 高配质量档 |
 
 ```bash
 # 确认本地模型可用
@@ -196,6 +195,12 @@ LocalAgent 感知当前工作区——最近修改的文件、Git 状态、TODO 
 ```bash
 # 以 LocalAgent 仓库为工作区
 LA workspace --cwd .
+
+# 本机感知：概览后进入 aware>；grant apps 可读前台/正在播放
+la aware grant fs terminal browser apps -y
+la aware tick --no-chat
+la aware --no-chat
+la aware
 
 # 或在对话中指定工作区
 LA chat --cwd . --provider ollama
@@ -302,9 +307,9 @@ la polish --no-copy --scene email "您好，上次说的方案这周能给一下
 export LA_DATA_DIR=/tmp/la-demo
 pip install -e ".[dev]" -q
 
-LA memory add "2026年7月决定为 LocalAgent 补充 examples 目录"
+LA ingest text "2026年7月决定为 LocalAgent 补充 examples 目录"
 LA memory search "examples"
-LA rag add examples/sample-project-notes.md
+LA ingest doc examples/sample-project-notes.md
 LA rag search "三层记忆"
 LA workspace --cwd .
 LA audit --since 7d
@@ -316,6 +321,6 @@ echo "演示完成，数据在 $LA_DATA_DIR"
 
 ## 下一步
 
-- 导入自己的 Markdown：`LA rag add ~/Documents/notes.md`
-- 导入 ChatGPT 历史：`LA memory ingest chatgpt conversations.json`
+- 导入自己的 Markdown：`LA ingest doc ~/Documents/notes.md`
+- 导入 ChatGPT 历史：`LA ingest chatgpt conversations.json`
 - 阅读架构文档：[docs/PRD.md](../docs/PRD.md) · [docs/TDD.md](../docs/TDD.md)

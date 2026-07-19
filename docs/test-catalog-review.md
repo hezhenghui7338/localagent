@@ -1,6 +1,6 @@
 # LocalAgent 测试用例审查目录
 
-> 更新于 **2026-07-18** · E2E 离线约 **130+** 条（含 journeys/pending/websearch/safety/graph/**perf**）· 默认 `pytest` 含 STM · CI 另跑 `e2e-offline`
+> 更新于 **2026-07-18** · E2E 离线约 **130+** 条（含 journeys/pending/websearch/safety/graph/**perf**）· 默认 `pytest` 含 STM · **pytest-xdist** `-n auto` 并行 · CI 另跑 `e2e-offline`（perf 串行）
 >
 > 建议审查顺序：Config/Models → Memory → Agent/Tools → Ingest/Tasks → CLI/UX → Audit → E2E → Benchmark
 >
@@ -90,11 +90,14 @@
 运行：
 
 ```bash
-pytest                            # CI 主 job：排除 e2e / e2e_live；含 STM
-pytest tests/e2e/ -m e2e          # CI e2e-offline job
+pytest                            # CI 主 job：排除 e2e / e2e_live；含 STM；-n auto
+pytest -n0                        # 串行（调试）
+pytest -m ""                      # 全量（单元+e2e）；结束后按套件/文件汇总
+pytest --no-suite-summary         # 关闭分文件汇总
+pytest tests/e2e/ -m e2e --ignore=tests/e2e/test_la_perf.py   # CI e2e 并行段
+pytest tests/e2e/test_la_perf.py -m e2e -n0                   # 时长预算（串行）
 pytest tests/e2e/ -m e2e_live     # 实机 Ollama（本机）
-pytest tests/e2e/test_la_perf.py -m e2e   # 仅性能预算套件
-LA_E2E_BUDGETS=0 pytest tests/e2e/test_la_perf.py -m e2e  # 关闭预算断言
+LA_E2E_BUDGETS=0 pytest tests/e2e/test_la_perf.py -m e2e -n0  # 关闭预算断言
 ```
 
 ## E2E Perf（duration budgets）

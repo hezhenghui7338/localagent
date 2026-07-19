@@ -54,7 +54,7 @@ def test_rrf_fusion():
 
 
 def test_scoped_recall_finds_added_memory():
-    main(["memory", "add", "2026年7月决定使用 Hindsight 作为记忆引擎"])
+    main(["ingest", "text", "2026年7月决定使用 Hindsight 作为记忆引擎"])
     hits = scoped_recall("Hindsight 记忆引擎", max_results=3)
     assert hits
     assert any("Hindsight" in h["text"] for h in hits)
@@ -62,7 +62,7 @@ def test_scoped_recall_finds_added_memory():
 
 def test_scoped_recall_matches_chinese_preference_query():
     poem = "我喜欢这首诗:才行积雪上,又踏熏风花草路"
-    main(["memory", "add", poem])
+    main(["ingest", "text", poem])
     hits = scoped_recall("我喜欢什么诗歌?", max_results=5)
     assert hits
     assert any(poem in h["text"] for h in hits)

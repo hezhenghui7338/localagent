@@ -8,7 +8,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from localagent import __version__, config
+from localagent import __version__
 
 # Braille-block "LA" mark (Claude Code–style glyph art)
 _LA_GLYPH = (
@@ -34,9 +34,7 @@ class WelcomeInfo:
     web_search_line: str
     cwd_display: str
     session_id: str
-    memory_count: int
-    kb_count: int
-    git_line: str
+    layer_lines: tuple[str, ...] = ()
     tagline: str = "Local First. Memory Forever. Actions Automated."
 
 
@@ -144,38 +142,13 @@ def _home_display(path: Path) -> str:
         return str(path)
 
 
-def _kb_file_count() -> int:
-    kb = config.KB_DIR
-    if not kb.is_dir():
-        return 0
+def _layer_lines() -> tuple[str, ...]:
     try:
-        return sum(1 for p in kb.iterdir() if p.is_file() or p.is_symlink())
-    except OSError:
-        return 0
+        from localagent.status.layers import format_data_layer_banner_lines
 
-
-def _memory_count() -> int:
-    try:
-        from localagent.memory.store import get_memory_store
-
-        return get_memory_store().count()
+        return tuple(format_data_layer_banner_lines())
     except Exception:
-        return 0
-
-
-def _git_line(workspace: Path) -> str:
-    try:
-        from localagent.workspace.context import git_summary
-
-        summary = git_summary(workspace)
-    except Exception:
-        return "Git: —"
-    if not summary.is_repo:
-        return "非 Git 仓库"
-    if summary.error:
-        return f"Git: {summary.error}"
-    state = "干净" if summary.clean else "有变更"
-    return f"{summary.branch} · {state}"
+        return ("la status 查看数据层",)
 
 
 def collect_welcome_info(
@@ -202,9 +175,7 @@ def collect_welcome_info(
         web_search_line=format_web_search_hint(),
         cwd_display=_home_display(workspace),
         session_id=session_id,
-        memory_count=_memory_count(),
-        kb_count=_kb_file_count(),
-        git_line=_git_line(workspace),
+        layer_lines=_layer_lines(),
     )
 
 
@@ -233,6 +204,7 @@ def render_welcome(info: WelcomeInfo, *, width: int | None = None, color: bool |
         "直接输入问题开始对话",
         "/ + Tab 补全命令",
         "/help 查看全部命令",
+        "/status 查看数据层",
         "/provider 切换模型路径",
         "/model 切换默认模型",
         "/websearch <关键词> 联网",
@@ -251,13 +223,12 @@ def render_welcome(info: WelcomeInfo, *, width: int | None = None, color: bool |
     tips.extend(
         [
             _c("───────────────", _DIM, enabled=use_color),
-            _c("项目状态", _BOLD, _CYAN, enabled=use_color),
-            f"记忆 {info.memory_count} · kb {info.kb_count}",
-            _truncate(info.git_line, right_w - 2),
+            _c("数据层", _BOLD, _CYAN, enabled=use_color),
         ]
     )
-    if info.session_id:
-        tips.append(_truncate(f"session {info.session_id}", right_w - 2))
+    layer_lines = info.layer_lines or ("la status 查看数据层",)
+    for line in layer_lines:
+        tips.append(_truncate(line, right_w - 2))
 
     inner = left_w - 2
 
@@ -281,6 +252,10 @@ def render_welcome(info: WelcomeInfo, *, width: int | None = None, color: bool |
         _center(_c(_truncate(info.web_search_line, inner), _DIM, enabled=use_color)),
         _center(_c(_truncate(info.cwd_display, inner), _DIM, enabled=use_color)),
     ]
+    if info.session_id:
+        left_rows.append(
+            _center(_c(_truncate(f"session {info.session_id}", inner), _DIM, enabled=use_color))
+        )
 
     rows = max(len(left_rows), len(tips))
     while len(left_rows) < rows:

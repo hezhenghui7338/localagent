@@ -84,9 +84,13 @@ def test_render_welcome_shows_project_basics():
         web_search_line="联网 · ddgs（免费）",
         cwd_display="~/code/LocalAgent",
         session_id="s-test123",
-        memory_count=12,
-        kb_count=3,
-        git_line="main · 干净",
+        layer_lines=(
+            "Hot · 已配置 · 3偏好",
+            "Warm · 12事实 · pending 1",
+            "Cold · kb3 · 对话块12 · ChatGPT0",
+            "Aware · 今日4",
+            "la status 查看明细",
+        ),
     )
     out = render_welcome(info, width=88, color=False)
     assert f"LocalAgent v{__version__}" in out
@@ -96,9 +100,12 @@ def test_render_welcome_shows_project_basics():
     assert "联网 · ddgs（免费）" in out
     assert "~/code/LocalAgent" in out
     assert "入门提示" in out
-    assert "项目状态" in out
-    assert "记忆 12 · kb 3" in out
-    assert "main · 干净" in out
+    assert "/status 查看数据层" in out
+    assert "数据层" in out
+    assert "Hot · 已配置" in out
+    assert "Warm · 12事实" in out
+    assert "Cold · kb3" in out
+    assert "Aware · 今日4" in out
     assert "session s-test123" in out
     assert "/provider" in out
     assert "/model" in out
@@ -130,11 +137,13 @@ def test_collect_welcome_info_includes_web_search(monkeypatch, tmp_path: Path):
     router.format_provider_hint.return_value = "auto(ollama)"
     router.format_model_hint.return_value = "qwen3.5:4b"
     with patch("localagent.models.router.get_model_router", return_value=router):
-        with patch("localagent.ui.banner._memory_count", return_value=0):
-            with patch("localagent.ui.banner._kb_file_count", return_value=0):
-                with patch("localagent.ui.banner._git_line", return_value="非 Git 仓库"):
-                    info = collect_welcome_info(provider="auto", session_id="s1", cwd=tmp_path)
+        with patch(
+            "localagent.ui.banner._layer_lines",
+            return_value=("Hot · 未配置", "la status 查看明细"),
+        ):
+            info = collect_welcome_info(provider="auto", session_id="s1", cwd=tmp_path)
     assert info.web_search_line == "联网 · Tavily"
+    assert info.layer_lines[0].startswith("Hot")
 
 
 def test_cli_bare_la_defaults_to_chat():
@@ -175,7 +184,7 @@ def test_chat_repl_prints_welcome(capsys, monkeypatch, tmp_path: Path):
 
     out = capsys.readouterr().out
     assert "LocalAgent v" in out
-    assert "项目状态" in out
+    assert "数据层" in out
     assert "s-welcome" in out
 
 

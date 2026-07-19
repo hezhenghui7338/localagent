@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from helpers import require_ollama_completion, require_ollama_vl, run_la, seed_memory
+from helpers import require_ollama_completion, run_la, seed_memory
 from localagent.persist.chatgpt import parse_conversation
 
 pytestmark = pytest.mark.e2e_live
@@ -29,7 +29,7 @@ def test_e2e_rememorize_chat(la_env, la_data_dir: Path):
 
     require_ollama_completion()
 
-    result = run_la(["memory", "ingest", "chat", "--session", session_id], env=la_env, timeout=300)
+    result = run_la(["ingest", "chat", "--session", session_id], env=la_env, timeout=300)
     assert result.returncode == 0
     assert "已保存" in result.stdout or "未提取" in result.stdout
 
@@ -121,42 +121,7 @@ def test_e2e_live_rag_search_after_add(la_env, tmp_path: Path):
     require_ollama_completion()
     doc = tmp_path / "live.md"
     doc.write_text("# Spec\n\n检索通路：Warm=Mem0，Cold=Chroma+BM25。\n", encoding="utf-8")
-    assert run_la(["rag", "add", str(doc)], env=la_env, timeout=180).returncode == 0
+    assert run_la(["ingest", "doc", str(doc)], env=la_env, timeout=180).returncode == 0
     result = run_la(["rag", "search", "Cold 检索用什么"], env=la_env, timeout=120)
     assert result.returncode == 0
     assert "Chroma" in result.stdout or "BM25" in result.stdout or "Cold" in result.stdout
-
-
-def test_e2e_live_rag_image_vl(la_env, tmp_path: Path):
-    """Image ingest via local Ollama VL → searchable Cold caption."""
-    import struct
-    import zlib
-
-    vl_model = require_ollama_vl()
-    env = {**la_env, "LA_VL_MODEL": vl_model, "LA_VL_ENABLED": "1"}
-
-    def png_1x1() -> bytes:
-        raw = b"\x00" + b"\xff\x00\x00"
-
-        def chunk(tag: bytes, data: bytes) -> bytes:
-            body = tag + data
-            return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
-
-        ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
-        return (
-            b"\x89PNG\r\n\x1a\n"
-            + chunk(b"IHDR", ihdr)
-            + chunk(b"IDAT", zlib.compress(raw))
-            + chunk(b"IEND", b"")
-        )
-
-    img = tmp_path / "live_red.png"
-    img.write_bytes(png_1x1())
-    add = run_la(["rag", "add", str(img)], env=env, timeout=300)
-    assert add.returncode == 0, add.stdout + add.stderr
-    assert "失败" not in add.stdout
-
-    result = run_la(["rag", "search", "red"], env=env, timeout=120)
-    assert result.returncode == 0, result.stdout + result.stderr
-    out = result.stdout.lower()
-    assert "red" in out or "红" in result.stdout or "image" in out

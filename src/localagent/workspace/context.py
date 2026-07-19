@@ -10,8 +10,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from localagent import config
-
 _SKIP_DIR_NAMES = frozenset(
     {
         ".git",
@@ -28,14 +26,28 @@ _SKIP_DIR_NAMES = frozenset(
         "build",
         ".tox",
         "chroma",
+        # Diagnostic scan: skip noise-heavy trees (managed tasks are the product queue).
+        "tests",
+        "test",
+        "docs",
+        "benchmarks",
+        "data",
+        ".cursor",
+        "examples",
     }
 )
+_SKIP_PATH_PREFIXES = (
+    "src/localagent/workspace/",
+    "localagent/workspace/",
+)
 _SKIP_SUFFIXES = frozenset({".pyc", ".pyo", ".so", ".dylib", ".dll", ".exe", ".o"})
+# Word-boundary markers + required separator + substantive description (min ~3 chars).
 _TODO_LINE = re.compile(
-    r"(?:^|\s)(?:TODO|FIXME|HACK|XXX)\s*[:\-]?\s*(.+)$",
+    r"(?<![A-Za-z])(?:TODO|FIXME|HACK|XXX)(?![A-Za-z])\s*[:\-]\s*(\S.{2,})$",
     re.IGNORECASE,
 )
-_CHECKBOX = re.compile(r"^\s*-\s*\[\s\]\s+(.+)$")
+_CHECKBOX = re.compile(r"^\s*-\s*\[\s\]\s+(\S.{2,})$")
+_MIN_DIAG_TEXT = 3
 _SCAN_EXTENSIONS = frozenset(
     {
         ".py",
@@ -51,7 +63,6 @@ _SCAN_EXTENSIONS = frozenset(
         ".java",
         ".yaml",
         ".yml",
-        ".json",
         ".toml",
         ".sh",
     }
@@ -166,6 +177,14 @@ def _should_skip_path(path: Path) -> bool:
             return True
     if path.suffix.lower() in _SKIP_SUFFIXES:
         return True
+    rel = path.as_posix().lower()
+    for prefix in _SKIP_PATH_PREFIXES:
+        if rel.startswith(prefix):
+            return True
+    # Skip README / PRD noise that historically caused false positives.
+    name = path.name.lower()
+    if name.startswith("readme") or name in {"prd.md", "tdd.md", "changelog.md"}:
+        return True
     return False
 
 
@@ -214,7 +233,7 @@ def scan_todos(
     *,
     limit: int = 80,
 ) -> list[dict[str, str]]:
-    """Scan workspace for TODO/FIXME comments and markdown checkboxes."""
+    """Diagnostic scan for TODO/FIXME / unchecked checkboxes (does NOT enqueue tasks)."""
     root = workspace or resolve_workspace()
     if not root.is_dir():
         return []
@@ -226,23 +245,34 @@ def scan_todos(
             path = Path(dirpath) / name
             if path.suffix.lower() not in _SCAN_EXTENSIONS:
                 continue
-            if _should_skip_path(path.relative_to(root)):
+            rel_path = path.relative_to(root)
+            if _should_skip_path(rel_path):
                 continue
             try:
                 text = path.read_text(encoding="utf-8", errors="ignore")
             except OSError:
                 continue
-            rel = path.relative_to(root).as_posix()
+            rel = rel_path.as_posix()
             for line_no, line in enumerate(text.splitlines(), start=1):
-                match = _TODO_LINE.search(line) or _CHECKBOX.match(line)
+                checkbox = _CHECKBOX.match(line)
+                todo_match = None if checkbox else _TODO_LINE.search(line)
+                match = checkbox or todo_match
                 if not match:
                     continue
+                desc = match.group(1).strip()
+                if len(desc) < _MIN_DIAG_TEXT:
+                    continue
+                # Prefer readable description; keep a short line snippet as fallback context.
+                snippet = line.strip()
+                if len(snippet) > 160:
+                    snippet = snippet[:157] + "..."
                 todos.append(
                     {
                         "path": rel,
                         "line": str(line_no),
-                        "kind": "checkbox" if _CHECKBOX.match(line) else "todo",
-                        "text": match.group(1).strip()[:200],
+                        "kind": "checkbox" if checkbox else "todo",
+                        "text": desc[:200],
+                        "snippet": snippet,
                     }
                 )
                 if len(todos) >= limit:
@@ -250,7 +280,35 @@ def scan_todos(
     return todos
 
 
-def format_workspace_summary(*, days: int = 7, workspace: Path | None = None) -> str:
+def format_diagnostic_todos(
+    workspace: Path | None = None,
+    *,
+    limit: int = 80,
+) -> str:
+    """Format diagnostic scan results (not the managed task queue)."""
+    root = workspace or resolve_workspace()
+    todos = scan_todos(root, limit=limit)
+    lines = [
+        f"[workspace] 诊断扫描（未入队）({root})",
+        "说明: 代码 TODO/checkbox 仅供参考；正式待办请用 la workspace tasks / add",
+    ]
+    if not todos:
+        lines.append("  未扫描到可读的 TODO/FIXME 或未勾选 checkbox")
+        return "\n".join(lines)
+    for item in todos:
+        lines.append(
+            f"  [{item['kind']}] {item['path']}:{item['line']}  {item['text']}"
+        )
+    lines.append(f"[workspace] 诊断命中 {len(todos)} 条（未入队）")
+    return "\n".join(lines)
+
+
+def format_workspace_summary(
+    *,
+    days: int = 7,
+    workspace: Path | None = None,
+    include_diagnostic: bool = False,
+) -> str:
     """Human-readable workspace overview for CLI and agent tools."""
     root = workspace or resolve_workspace()
     lines = [f"工作区: {root}", f"最近 {days} 天修改的文件:"]
@@ -266,16 +324,22 @@ def format_workspace_summary(*, days: int = 7, workspace: Path | None = None) ->
     lines.append("")
     lines.append(git_summary(root).to_text())
 
-    todos = scan_todos(root, limit=20)
     lines.append("")
-    if todos:
-        lines.append(f"待办项 ({len(todos)} 条，显示前 10):")
-        for item in todos[:10]:
-            lines.append(f"  - [{item['kind']}] {item['path']}:{item['line']}  {item['text']}")
-        if len(todos) > 10:
-            lines.append(f"  … 共 {len(todos)} 条")
-    else:
-        lines.append("待办项: 未扫描到 TODO/FIXME 或未勾选的 checkbox")
+    from localagent.workspace.tasks import format_tasks_for_summary
+
+    lines.append(format_tasks_for_summary(root, limit=10))
+
+    if include_diagnostic:
+        diag = scan_todos(root, limit=20)
+        lines.append("")
+        if diag:
+            lines.append(f"诊断扫描命中 {len(diag)}（未入队，显示前 5）:")
+            for item in diag[:5]:
+                lines.append(
+                    f"  - [{item['kind']}] {item['path']}:{item['line']}  {item['text']}"
+                )
+        else:
+            lines.append("诊断扫描: 无命中（未入队）")
 
     return "\n".join(lines)
 

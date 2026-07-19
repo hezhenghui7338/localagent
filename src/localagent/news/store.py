@@ -283,6 +283,15 @@ class NewsStore:
             rows = conn.execute(sql, params).fetchall()
         return [_row_to_article(r) for r in rows]
 
+    def count_by_status(self, status: str) -> int:
+        """Count articles with the given status (e.g. bookmarked)."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM articles WHERE status = ?",
+                (status,),
+            ).fetchone()
+        return int(row["n"]) if row else 0
+
     def set_status(self, article_id: str, status: str) -> None:
         with self._connect() as conn:
             conn.execute(

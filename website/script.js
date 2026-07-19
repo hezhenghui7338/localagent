@@ -3,7 +3,7 @@
   const STORAGE_KEY = "la-site-lang-v3";
   const LEGACY_STORAGE_KEYS = ["la-site-lang", "la-site-lang-v2"];
   const INSTALL_CMD =
-    'pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.5.0"\nla';
+    'pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.6.0"\nla';
 
   const DEMO_IDS = ["setup", "memory", "deepread"];
   const DEMO_PLAYBACK_RATE = 1.25;
@@ -67,7 +67,7 @@
         "summarize 与 news 精读共用 DocumentChat，不是另开一个空聊天框。",
       "install.eyebrow": "快速开始",
       "install.title": "一行命令，装上就聊",
-      "install.lead": "需要 Python 3.10+ 与 pipx。当前版本 v0.5.0。",
+      "install.lead": "需要 Python 3.10+ 与 pipx。当前版本 v0.6.0。",
       "install.copy": "复制",
       "install.copied": "已复制",
       "install.hint":
@@ -82,7 +82,7 @@
       "contact.lead":
         "不是又一个 Chat 客户端——本地 AI：记得住你，也能把事办完。问题、建议或合作，欢迎来信。",
       "contact.emailLabel": "邮箱",
-      "footer.line": "LocalAgent · MIT · v0.5.0",
+      "footer.line": "LocalAgent · MIT · v0.6.0",
       title: "LocalAgent — 本地 AI：记得住你，也能把事办完",
       description:
         "LocalAgent — Local First. Memory Forever. Actions Automated. 本地 AI：记得住你，也能把事办完。",
@@ -146,7 +146,7 @@
         "summarize and news deep-read share DocumentChat — not a blank new thread.",
       "install.eyebrow": "Quick start",
       "install.title": "One command, then chat",
-      "install.lead": "Needs Python 3.10+ and pipx. Current version v0.5.0.",
+      "install.lead": "Needs Python 3.10+ and pipx. Current version v0.6.0.",
       "install.copy": "Copy",
       "install.copied": "Copied",
       "install.hint":
@@ -161,7 +161,7 @@
       "contact.lead":
         "Not another chat client — local AI that remembers and gets things done. Questions, ideas, or collaboration welcome.",
       "contact.emailLabel": "Email",
-      "footer.line": "LocalAgent · MIT · v0.5.0",
+      "footer.line": "LocalAgent · MIT · v0.6.0",
       title: "LocalAgent — Local AI that remembers and gets things done",
       description:
         "LocalAgent — Local First. Memory Forever. Actions Automated. Local AI that remembers and gets things done.",
@@ -174,9 +174,9 @@
       setup: [
         {
           lines: [
-            { kind: "prompt", text: "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.5.0\"" },
+            { kind: "prompt", text: "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.6.0\"" },
             { kind: "prompt", text: "$ la --version" },
-            { kind: "out", text: "la-localagent 0.5.0" },
+            { kind: "out", text: "la-localagent 0.6.0" },
           ],
         },
         {
@@ -329,9 +329,9 @@
       setup: [
         {
           lines: [
-            { kind: "prompt", text: "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.5.0\"" },
+            { kind: "prompt", text: "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.6.0\"" },
             { kind: "prompt", text: "$ la --version" },
-            { kind: "out", text: "la-localagent 0.5.0" },
+            { kind: "out", text: "la-localagent 0.6.0" },
           ],
         },
         {

@@ -27,15 +27,16 @@ la setup
 
 ## Highlight: Local First
 
-LocalAgent’s core path — **chat, memory write, memory recall, document retrieval, workspace awareness, audit** — can run on local Ollama alone, with no paid API. Use `la status` for Daily Actions signals.
+LocalAgent’s core path — **chat, memory write, memory recall, document retrieval, workspace awareness, audit** — can run on local Ollama alone, with no paid API. Use `la status` / `/status` for today’s signals and data layers (Hot/Warm/Cold/Aware).
 
 | Capability | Needs cloud API? | Notes |
 | --- | --- | --- |
 | Chat `LA chat` | No | Default `qwen3.5:4b`, runs on your machine |
-| Single memory `LA memory add` | No | Local model extracts title/tags |
-| Doc import `LA rag add` | No | Heuristic extract by default; no LLM required |
+| Single memory `LA ingest text` | No | Local model extracts title/tags |
+| Doc import `LA ingest doc` | No | Heuristic extract by default; no LLM required |
 | Memory search `LA memory search` | No | BM25 + Chroma locally |
 | Workspace `LA workspace` | No | Reads local Git / files / TODOs |
+| Aware `la aware` | No (local model optional) | Default: current state + last 3h activity; `--detail` for per-source dump |
 | Audit `LA audit` | No | Reads local usage.jsonl |
 | Summarize `la summarize` | No (local model) | Digest card + `sum>` dialogue |
 | News sniff `la news` | Network only for sync | RSS → brief; deep-read can summarize locally |
@@ -56,7 +57,7 @@ LA chat --provider ollama
 Good for a single decision, preference, or plan.
 
 ```bash
-LA memory add "In July 2026 we decided to add an examples/ directory so new users can get started quickly"
+LA ingest text "In July 2026 we decided to add an examples/ directory so new users can get started quickly"
 
 LA memory search "examples directory"
 ```
@@ -72,7 +73,7 @@ relevance 0.82 · 2026-07-11 · fact · #docs/LocalAgent
 
 In July 2026 we decided to add an examples/ directory so new users can get started quickly
 
-source: LA memory add · id: a1b2c3d4
+source: LA ingest text · id: a1b2c3d4
 → LA memory forget <id>  to delete a memory
 ```
 
@@ -90,18 +91,16 @@ assistant> In July 2026 you decided to add an examples/ directory so new users c
 Good for project notes, journals, and long docs. Files are symlinked into `data/kb/` and indexed into **Cold** only (no Warm fact extraction).
 
 ```bash
-LA rag add examples/sample-project-notes.md
+LA ingest doc examples/sample-project-notes.md
 
 LA rag search "three-layer memory"
 ```
 
-**Expected (`rag add`):**
+**Expected (`ingest doc`):**
 
 ```text
-[rag add] source: .../examples/sample-project-notes.md (1.1 KB)
-[rag add] symlink: data/kb/sample-project-notes.md
-  + sample-project-notes.md: new, chunks=5
-[rag add] done (knowledge only; no memory extract)
+[ingest doc] source=doc · cold=5 · warm=0 · files=1
+[ingest doc] archived: data/kb/sample-project-notes.md
 ```
 
 **Expected (knowledge search):**
@@ -170,10 +169,10 @@ LA_MODEL_PROVIDER_PRIORITY=ollama # do not fall back to cloud
 
 | System RAM | Model | Notes |
 | --- | --- | --- |
-| &lt; 6 GB | `qwen2.5:0.5b` (Mini) | Basic chat; weak multi-tool Agent |
-| 6–10 GB | `qwen2.5:1.5b` | Lightweight Q&A |
-| 10–14 GB | `qwen2.5:3b` | Mid tier |
-| ≥ 14 GB | `qwen3.5:4b` | Default quality tier |
+| &lt; 6 GB | `qwen3.5:0.8b` (Mini) | Basic chat; weak multi-tool Agent |
+| 6–10 GB | `qwen3.5:2b` | Lightweight Q&A |
+| 10–18 GB | `qwen3.5:4b` | Default quality tier |
+| ≥ 18 GB | `qwen3.5:9b` | High-RAM quality tier |
 
 ```bash
 ollama run qwen3.5:4b "Hello — introduce yourself in one sentence"
@@ -189,6 +188,12 @@ LocalAgent can see recent files, Git status, and TODO comments — without uploa
 
 ```bash
 LA workspace --cwd .
+
+# Opt-in sensing: overview → aware>; grant apps for focus / Now Playing
+la aware grant fs terminal browser apps -y
+la aware tick --no-chat
+la aware --no-chat
+la aware
 
 LA chat --cwd . --provider ollama
 ```
@@ -284,9 +289,9 @@ Uses an isolated data dir so you do not touch daily `data/`:
 export LA_DATA_DIR=/tmp/la-demo
 pip install -e ".[dev]" -q
 
-LA memory add "In July 2026 we decided to add an examples/ directory"
+LA ingest text "In July 2026 we decided to add an examples/ directory"
 LA memory search "examples"
-LA rag add examples/sample-project-notes.md
+LA ingest doc examples/sample-project-notes.md
 LA rag search "three-layer memory"
 LA workspace --cwd .
 LA audit --since 7d
@@ -298,6 +303,6 @@ echo "Done. Data under $LA_DATA_DIR"
 
 ## Next steps
 
-- Import your own Markdown: `LA rag add ~/Documents/notes.md`
-- Import ChatGPT history: `LA memory ingest chatgpt conversations.json`
+- Import your own Markdown: `LA ingest doc ~/Documents/notes.md`
+- Import ChatGPT history: `LA ingest chatgpt conversations.json`
 - Design docs: [docs/PRD.md](../docs/PRD.md) · [docs/TDD.md](../docs/TDD.md)

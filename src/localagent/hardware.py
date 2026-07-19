@@ -20,38 +20,40 @@ class ModelTier:
 
 
 # Thresholds leave headroom for OS + LA/Chroma. Ordered ascending by min_ram_bytes.
+# Full Qwen3.5 small series (0.8b / 2b / 4b / 9b); no Qwen2.5.
 MODEL_TIERS: tuple[ModelTier, ...] = (
     ModelTier(
         min_ram_bytes=0,
-        model="qwen2.5:0.5b",
-        size_hint="~0.4–1 GB",
+        model="qwen3.5:0.8b",
+        size_hint="~1.0 GB",
         label="Mini",
         note="可跑通 Chat/基础记忆；复杂 Agent/多工具会明显变弱",
     ),
     ModelTier(
         min_ram_bytes=6 * (1024**3),
-        model="qwen2.5:1.5b",
-        size_hint="~1–2 GB",
+        model="qwen3.5:2b",
+        size_hint="~2.7 GB",
         label="轻量",
         note="轻量日常问答",
     ),
     ModelTier(
         min_ram_bytes=10 * (1024**3),
-        model="qwen2.5:3b",
-        size_hint="~2 GB",
-        label="过渡",
-        note="中低配过渡档",
-    ),
-    ModelTier(
-        min_ram_bytes=14 * (1024**3),
         model="qwen3.5:4b",
-        size_hint="~2.5 GB",
+        size_hint="~3.4 GB",
         label="推荐",
         note="当前主推质量档",
     ),
+    ModelTier(
+        min_ram_bytes=18 * (1024**3),
+        model="qwen3.5:9b",
+        size_hint="~6.6 GB",
+        label="高配",
+        note="高内存质量档",
+    ),
 )
 
-DEFAULT_TIER_MODEL = MODEL_TIERS[-1].model
+# Bootstrap / config default / unknown-RAM fallback (not the top RAM tier).
+DEFAULT_TIER_MODEL = "qwen3.5:4b"
 MINI_OLLAMA_MODEL = MODEL_TIERS[0].model
 
 
@@ -133,10 +135,11 @@ def format_ram_gb(ram_bytes: int | None) -> str:
 def tier_for_ram(ram_bytes: int | None) -> ModelTier:
     """Pick the highest tier whose min_ram_bytes <= ram_bytes.
 
-    Unknown RAM falls back to the recommended (highest) tier.
+    Unknown RAM falls back to the default quality tier (``qwen3.5:4b``),
+    not the top high-RAM tier.
     """
     if ram_bytes is None or ram_bytes <= 0:
-        return MODEL_TIERS[-1]
+        return tier_by_model(DEFAULT_TIER_MODEL) or MODEL_TIERS[-2]
     chosen = MODEL_TIERS[0]
     for tier in MODEL_TIERS:
         if ram_bytes >= tier.min_ram_bytes:

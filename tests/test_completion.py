@@ -22,11 +22,22 @@ def test_complete_all_subcommands_from_empty():
     assert "chat" in hits
     assert "memory" in hits
     assert "rag" in hits
+    assert "ingest" in hits
     assert "reflect" in hits
     assert "websearch" in hits
     assert "tasks" in hits
     assert "add-file" not in hits
     assert "sync-file" not in hits
+
+
+def test_complete_ingest_sources():
+    hits = suggest_completions(["LA", "ingest", ""], build_parser())
+    assert "chat" in hits
+    assert "chatgpt" in hits
+    assert "doc" in hits
+    assert "kb" in hits
+    assert "text" in hits
+    assert "rebuild" in hits
 
 
 def test_complete_memory_actions():
@@ -46,6 +57,38 @@ def test_complete_rag_actions():
     assert "ingest" in hits
     assert "search" in hits
     assert "rebuild" in hits
+
+
+def test_complete_aware_actions_and_since():
+    hits = suggest_completions(["LA", "aware", ""], build_parser())
+    assert "grant" in hits
+    assert "ungrant" in hits
+    assert "tick" in hits
+    assert "suggestion" in hits
+    assert "--since" in hits
+    assert "--detail" in hits
+    assert "--no-chat" in hits
+    assert "revoke" not in hits
+    assert "approve" not in hits
+    assert "inbox" not in hits
+    assert "grant" in suggest_completions(["LA", "aware", "gr"], build_parser())
+    since = suggest_completions(["LA", "aware", "--since", ""], build_parser())
+    assert set(since) >= {"3h", "1d", "1w", "1m", "1y", "2d"}
+    # Free-form window value is consumed so next flag can complete
+    after_2d = suggest_completions(
+        ["LA", "aware", "--since", "2d", ""], build_parser()
+    )
+    assert "--detail" in after_2d or "tick" in after_2d
+    grant = suggest_completions(["LA", "aware", "grant", ""], build_parser())
+    assert "all" in grant
+    assert "browser" in grant
+    sug = suggest_completions(["LA", "aware", "suggestion", ""], build_parser())
+    assert "list" in sug
+    assert "approve" in sug
+    assert "reject" in sug
+    assert "all" in suggest_completions(
+        ["LA", "aware", "suggestion", "approve", ""], build_parser()
+    )
 
 
 def test_complete_memory_ingest_sources():

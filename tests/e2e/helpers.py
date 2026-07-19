@@ -28,7 +28,7 @@ DURATION_BUDGETS: dict[tuple[str, ...], float] = {
     ("config", "list"): 5.0,
     ("tasks",): 5.0,
     ("memory", "pending"): 5.0,
-    ("memory", "add"): 8.0,
+    ("ingest", "text"): 8.0,
     ("memory", "query"): 8.0,
     ("audit",): 8.0,
     ("memory", "search"): 10.0,
@@ -36,12 +36,12 @@ DURATION_BUDGETS: dict[tuple[str, ...], float] = {
     ("chat",): 10.0,
     ("summarize",): 10.0,
     ("audit", "--report"): 10.0,
-    ("rag", "add"): 15.0,
-    ("rag", "add", "--background"): 8.0,  # enqueue only; completion uses BACKGROUND_TASK_BUDGET
+    ("ingest", "doc"): 15.0,
+    ("ingest", "doc", "-b"): 8.0,  # enqueue only; completion uses BACKGROUND_TASK_BUDGET
     ("polish",): 15.0,
     ("memory", "reindex"): 20.0,
-    ("rag", "rebuild"): 20.0,
-    ("memory", "ingest"): 30.0,
+    ("ingest", "rebuild"): 20.0,
+    ("ingest",): 30.0,
 }
 
 # End-to-end wait for background task completion (poll wall time).
@@ -149,40 +149,12 @@ def require_ollama_completion() -> list[str]:
     return models
 
 
-def ollama_vl_models() -> list[str]:
-    try:
-        with httpx.Client(timeout=3.0) as client:
-            resp = client.get("http://localhost:11434/api/tags")
-            resp.raise_for_status()
-            models = resp.json().get("models", [])
-    except Exception:
-        return []
-
-    names: list[str] = []
-    for model in models:
-        name = model.get("name", "")
-        if not name:
-            continue
-        caps = {str(c) for c in (model.get("capabilities") or [])}
-        lower = name.lower()
-        if "vision" in caps or "-vl" in lower or "vision" in lower:
-            names.append(name)
-    return names
-
-
-def require_ollama_vl() -> str:
-    models = ollama_vl_models()
-    if not models:
-        pytest.skip("需要 Ollama 视觉模型")
-    return models[0]
-
-
 def parse_task_id(stdout: str) -> str:
     """Extract first ``t-…`` token from CLI output mentioning 后台任务."""
     for line in stdout.splitlines():
-        if "后台任务" not in line and "t-" not in line:
+        if "后台任务" not in line and "background task" not in line and "t-" not in line:
             continue
-        for token in line.split():
+        for token in line.replace("=", " ").split():
             if token.startswith("t-"):
                 return token
     raise AssertionError(f"未找到 task id:\n{stdout}")
@@ -231,9 +203,9 @@ def memory_fact_ids(data_dir: Path) -> list[str]:
 
 
 def seed_memory(env: dict[str, str], text: str) -> subprocess.CompletedProcess[str]:
-    result = run_la(["memory", "add", text], env=env)
+    result = run_la(["ingest", "text", text], env=env)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "已写入记忆" in result.stdout
+    assert "Warm" in result.stdout or "warm=" in result.stdout or "已写入" in result.stdout
     return result
 
 

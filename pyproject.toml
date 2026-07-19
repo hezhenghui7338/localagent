@@ -52,6 +52,7 @@ dependencies = [
 full = []
 dev = [
     "pytest>=8.0.0",
+    "pytest-xdist>=3.5.0",
     "ruff>=0.3.0",
 ]
 # Optional cross-encoder rerank (LA_MEMORY_RERANK_BACKEND=cross_encoder|auto).
@@ -106,11 +107,14 @@ include = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "tests/e2e", "."]
-addopts = "-m 'not e2e and not e2e_live'"
+pythonpath = ["src", "tests", "tests/e2e", "."]
+# Parallel by default; use -n0 for serial debugging. loadgroup keeps xdist_group together.
+# End-of-run unit/e2e per-file summary is enabled by default (see tests/suite_summary.py).
+addopts = "-n auto --dist loadgroup -m 'not e2e and not e2e_live'"
 markers = [
     "e2e: subprocess end-to-end tests against installed LA CLI",
     "e2e_live: requires live Ollama with a completion model",
+    "serial: wall-clock budget / resource tests; grouped via xdist_group",
 ]
 
 [tool.ruff]

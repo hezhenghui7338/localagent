@@ -9,16 +9,12 @@ from pathlib import Path
 
 from localagent import config
 from localagent.chat_repl import run_chat
-from localagent.ingest.add_file import add_file, add_file_background, restart_background_task
-from localagent.ingest.sync_file import sync_files
+from localagent.ingest.add_file import restart_background_task
 from localagent.ingest.progress import ConsoleProgressReporter
 from localagent.ingest.tasks import TaskStatus, format_task_line, get_task_store
-from localagent.memory.chatgpt_import import import_chatgpt_dir, import_chatgpt_file, import_chatgpt_files
 from localagent.memory.backend import describe_memory_backend, get_memory_backend
 from localagent.memory.query import list_memory_tags, query_memories
-from localagent.memory.rememorize import ingest_chat
 from localagent.memory.reset import (
-    rebuild_knowledge,
     reindex_memory_engine,
     reset_knowledge,
     reset_memory,
@@ -33,11 +29,32 @@ from localagent.tools import (
 )
 from localagent.ui.console import emit
 
+# Hard-cut: old write paths → LA ingest (exit 2, no side effects)
+_REMOVED_CMDS: dict[str, str] = {
+    "memory add": 'LA ingest text "…"',
+    "memory ingest": "LA ingest chat|chatgpt|doc|kb|text|all …",
+    "rag add": "LA ingest doc <path>",
+    "rag ingest": "LA ingest kb [--force]",
+    "rag rebuild": "LA ingest rebuild [--force]",
+}
+
+
+def _print_removed(old: str) -> int:
+    replacement = _REMOVED_CMDS[old]
+    print(f"[LA] `{old}` 已移除，请改用: {replacement}")
+    return 2
+
 
 def _cmd_news(args: argparse.Namespace) -> int:
     from localagent.news.commands import cmd_news
 
     return cmd_news(args)
+
+
+def _cmd_aware(args: argparse.Namespace) -> int:
+    from localagent.aware.commands import cmd_aware
+
+    return cmd_aware(args)
 
 
 def _print_ingest_result(result) -> None:
@@ -93,30 +110,8 @@ def cmd_chat(args: argparse.Namespace) -> int:
     return run_chat(session_id=args.session_id, provider=provider)
 
 
-def cmd_add(args: argparse.Namespace) -> int:
-    from localagent.memory.save import save_facts
-
-    emit("memory add", "写入记忆…")
-    ids = save_facts(
-        [args.text],
-        metadata={
-            "source": "manual_add",
-            "source_file": "LA memory add",
-            "section_heading": "",
-        },
-    )
-    if not ids:
-        print("[memory add] 内容太短或无价值，未写入")
-        return 1
-    fact_id = ids[0]
-    print(f"[memory add] 已写入记忆 (id={fact_id[:8]}...)")
-    fact = get_memory_store().get(fact_id)
-    if fact:
-        title = fact.metadata.get("title") or fact.text[:30]
-        tags = fact.metadata.get("tags") or []
-        tag_hint = f" · {'/'.join(tags)}" if tags else ""
-        print(f"      「{title}」{tag_hint}")
-    return 0
+def cmd_add(_args: argparse.Namespace) -> int:
+    return _print_removed("memory add")
 
 
 def cmd_memory_pending(args: argparse.Namespace) -> int:
@@ -477,37 +472,8 @@ def cmd_polish(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_add_file(args: argparse.Namespace) -> int:
-    source = Path(args.path).expanduser().resolve()
-    prefix = "rag add"
-    try:
-        if args.background:
-            print(f"[{prefix}] 源文件: {source} ({_format_file_size(source)})")
-            target, task, pid = add_file_background(args.path)
-            print(f"[{prefix}] 软链: {target}")
-            print(f"[{prefix}] 后台任务 {task.id} (pid={pid})")
-            if task.log_path:
-                print(f"[{prefix}] 日志: {task.log_path}")
-            print(f"→ LA tasks {task.id}       查看进度")
-            print(f"→ LA tasks logs {task.id}  查看输出")
-            return 0
-
-        print(f"[{prefix}] 源文件: {source} ({_format_file_size(source)})")
-        reporter = ConsoleProgressReporter(prefix=prefix)
-        target, result = add_file(args.path, reporter=reporter)
-    except KeyboardInterrupt:
-        print(f"\n[{prefix}] 已中断")
-        return 130
-    except (FileNotFoundError, ValueError, FileExistsError) as exc:
-        print(f"[{prefix}] error: {exc}")
-        return 1
-
-    print(f"[{prefix}] 软链: {target}")
-    _print_ingest_result(result)
-    if result.status.value == "failed":
-        return 1
-    print(f"[{prefix}] done（仅知识库，不提取记忆）")
-    return 0
+def cmd_add_file(_args: argparse.Namespace) -> int:
+    return _print_removed("rag add")
 
 
 def _print_task_detail(task) -> None:
@@ -660,19 +626,8 @@ def cmd_tasks(args: argparse.Namespace) -> int:
     return 1
 
 
-def cmd_ingest_file(args: argparse.Namespace) -> int:
-    emit("rag ingest", f"扫描 {config.KB_DIR}/ …")
-    reporter = ConsoleProgressReporter(prefix="rag ingest")
-    summary = sync_files(force=args.force, reporter=reporter)
-    if not summary.results:
-        print(f"[rag ingest] no supported files in {config.KB_DIR}/")
-        return 0
-
-    for result in summary.results:
-        _print_ingest_result(result)
-
-    print(f"[rag ingest] {summary.format_summary()}")
-    return 1 if summary.failed_count else 0
+def cmd_ingest_file(_args: argparse.Namespace) -> int:
+    return _print_removed("rag ingest")
 
 
 def cmd_rag_search(args: argparse.Namespace) -> int:
@@ -712,10 +667,10 @@ def cmd_rag_status(_args: argparse.Namespace) -> int:
         print(f"  失败任务:    {health.failed_tasks}（可 LA tasks 查看）")
 
     print("\n下一步:")
-    print("  LA rag add <path>     软链到 kb/ 并索引")
+    print("  LA ingest doc <path>  软链到 kb/ 并持久记忆化")
     print("  LA rag search <q>     检索知识库（含对话归档）")
-    print("  LA rag ingest         增量扫描 data/kb/")
-    print("  LA rag rebuild        重建 kb/ + chat + chatgpt Cold")
+    print("  LA ingest kb          增量扫描 data/kb/")
+    print("  LA ingest rebuild     重建 kb/ + chat + chatgpt Cold")
     return 0
 
 
@@ -733,20 +688,9 @@ def _ingest_index_count(path: Path) -> int:
 
 def _memory_source_counts() -> dict[str, int]:
     """Count Warm facts by SOURCE_GROUPS origin (chat / chatgpt / file / other)."""
-    from localagent.memory.reset import SOURCE_GROUPS
+    from localagent.status.layers import memory_source_counts
 
-    counts = {"chat": 0, "chatgpt": 0, "file": 0, "other": 0}
-    source_to_group: dict[str, str] = {}
-    for group, sources in SOURCE_GROUPS.items():
-        for src in sources:
-            source_to_group[src] = group
-
-    for fact in get_memory_store().all_facts():
-        meta = fact.metadata or {}
-        src = str(meta.get("source") or "")
-        group = source_to_group.get(src, "other")
-        counts[group] = counts.get(group, 0) + 1
-    return counts
+    return memory_source_counts()
 
 
 def _core_profile_configured() -> bool:
@@ -778,22 +722,7 @@ def cmd_rag_reset(args: argparse.Namespace) -> int:
 
 
 def cmd_rag_rebuild(_args: argparse.Namespace) -> int:
-    reporter = ConsoleProgressReporter(prefix="rag rebuild")
-    reset_stats, summary = rebuild_knowledge(reporter=reporter)
-    print("[rag rebuild] reset:")
-    print(f"  sync_index entries removed: {reset_stats['sync_index_entries_removed']}")
-    print(f"  knowledge chunks removed: {reset_stats['knowledge_chunks_removed']}")
-    print(f"  legacy ingest memories removed: {reset_stats['memory_facts_removed']}")
-    print(
-        "[rag rebuild] conversation Cold: "
-        f"chat={reset_stats.get('conversation_cold_chat', 0)} "
-        f"chatgpt={reset_stats.get('conversation_cold_chatgpt', 0)} "
-        f"chunks={reset_stats.get('conversation_cold_chunks', 0)}"
-    )
-    for result in summary.results:
-        _print_ingest_result(result)
-    print(f"[rag rebuild] {summary.format_summary()}")
-    return 1 if summary.failed_count else 0
+    return _print_removed("rag rebuild")
 
 
 def cmd_reset_memory(args: argparse.Namespace) -> int:
@@ -826,120 +755,191 @@ def cmd_reindex_memory(_args: argparse.Namespace) -> int:
         print("  skipped:    yes (非 mem0 后端)")
     return 0
 
-def cmd_ingest_chat(args: argparse.Namespace) -> int:
-    reporter = ConsoleProgressReporter(prefix="memory ingest chat")
-    interactive = True if args.interactive else None
-    ids = ingest_chat(
-        session_id=args.session,
-        force=args.force,
-        reporter=reporter,
-        interactive=interactive,
+def cmd_ingest_chat(_args: argparse.Namespace) -> int:
+    return _print_removed("memory ingest")
+
+
+def cmd_ingest_chatgpt(_args: argparse.Namespace) -> int:
+    return _print_removed("memory ingest")
+
+
+def cmd_memory_ingest(_args: argparse.Namespace) -> int:
+    return _print_removed("memory ingest")
+
+
+def cmd_ingest_status(_args: argparse.Namespace) -> int:
+    from localagent.ingest.conversation_cold import count_chunks_by_origin
+    from localagent.ingest.sync_index import get_sync_index
+    from localagent.knowledge.indexer import get_knowledge_indexer
+    from localagent.persist.conversations import list_sessions
+
+    sync = get_sync_index()
+    indexer = get_knowledge_indexer()
+    by_origin = count_chunks_by_origin()
+    print("[ingest status] 持久记忆化概览")
+    print(f"  kb 已索引:    {len(sync.all_filenames())} 文件 · {indexer.count()} chunks")
+    print(
+        f"  Cold 来源:    kb={by_origin.get('kb', 0)}  "
+        f"chat={by_origin.get('chat', 0)}  "
+        f"chatgpt={by_origin.get('chatgpt', 0)}  "
+        f"other={by_origin.get('other', 0)}"
     )
-    cold_chunks = 0
-    try:
-        raw = json.loads(config.CHAT_INGEST_INDEX_FILE.read_text(encoding="utf-8"))
-        for entry in (raw.get("processed") or {}).values():
-            if isinstance(entry, dict):
-                cold_chunks += int(entry.get("cold_chunk_count") or 0)
-    except Exception:
-        pass
-    if not ids:
-        print(f"[memory ingest chat] 未提取到新记忆（cold_chunks≈{cold_chunks}）")
-        return 0
-    print(f"[memory ingest chat] 已保存 {len(ids)} 条记忆（cold_chunks≈{cold_chunks}）")
+    print(f"  LA 对话档案:  {len(list_sessions())} · 已消费 {_ingest_index_count(config.CHAT_INGEST_INDEX_FILE)}")
+    print(f"  ChatGPT 导入: {_ingest_index_count(config.CHATGPT_IMPORT_INDEX_FILE)}")
+    print(f"  Warm 条数:    {get_memory_store().count()}")
+    print(f"  Hot 画像:     {'已配置' if _core_profile_configured() else '未配置'}")
+    print("\n下一步:")
+    print("  LA ingest chat|chatgpt|doc|kb|text|all")
+    print("  LA ingest rebuild · LA ingest reset <source>")
     return 0
 
 
-def cmd_ingest_chatgpt(args: argparse.Namespace) -> int:
-    reporter = ConsoleProgressReporter(prefix="memory ingest chatgpt")
-    interactive = args.interactive
-    if args.files and args.path:
-        print("[memory ingest chatgpt] 不能同时指定 path 与 --file")
+def cmd_ingest_reset(args: argparse.Namespace) -> int:
+    source = (getattr(args, "reset_source", None) or "all").strip().lower()
+    origin_map = {
+        "chat": "chat",
+        "chatgpt": "chatgpt",
+        "doc": "file",
+        "kb": "file",
+        "file": "file",
+        "text": "file",
+        "all": "all",
+    }
+    if source not in origin_map:
+        print(f"[ingest reset] 未知来源: {source}（可用: chat, chatgpt, doc, kb, text, all）")
         return 1
-    if args.files:
-        summary = import_chatgpt_files(
-            [Path(path) for path in args.files],
-            force=args.force,
-            include_disabled=args.include_disabled,
-            reporter=reporter,
-            interactive=interactive,
-        )
-    elif args.directory:
-        summary = import_chatgpt_dir(
-            Path(args.directory),
-            force=args.force,
-            include_disabled=args.include_disabled,
-            reporter=reporter,
-            interactive=interactive,
-        )
-    elif args.path:
-        summary = import_chatgpt_file(
-            Path(args.path),
-            force=args.force,
-            include_disabled=args.include_disabled,
-            reporter=reporter,
-            interactive=interactive,
-        )
-    else:
-        default_dir = config.CHATGPT_DATA_DIR
-        if default_dir.is_dir() and any(default_dir.glob("*.json")):
-            emit("memory ingest chatgpt", f"使用默认目录 {default_dir}")
-            summary = import_chatgpt_dir(
-                default_dir,
-                force=args.force,
-                include_disabled=args.include_disabled,
-                reporter=reporter,
-                interactive=interactive,
-            )
+    origin = origin_map[source]
+    reporter = ConsoleProgressReporter(prefix="ingest reset")
+    try:
+        if origin == "all":
+            stats = reset_memory(clear_knowledge=True, source="all", reporter=reporter)
+        elif origin == "file":
+            stats = reset_knowledge(clear_knowledge=True, reporter=reporter)
         else:
-            print("[memory ingest chatgpt] 请指定导出文件路径，或使用 --file / --dir")
-            print("  对话历史: conversations.json")
-            print("  已保存记忆: memory.json / memories.json")
+            stats = reset_memory(clear_knowledge=False, source=origin, reporter=reporter)
+    except ValueError as exc:
+        print(f"[ingest reset] {exc}")
+        return 1
+    print(f"[ingest reset] cleared ({stats.get('source', source)}):")
+    print(f"  facts removed:  {stats.get('memory_facts_removed', 0)}")
+    print(f"  cold chunks:    {stats.get('knowledge_chunks_removed', 0)}")
+    print(f"  sync entries:   {stats.get('sync_index_entries_removed', 0)}")
+    return 0
+
+
+def cmd_ingest(args: argparse.Namespace) -> int:
+    """Unified persist → Cold → Warm → Hot entry point."""
+    from localagent.ingest.engine import run_ingest
+
+    action = (getattr(args, "source", None) or "status").strip().lower()
+    if action == "status":
+        return cmd_ingest_status(args)
+    if action == "reset":
+        args.reset_source = (getattr(args, "path_or_text", None) or ["all"])[0]
+        return cmd_ingest_reset(args)
+    if action == "rebuild":
+        reporter = ConsoleProgressReporter(prefix="ingest rebuild")
+        try:
+            report = run_ingest("rebuild", force=True, reporter=reporter)
+        except Exception as exc:
+            print(f"[ingest rebuild] {exc}")
             return 1
+        print(f"[ingest rebuild] {report.format_summary()}")
+        if report.detail:
+            print(f"[ingest rebuild] {report.detail}")
+        for err in report.errors:
+            print(f"[ingest rebuild] ! {err}")
+        return 1 if report.errors and report.cold_chunks == 0 else 0
 
-    for err in summary.errors:
-        print(f"[memory ingest chatgpt] ! {err}")
+    path_or_text = list(getattr(args, "path_or_text", None) or [])
+    files = list(getattr(args, "files", None) or [])
+    directory = getattr(args, "directory", None)
+    paths: list[str] = []
+    text: str | None = None
 
-    print(f"[memory ingest chatgpt] {summary.format_summary()}")
-    if summary.saved_count:
-        print(f"→ 已写入 {summary.saved_count} 条记忆")
-    elif summary.cold_chunks and summary.imported == 0 and not summary.errors:
-        print(f"[memory ingest chatgpt] 未提取到新记忆，已写入 Cold {summary.cold_chunks} chunks")
-    elif summary.imported == 0 and not summary.errors:
-        print("[memory ingest chatgpt] 未提取到新的记忆")
-    return 1 if summary.errors and summary.files_processed == 0 else 0
+    if action == "text":
+        if files:
+            paths = files
+        elif path_or_text:
+            # Prefer treating as literal text unless a single existing file path
+            candidate = Path(path_or_text[0]).expanduser()
+            if len(path_or_text) == 1 and candidate.is_file():
+                paths = [str(candidate)]
+            else:
+                text = " ".join(path_or_text)
+        else:
+            print('[ingest] 请提供文本: LA ingest text "…"')
+            return 2
+    elif action in ("doc", "news", "summarize", "polish"):
+        paths = files or path_or_text
+    elif action == "chatgpt":
+        paths = files or path_or_text
+    else:
+        paths = files or path_or_text
 
-
-def cmd_memory_ingest(args: argparse.Namespace) -> int:
-    source = (args.source or "").strip().lower()
-    if source == "chat":
-        return cmd_ingest_chat(args)
-    if source == "chatgpt":
-        return cmd_ingest_chatgpt(args)
-    if source == "all":
-        rc = cmd_ingest_chat(args)
-        chatgpt_args = argparse.Namespace(
-            path=None,
-            files=None,
-            directory=None,
-            force=args.force,
-            include_disabled=getattr(args, "include_disabled", False),
-            interactive=getattr(args, "interactive", False),
+    prefix = f"ingest {action}"
+    reporter = ConsoleProgressReporter(prefix=prefix)
+    try:
+        report = run_ingest(
+            action,
+            force=bool(getattr(args, "force", False)),
+            interactive=bool(getattr(args, "interactive", False)),
+            include_disabled=bool(getattr(args, "include_disabled", False)),
+            background=bool(getattr(args, "background", False)),
+            session_id=getattr(args, "session", None),
+            paths=paths or None,
+            directory=directory,
+            text=text,
+            reporter=reporter,
         )
-        default_dir = config.CHATGPT_DATA_DIR
-        has_chatgpt = (
-            getattr(args, "path", None)
-            or getattr(args, "files", None)
-            or getattr(args, "directory", None)
-            or (default_dir.is_dir() and any(default_dir.glob("*.json")))
-        )
-        chatgpt_rc = 0
-        if has_chatgpt:
-            chatgpt_rc = cmd_ingest_chatgpt(chatgpt_args)
-        print("[memory ingest all] 文档知识库请单独运行: LA rag ingest")
-        return 1 if any(code != 0 for code in (rc, chatgpt_rc)) else 0
-    print(f"[memory ingest] 未知来源: {args.source}（可用: chat, chatgpt, all）")
-    return 1
+    except ValueError as exc:
+        print(f"[ingest] {exc}")
+        return 2
+    except KeyboardInterrupt:
+        print(f"\n[{prefix}] 已中断")
+        return 130
+
+    for err in report.errors:
+        print(f"[{prefix}] ! {err}")
+    print(f"[{prefix}] {report.format_summary()}")
+    if report.detail:
+        # Prefer Chinese wording for background tasks (e2e / UX)
+        if "background task=" in report.detail:
+            # background task=t-xxx pid=N
+            parts = dict(
+                p.split("=", 1) for p in report.detail.split() if "=" in p
+            )
+            tid = parts.get("task") or parts.get("background")
+            pid = parts.get("pid", "")
+            log = parts.get("log", "")
+            if tid:
+                print(f"[{prefix}] 后台任务 {tid}" + (f" (pid={pid})" if pid else ""))
+                if log:
+                    print(f"[{prefix}] 日志: {log}")
+            else:
+                print(f"[{prefix}] {report.detail}")
+        else:
+            print(f"[{prefix}] {report.detail}")
+    if report.persisted_paths and action in ("doc", "chatgpt", "text"):
+        for p in report.persisted_paths[:5]:
+            label = "软链" if action == "doc" else "archived"
+            print(f"[{prefix}] {label}: {p}")
+    if report.warm_saved:
+        print(f"→ 已写入记忆 Warm +{report.warm_saved}")
+    elif report.cold_chunks and not report.errors:
+        print(f"→ Cold +{report.cold_chunks}（无新 Warm 或仍待确认）")
+    if action in ("doc", "kb") and not report.errors:
+        print(f"[{prefix}] done")
+    if action == "chatgpt" and not paths and not directory and report.detail == "no chatgpt exports":
+        print("[ingest chatgpt] 请指定导出文件路径，或使用 --file / --dir")
+        print("  对话历史: conversations.json")
+        print("  已保存记忆: memory.json / memories.json")
+        return 1
+    if action == "text" and report.warm_saved == 0:
+        return 1
+    if report.errors and report.cold_chunks == 0 and report.warm_saved == 0:
+        return 1
+    return 0
 
 
 def cmd_forget(args: argparse.Namespace) -> int:
@@ -1151,7 +1151,7 @@ def cmd_memory_status(_args: argparse.Namespace) -> int:
     print("\n下一步:")
     print("  LA memory query              浏览最近记忆")
     print("  LA memory search <q>         语义搜索")
-    print("  LA memory ingest chat|chatgpt  从对话提取记忆")
+    print("  LA ingest chat|chatgpt|text  持久记忆化（写入入口）")
     return 0
 
 
@@ -1249,30 +1249,126 @@ def _apply_workspace_cwd(cwd: str | None) -> None:
 
 
 def cmd_status(_args: argparse.Namespace) -> int:
-    """Daily Actions surface: news / pending / workspace todos."""
-    from localagent.status.daily import format_daily_actions_report
+    """Status surface: Daily Actions + data layers + recall priority note."""
+    from localagent.status.report import format_status_report
 
-    print(format_daily_actions_report())
+    print(format_status_report())
     return 0
 
 
 def cmd_workspace(args: argparse.Namespace) -> int:
-    _apply_workspace_cwd(args.cwd)
-    from localagent.workspace.context import format_workspace_summary, resolve_workspace, scan_todos
+    _apply_workspace_cwd(getattr(args, "cwd", None))
+    from localagent.workspace.context import (
+        format_diagnostic_todos,
+        format_workspace_summary,
+        resolve_workspace,
+    )
+    from localagent.workspace.tasks import (
+        TaskRejected,
+        add_task,
+        dismiss,
+        done,
+        format_open_tasks,
+        load_tasks,
+        purge,
+        snooze,
+    )
 
     root = resolve_workspace()
-    if args.todos_only:
-        todos = scan_todos(root, limit=args.limit)
-        print(f"[workspace] 待办 ({root})")
-        if not todos:
-            print("  未扫描到 TODO/FIXME 或未勾选的 checkbox")
-            return 0
-        for item in todos:
-            print(f"  [{item['kind']}] {item['path']}:{item['line']}  {item['text']}")
-        print(f"[workspace] 共 {len(todos)} 条")
+    action = getattr(args, "workspace_action", None) or ""
+    todos_only = bool(getattr(args, "todos_only", False))
+    detail = bool(getattr(args, "detail", False))
+    limit = int(getattr(args, "limit", 80) or 80)
+    file_days = int(getattr(args, "days", 7) or 7)
+
+    if todos_only or action == "scan":
+        print(format_diagnostic_todos(root, limit=limit))
         return 0
 
-    print(format_workspace_summary(days=args.days, workspace=root))
+    if action == "tasks":
+        tasks_action = getattr(args, "tasks_action", None)
+        if tasks_action == "purge":
+            older = getattr(args, "older_than", None)
+            removed = purge(
+                root,
+                older_than_days=int(older) if older is not None else None,
+            )
+            print(f"[workspace] 已清理 {removed} 条终态待办")
+            return 0
+        if getattr(args, "all", False):
+            items = load_tasks(root)
+            if not items:
+                print(f"[workspace] 无任务记录（{root}）")
+                return 0
+            print(f"[workspace] 全部任务 ({root}) · {len(items)} 条")
+            for item in items:
+                print(f"  [{item.id}] ({item.status}) {item.title}")
+            return 0
+        print(format_open_tasks(root, limit=limit, verbose=True))
+        return 0
+
+    if action == "add":
+        title = (getattr(args, "title", None) or "").strip()
+        why = (getattr(args, "why", None) or "").strip()
+        hint = (getattr(args, "hint", None) or "").strip()
+        try:
+            task = add_task(
+                title,
+                why,
+                source="user",
+                workspace=root,
+                complete_hint=hint,
+            )
+        except TaskRejected as exc:
+            print(f"[workspace] 未创建: {exc}")
+            return 1
+        print(f"[workspace] 已添加 [{task.id}] {task.title}")
+        print(f"  为何: {task.rationale}")
+        print(f"  → la workspace done {task.id}")
+        return 0
+
+    if action == "done":
+        task = done(getattr(args, "task_id", ""), workspace=root)
+        if task is None:
+            print("[workspace] 未找到该待办")
+            return 1
+        print(f"[workspace] 已完成 [{task.id}] {task.title}")
+        return 0
+
+    if action == "dismiss":
+        task = dismiss(getattr(args, "task_id", ""), workspace=root)
+        if task is None:
+            print("[workspace] 未找到该待办")
+            return 1
+        print(f"[workspace] 已丢弃 [{task.id}] {task.title}")
+        return 0
+
+    if action == "snooze":
+        snooze_days = int(getattr(args, "snooze_days", None) or 1)
+        task = snooze(getattr(args, "task_id", ""), days=snooze_days, workspace=root)
+        if task is None:
+            print("[workspace] 未找到该待办")
+            return 1
+        until = (task.snooze_until or "")[:10]
+        print(f"[workspace] 已搁置 [{task.id}] {task.title} → {until}")
+        return 0
+
+    if action == "purge":
+        older = getattr(args, "older_than", None)
+        removed = purge(
+            root,
+            older_than_days=int(older) if older is not None else None,
+        )
+        print(f"[workspace] 已清理 {removed} 条终态待办")
+        return 0
+
+    print(
+        format_workspace_summary(
+            days=file_days,
+            workspace=root,
+            include_diagnostic=detail,
+        )
+    )
     return 0
 
 
@@ -1624,7 +1720,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  la / la chat     对话\n"
             "  la setup [-y]    安装/拉取本地 Ollama 模型\n"
             "  la config …      纯本地或自有 API 配置\n"
-            "  la status        今日待办信号（新闻 / pending / workspace）\n\n"
+            "  la status        今日信号 + 数据层（Hot/Warm/Cold/Aware）\n\n"
             "日常能力见 memory / rag / audit；运维与实验见 tasks / logs / graph 等。"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1634,9 +1730,11 @@ def build_parser() -> argparse.ArgumentParser:
             "  la setup -y         # 一键装好本地模型\n"
             "  la config list      # 查看配置\n"
             "  la memory pending   # 确认待写入记忆\n"
-            "  la rag add notes.md # 文档进知识库\n"
+            "  la ingest doc notes.md  # 文档持久记忆化\n"
+            "  la ingest text \"…\" # 单条写入\n"
             "  la summarize doc.md # 一键总结（默认不入库）\n"
             "  la news brief       # 今日新闻简报（先 la news sync）\n"
+            "  la aware                  # 当前状态 + 近 3h 动态（--since / tick）\n"
             "  la polish \"催进度草稿\"  # 一键润色（默认复制主推）\n"
             "\n"
             "进入对话后可用 /<command>（输入 /help；: 为兼容别名）。\n"
@@ -1668,10 +1766,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_status = sub.add_parser(
         "status",
-        help="今日待办信号（新闻 / pending / workspace）",
+        help="今日信号 + 数据层（Hot/Warm/Cold/Aware）",
         description=(
-            "Daily Actions 摘要：今日新闻是否已 sync、记忆 pending 条数、"
-            "workspace 待办数量。对应产品支柱 Actions Automated。"
+            "统一状态：Daily Actions（新闻 sync / pending / workspace 待办 / aware）"
+            "与数据层库存（Hot 画像 / Warm 事实 / Cold kb·对话·收藏 / Aware），"
+            "并说明综合召回优先级。会话内等价命令：/status。"
         ),
     )
     p_status.set_defaults(func=cmd_status)
@@ -1715,16 +1814,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_memory = sub.add_parser(
         "memory",
-        help="[status]|add|ingest|query|search|…  无参显示概览；对话记忆写入/查询/运维",
+        help="[status]|query|search|pending|…  无参显示概览；Warm 查询与运维",
         description=(
-            "Warm 记忆（仅对话来源）。无子命令时显示 status 概览。\n"
+            "Warm 记忆查询与运维。写入请用 LA ingest。\n"
             "  LA memory\n"
-            "  LA memory add \"…\"\n"
-            "  LA memory ingest chat|chatgpt|all [--force]\n"
             "  LA memory query / search / consolidate / forget / status / reset / reindex\n"
+            "  LA memory pending / approve / reject\n"
             "  LA memory reflect <query>（亦可用一级命令 LA reflect）\n"
             "  LA memory graph stats|rebuild|neo4j|query\n"
-            "文档知识库请用: LA rag …"
+            "持久记忆化: LA ingest chat|chatgpt|doc|kb|text|all"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -1736,8 +1834,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_memory.set_defaults(func=cmd_memory_status)
 
-    p_mem_add = mem_sub.add_parser("add", help="<text>  直接写入一条记忆")
-    p_mem_add.add_argument("text", help="记忆文本")
+    p_mem_add = mem_sub.add_parser(
+        "add",
+        help="[已移除] 请改用 LA ingest text",
+    )
+    p_mem_add.add_argument("text", nargs="?", default="", help=argparse.SUPPRESS)
     p_mem_add.set_defaults(func=cmd_add)
 
     p_mem_pending = mem_sub.add_parser(
@@ -1774,46 +1875,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_mem_ingest = mem_sub.add_parser(
         "ingest",
-        help="<chat|chatgpt|all> [--force]  从对话提取记忆",
-        description=(
-            "从 LA 对话档案或 ChatGPT 导出提取 Warm 记忆。"
-            "文档请用 LA rag ingest。"
-        ),
+        help="[已移除] 请改用 LA ingest …",
+        description="已移除。请改用: LA ingest chat|chatgpt|doc|kb|text|all",
     )
     p_mem_ingest.add_argument(
         "source",
-        choices=("chat", "chatgpt", "all"),
-        help="材料来源：chat / chatgpt / all",
-    )
-    p_mem_ingest.add_argument("--force", action="store_true", help="强制重新消费已处理内容")
-    p_mem_ingest.add_argument("--session", help="仅处理指定对话 session id（source=chat）")
-    p_mem_ingest.add_argument(
-        "--interactive",
-        action="store_true",
-        help="逐条确认是否保存（默认自动保存；chat/chatgpt）",
-    )
-    p_mem_ingest.add_argument(
-        "path",
         nargs="?",
-        help="ChatGPT 导出 JSON（source=chatgpt）",
+        default="chat",
+        help=argparse.SUPPRESS,
     )
-    p_mem_ingest.add_argument(
-        "--file",
-        dest="files",
-        nargs="+",
-        metavar="PATH",
-        help="一个或多个 ChatGPT 导出 JSON（source=chatgpt）",
-    )
-    p_mem_ingest.add_argument(
-        "--dir",
-        dest="directory",
-        help="批量导入目录下全部 *.json（默认 data/chatGPTdata/；source=chatgpt）",
-    )
-    p_mem_ingest.add_argument(
-        "--include-disabled",
-        action="store_true",
-        help="同时导入 ChatGPT 中已关闭（enabled=false）的记忆",
-    )
+    p_mem_ingest.add_argument("--force", action="store_true", help=argparse.SUPPRESS)
+    p_mem_ingest.add_argument("--session", help=argparse.SUPPRESS)
+    p_mem_ingest.add_argument("--interactive", action="store_true", help=argparse.SUPPRESS)
+    p_mem_ingest.add_argument("path", nargs="?", help=argparse.SUPPRESS)
+    p_mem_ingest.add_argument("--file", dest="files", nargs="+", help=argparse.SUPPRESS)
+    p_mem_ingest.add_argument("--dir", dest="directory", help=argparse.SUPPRESS)
+    p_mem_ingest.add_argument("--include-disabled", action="store_true", help=argparse.SUPPRESS)
     p_mem_ingest.set_defaults(func=cmd_memory_ingest)
 
     p_mem_reset = mem_sub.add_parser(
@@ -1968,16 +2045,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_rag = sub.add_parser(
         "rag",
-        help="[status]|add|ingest|search|reset|rebuild  无参显示概览；文档知识库（Cold）",
+        help="[status]|search|reset  无参显示概览；Cold 知识库检索与运维",
         description=(
-            "Cold 知识库：个人文档与图片（VL 文本化）仅用于 RAG 检索，不写入 Warm 记忆。"
-            "支持 .md/.txt/.xlsx/.png/.jpg/.jpeg/.webp/.gif。\n"
+            "Cold 知识库检索与运维。写入/重建请用 LA ingest。\n"
             "无子命令时显示 status 概览。\n"
             "  LA rag\n"
-            "  LA rag add [-b] <path>\n"
-            "  LA rag ingest [--force]\n"
             "  LA rag search <query>\n"
-            "  LA rag status | reset | rebuild"
+            "  LA rag status | reset\n"
+            "持久记忆化: LA ingest doc|kb|rebuild"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -1991,22 +2066,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_rag_add = rag_sub.add_parser(
         "add",
-        help="[-b] <path>  软链到 kb/ 并索引（仅知识库）",
+        help="[已移除] 请改用 LA ingest doc",
     )
-    p_rag_add.add_argument("path", help="源文件路径")
-    p_rag_add.add_argument(
-        "--background",
-        "-b",
-        action="store_true",
-        help="创建软链后在后台索引",
-    )
+    p_rag_add.add_argument("path", nargs="?", default="", help=argparse.SUPPRESS)
+    p_rag_add.add_argument("--background", "-b", action="store_true", help=argparse.SUPPRESS)
     p_rag_add.set_defaults(func=cmd_add_file)
 
     p_rag_ingest = rag_sub.add_parser(
         "ingest",
-        help="[--force]  增量扫描 data/kb/ 并建索引",
+        help="[已移除] 请改用 LA ingest kb",
     )
-    p_rag_ingest.add_argument("--force", action="store_true", help="强制全量重索引")
+    p_rag_ingest.add_argument("--force", action="store_true", help=argparse.SUPPRESS)
     p_rag_ingest.set_defaults(func=cmd_ingest_file)
 
     p_rag_search = rag_sub.add_parser(
@@ -2024,18 +2094,163 @@ def build_parser() -> argparse.ArgumentParser:
     ).set_defaults(func=cmd_rag_reset)
     rag_sub.add_parser(
         "rebuild",
-        help="清空后强制重扫 kb/",
+        help="[已移除] 请改用 LA ingest rebuild",
     ).set_defaults(func=cmd_rag_rebuild)
+
+    p_ingest = sub.add_parser(
+        "ingest",
+        help="status|chat|chatgpt|doc|kb|text|all|rebuild|…  统一持久记忆化",
+        description=(
+            "统一持久记忆化：落盘 → Cold → Warm → core-profile。\n"
+            "  LA ingest status\n"
+            "  LA ingest chat [--force] [--session ID]\n"
+            "  LA ingest chatgpt [path] [--file …] [--dir …] [--force]\n"
+            "  LA ingest doc [-b] <path>\n"
+            "  LA ingest kb [--force]\n"
+            "  LA ingest text \"…\"\n"
+            "  LA ingest all [--force]\n"
+            "  LA ingest rebuild\n"
+            "  LA ingest reset [chat|chatgpt|doc|kb|text|all]\n"
+            "查询面仍用: LA memory search · LA rag search"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_ingest.add_argument(
+        "source",
+        nargs="?",
+        default="status",
+        help=(
+            "来源或动作: status|chat|chatgpt|doc|kb|text|all|rebuild|reset|"
+            "aware|news|summarize|polish"
+        ),
+    )
+    p_ingest.add_argument(
+        "path_or_text",
+        nargs="*",
+        help="文档/导出路径，或 text 的正文；reset 时为目标来源",
+    )
+    p_ingest.add_argument("--force", action="store_true", help="强制重新消费已处理内容")
+    p_ingest.add_argument("--session", help="仅处理指定对话 session id（source=chat）")
+    p_ingest.add_argument(
+        "--interactive",
+        action="store_true",
+        help="逐条确认是否保存 Warm（chat/chatgpt）",
+    )
+    p_ingest.add_argument(
+        "--file",
+        dest="files",
+        nargs="+",
+        metavar="PATH",
+        help="一个或多个文件路径（chatgpt/doc）",
+    )
+    p_ingest.add_argument(
+        "--dir",
+        dest="directory",
+        help="批量导入目录下全部 *.json（chatgpt；默认 data/chatGPTdata/）",
+    )
+    p_ingest.add_argument(
+        "--include-disabled",
+        action="store_true",
+        help="同时导入 ChatGPT 中已关闭（enabled=false）的记忆",
+    )
+    p_ingest.add_argument(
+        "--background",
+        "-b",
+        action="store_true",
+        help="doc：创建软链后在后台索引",
+    )
+    p_ingest.set_defaults(func=cmd_ingest)
 
     p_workspace = sub.add_parser(
         "workspace",
-        help="[高级] [--days N] [--cwd PATH] [--todos-only]  工作区/git/待办快照",
-        description="[高级] 查看工作区最近变更、Git 状态与待办项",
+        help="[高级] 工作区摘要 / 托管待办 / 诊断扫描",
+        description=(
+            "[高级] 工作区最近变更、Git 状态与托管待办。"
+            "正式待办: tasks / add / done / dismiss / snooze；"
+            "代码 TODO 扫描仅诊断（--todos-only / scan），不自动入队。"
+        ),
     )
     p_workspace.add_argument("--days", type=int, default=7, help="最近 N 天内的文件变更（默认 7）")
     p_workspace.add_argument("--cwd", help="工作区根目录")
-    p_workspace.add_argument("--todos-only", action="store_true", help="仅列出待办项")
-    p_workspace.add_argument("--limit", type=int, default=80, help="待办扫描上限（默认 80）")
+    p_workspace.add_argument(
+        "--todos-only",
+        action="store_true",
+        help="诊断扫描代码 TODO/checkbox（未入队；等同 scan）",
+    )
+    p_workspace.add_argument(
+        "--detail",
+        action="store_true",
+        help="摘要末尾附带诊断扫描命中（未入队）",
+    )
+    p_workspace.add_argument("--limit", type=int, default=80, help="列表/扫描上限（默认 80）")
+    ws_sub = p_workspace.add_subparsers(dest="workspace_action", metavar="action")
+
+    p_ws_tasks = ws_sub.add_parser("tasks", help="列出托管待办（open）")
+    p_ws_tasks.add_argument("--all", action="store_true", help="含 done/dismissed/expired/snoozed")
+    p_ws_tasks.add_argument("--cwd", help="工作区根目录")
+    p_ws_tasks.add_argument("--limit", type=int, default=80, help="显示上限")
+    tasks_sub = p_ws_tasks.add_subparsers(dest="tasks_action", metavar="action")
+    p_ws_tasks_purge = tasks_sub.add_parser("purge", help="清理终态待办")
+    p_ws_tasks_purge.add_argument(
+        "--older-than",
+        type=int,
+        default=None,
+        metavar="DAYS",
+        help="仅清理创建超过 N 天的终态",
+    )
+    p_ws_tasks_purge.add_argument("--cwd", help="工作区根目录")
+    p_ws_tasks.set_defaults(func=cmd_workspace)
+    p_ws_tasks_purge.set_defaults(func=cmd_workspace)
+
+    p_ws_add = ws_sub.add_parser("add", help="添加托管待办（须 --why）")
+    p_ws_add.add_argument("title", help="可读标题")
+    p_ws_add.add_argument(
+        "--why",
+        required=True,
+        help="为何值得占用注意力（必填）",
+    )
+    p_ws_add.add_argument("--hint", default="", help="如何办完（可选）")
+    p_ws_add.add_argument("--cwd", help="工作区根目录")
+    p_ws_add.set_defaults(func=cmd_workspace)
+
+    p_ws_done = ws_sub.add_parser("done", help="完成一条待办")
+    p_ws_done.add_argument("task_id", help="待办 id（支持前缀）")
+    p_ws_done.add_argument("--cwd", help="工作区根目录")
+    p_ws_done.set_defaults(func=cmd_workspace)
+
+    p_ws_dismiss = ws_sub.add_parser("dismiss", help="丢弃一条待办")
+    p_ws_dismiss.add_argument("task_id", help="待办 id（支持前缀）")
+    p_ws_dismiss.add_argument("--cwd", help="工作区根目录")
+    p_ws_dismiss.set_defaults(func=cmd_workspace)
+
+    p_ws_snooze = ws_sub.add_parser("snooze", help="搁置一条待办")
+    p_ws_snooze.add_argument("task_id", help="待办 id（支持前缀）")
+    p_ws_snooze.add_argument(
+        "--days",
+        type=int,
+        default=1,
+        dest="snooze_days",
+        help="搁置天数（默认 1）",
+    )
+    p_ws_snooze.add_argument("--cwd", help="工作区根目录")
+    p_ws_snooze.set_defaults(func=cmd_workspace)
+
+    p_ws_scan = ws_sub.add_parser("scan", help="诊断扫描代码 TODO（未入队）")
+    p_ws_scan.add_argument("--cwd", help="工作区根目录")
+    p_ws_scan.add_argument("--limit", type=int, default=80, help="扫描上限")
+    p_ws_scan.set_defaults(func=cmd_workspace)
+
+    p_ws_purge = ws_sub.add_parser("purge", help="清理终态待办")
+    p_ws_purge.add_argument(
+        "--older-than",
+        type=int,
+        default=None,
+        metavar="DAYS",
+        help="仅清理创建超过 N 天的终态",
+    )
+    p_ws_purge.add_argument("--cwd", help="工作区根目录")
+    p_ws_purge.set_defaults(func=cmd_workspace)
+
     p_workspace.set_defaults(func=cmd_workspace)
 
     p_audit = sub.add_parser(
@@ -2242,7 +2457,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_summarize.add_argument(
         "--keep",
         action="store_true",
-        help="速读后写入知识库（等同 LA rag add；默认不入库）",
+        help="速读后写入知识库（等同 LA ingest doc；默认不入库）",
     )
     p_summarize.add_argument(
         "--no-chat",
@@ -2294,7 +2509,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="新闻嗅探：sync / brief / read / schedule …",
         description=(
             "从 BestBlogs RSS 同步精选 AI 资讯，生成今日简报并支持精读。\n"
-            "  la news sync              # 拉取 RSS\n"
+            "  la news sync              # 拉取 RSS（TTY 下随后进入简报）\n"
             "  la news brief             # 今日简报（TTY 交互；--no-ui 刷屏）\n"
             "  la news read <id|url>     # 精读卡片（--keep 入库）\n"
             "  la news schedule on       # 每天 08:00 自动 sync（可 off）\n"
@@ -2304,8 +2519,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     news_sub = p_news.add_subparsers(dest="news_action", metavar="action")
 
-    p_news_sync = news_sub.add_parser("sync", help="从 RSS 同步最新条目")
+    p_news_sync = news_sub.add_parser(
+        "sync",
+        help="从 RSS 同步最新条目（TTY 下随后进入简报）",
+    )
     p_news_sync.add_argument("--url", default=None, help="覆盖默认 LA_NEWS_RSS_URL")
+    p_news_sync.add_argument(
+        "--no-ui",
+        action="store_true",
+        help="仅同步，不进入交互简报（定时任务/脚本常用）",
+    )
+    p_news_sync.add_argument(
+        "--provider",
+        "-p",
+        default="auto",
+        help="随后进入简报时，精读深聊的模型路径（默认 auto）",
+    )
     p_news_sync.set_defaults(func=_cmd_news)
 
     p_news_brief = news_sub.add_parser(
@@ -2385,6 +2614,166 @@ def build_parser() -> argparse.ArgumentParser:
     news_sub.add_parser("status", help="同步与定时状态").set_defaults(func=_cmd_news)
     news_sub.add_parser("sources", help="查看默认 RSS 源").set_defaults(func=_cmd_news)
     p_news.set_defaults(func=_cmd_news)
+
+    p_aware = sub.add_parser(
+        "aware",
+        help="本机世界感知（智能总结 / aware> 对话 / --detail / tick · 授权）",
+        description=(
+            "Aware：按源授权后感知本机变化（fs / browser / git / terminal）。\n"
+            "  la aware                      # 智能总结后进入 aware> 感知对话\n"
+            "  la aware --no-chat            # 只打印概览，不进对话\n"
+            "  la aware --detail             # 展开分源探测明细（仍可进对话）\n"
+            "  la aware --since 1w           # 时间窗内智能总结（如 3h/2d/1w/3m/1y，默认 1w）\n"
+            "  la aware tick                 # 采集后总结；TTY 下可进 aware>\n"
+            "  la aware grant all            # 授权（ungrant 解除）\n"
+            "  la aware ungrant browser      # 停止监测某一源\n"
+            "  la aware suggestion           # 查看建议\n"
+            "  la aware suggestion approve|reject <id>|all\n"
+            "可索引文件仅进 suggestion（须用户确认后 LA ingest doc）；绝不自动写入 kb/Cold。"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_aware.add_argument(
+        "--since",
+        nargs="?",
+        const="1w",
+        default=None,
+        metavar="WINDOW",
+        help="查看时间窗内变化：<N>h|<N>d|<N>w|<N>m|<N>y（如 3h、2d、1w；单独 --since 等同 1w）",
+    )
+    p_aware.add_argument(
+        "--source",
+        default=None,
+        choices=["fs", "git", "terminal", "browser", "apps", "all"],
+        help="只展示某一感知源（all=全部）",
+    )
+    p_aware.add_argument(
+        "--detail",
+        action="store_true",
+        help="展开分源探测明细（默认只显示智能总结）",
+    )
+    p_aware.add_argument(
+        "--no-chat",
+        action="store_true",
+        help="只打印概览，不进入 aware> 感知对话",
+    )
+    p_aware.add_argument(
+        "--provider",
+        default="auto",
+        help="感知对话模型路径（默认 auto）",
+    )
+    aware_sub = p_aware.add_subparsers(dest="aware_action", metavar="action")
+
+    aware_sub.add_parser("status", help="授权与定时状态").set_defaults(func=_cmd_aware)
+
+    p_aware_grant = aware_sub.add_parser("grant", help="授权一个或多个传感器")
+    p_aware_grant.add_argument(
+        "sources",
+        nargs="+",
+        help="all | fs | git | terminal | browser | …",
+    )
+    p_aware_grant.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="敏感源跳过交互确认",
+    )
+    p_aware_grant.set_defaults(func=_cmd_aware)
+
+    p_aware_ungrant = aware_sub.add_parser("ungrant", help="解除授权（停止监测）")
+    p_aware_ungrant.add_argument("sources", nargs="+", help="<source> 或 all")
+    p_aware_ungrant.set_defaults(func=_cmd_aware)
+
+    p_aware_paths = aware_sub.add_parser("paths", help="管理 fs 监视路径")
+    paths_sub = p_aware_paths.add_subparsers(dest="paths_action", metavar="action")
+    paths_sub.add_parser("list", help="列出路径").set_defaults(func=_cmd_aware)
+    p_paths_add = paths_sub.add_parser("add", help="添加目录")
+    p_paths_add.add_argument("path", help="目录路径")
+    p_paths_add.set_defaults(func=_cmd_aware)
+    p_paths_rm = paths_sub.add_parser("rm", help="移除目录")
+    p_paths_rm.add_argument("path", help="目录路径")
+    p_paths_rm.set_defaults(func=_cmd_aware)
+    p_aware_paths.set_defaults(func=_cmd_aware)
+
+    p_aware_sched = aware_sub.add_parser("schedule", help="on|off|status  定时 tick")
+    p_aware_sched.add_argument(
+        "schedule_action",
+        nargs="?",
+        default="status",
+        choices=["on", "off", "status"],
+    )
+    p_aware_sched.add_argument(
+        "--interval",
+        type=int,
+        default=None,
+        help="间隔分钟（默认 15）",
+    )
+    p_aware_sched.set_defaults(func=_cmd_aware)
+
+    p_aware_tick = aware_sub.add_parser(
+        "tick", help="采集并报告自上次探测以来的变化"
+    )
+    p_aware_tick.add_argument(
+        "--source",
+        default=None,
+        choices=["fs", "git", "terminal", "browser", "apps"],
+        help="只展示某一源",
+    )
+    p_aware_tick.add_argument(
+        "--detail",
+        action="store_true",
+        help="展开分源探测明细（默认只显示智能总结）",
+    )
+    p_aware_tick.add_argument(
+        "--no-chat",
+        action="store_true",
+        help="只打印 tick 结果，不进入 aware> 感知对话",
+    )
+    p_aware_tick.add_argument(
+        "--provider",
+        default="auto",
+        help="感知对话模型路径（默认 auto）",
+    )
+    p_aware_tick.set_defaults(func=_cmd_aware)
+
+    p_aware_sug = aware_sub.add_parser(
+        "suggestion",
+        help="建议：list | approve | reject",
+        description=(
+            "  la aware suggestion\n"
+            "  la aware suggestion list\n"
+            "  la aware suggestion approve <id>|all\n"
+            "  la aware suggestion reject <id>|all"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    sug_sub = p_aware_sug.add_subparsers(dest="suggestion_action", metavar="action")
+    sug_sub.add_parser("list", help="列出建议").set_defaults(func=_cmd_aware)
+    p_sug_approve = sug_sub.add_parser("approve", help="批准并执行建议")
+    p_sug_approve.add_argument("target", help="<id> 或 all")
+    p_sug_approve.set_defaults(func=_cmd_aware)
+    p_sug_reject = sug_sub.add_parser("reject", help="拒绝建议")
+    p_sug_reject.add_argument("target", help="<id> 或 all")
+    p_sug_reject.set_defaults(func=_cmd_aware)
+    p_aware_sug.set_defaults(func=_cmd_aware)
+
+    p_aware_events = aware_sub.add_parser("events", help="事件日志（调试）")
+    p_aware_events.add_argument("--source", default=None, help="按 source 过滤")
+    p_aware_events.add_argument(
+        "--since-hours",
+        type=int,
+        default=24,
+        help="回溯小时数（默认 24）",
+    )
+    p_aware_events.add_argument("--limit", type=int, default=50)
+    p_aware_events.add_argument(
+        "--raw",
+        action="store_true",
+        help="扁平明细（默认按源摘要）",
+    )
+    p_aware_events.set_defaults(func=_cmd_aware)
+
+    p_aware.set_defaults(func=_cmd_aware)
 
     p_polish = sub.add_parser(
         "polish",

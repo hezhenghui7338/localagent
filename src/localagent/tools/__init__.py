@@ -415,10 +415,83 @@ def query_memory_graph(query: str, *, verbose: bool = False) -> str:
 
 
 def workspace_context_tool(*, days: int = 7) -> str:
-    """Agent tool: workspace git/files/todos summary."""
+    """Agent tool: workspace git/files/managed-tasks summary."""
     from localagent.workspace.context import workspace_context
 
     return workspace_context(days=days)
+
+
+def workspace_task_tool(
+    action: str,
+    *,
+    title: str = "",
+    rationale: str = "",
+    task_id: str = "",
+    days: int = 1,
+    complete_hint: str = "",
+    evidence: str = "",
+) -> str:
+    """Agent tool: list / add / propose / done / dismiss / snooze managed workspace tasks."""
+    from localagent.workspace.tasks import (
+        TaskRejected,
+        add_task,
+        dismiss,
+        done,
+        format_open_tasks,
+        propose_task,
+        snooze,
+    )
+
+    act = (action or "").strip().lower()
+    if act in ("list", "tasks", ""):
+        return format_open_tasks(limit=20, verbose=True)
+    if act == "add":
+        try:
+            task = add_task(
+                title,
+                rationale,
+                source="user",
+                complete_hint=complete_hint,
+                evidence=evidence,
+            )
+        except TaskRejected as exc:
+            return f"未创建待办: {exc}"
+        return f"已添加托管待办 [{task.id}] {task.title}\n为何: {task.rationale}\n→ done {task.id}"
+    if act == "propose":
+        try:
+            task = propose_task(
+                title,
+                rationale,
+                complete_hint=complete_hint,
+                evidence=evidence,
+            )
+        except TaskRejected as exc:
+            return f"未提议待办: {exc}"
+        return (
+            f"已提议重大待办 [{task.id}] {task.title}\n"
+            f"为何: {task.rationale}\n"
+            f"→ 用户可 la workspace done {task.id}"
+        )
+    if act == "done":
+        task = done(task_id)
+        if task is None:
+            return "未找到该待办"
+        return f"已完成 [{task.id}] {task.title}"
+    if act == "dismiss":
+        task = dismiss(task_id)
+        if task is None:
+            return "未找到该待办"
+        return f"已丢弃 [{task.id}] {task.title}"
+    if act == "snooze":
+        task = snooze(task_id, days=max(1, int(days or 1)))
+        if task is None:
+            return "未找到该待办"
+        return f"已搁置 [{task.id}] {task.title} → {(task.snooze_until or '')[:10]}"
+    return (
+        "未知 action。可用: list / add / propose / done / dismiss / snooze。"
+        "add/propose 必须提供 title + rationale（充分理由）；"
+        "propose 仅用于重大问题（每日上限），禁止把代码扫描结果批量入队。"
+    )
 
 
 def run_shell(command: str, *, cwd: str | None = None, timeout: float | None = None) -> str:
@@ -565,8 +638,31 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "workspace_context",
-        "description": "获取工作区上下文：最近修改的文件、Git 状态与提交、待办 TODO；用于「我最近干了啥、git 怎样、有什么待办」类问题",
+        "description": (
+            "获取工作区上下文：最近修改的文件、Git 状态与提交、托管待办队列；"
+            "用于「我最近干了啥、git 怎样、有什么待办」类问题。"
+            "正式待办来自托管队列（非代码 TODO 扫描）；完成/添加请用 workspace_task"
+        ),
         "parameters": {"days": "可选，最近几天内的文件变更，默认 7"},
+    },
+    {
+        "name": "workspace_task",
+        "description": (
+            "管理工作区托管待办：list / add / propose / done / dismiss / snooze。"
+            "add：用户明确要求记下待办时用（须 rationale 说明为何重要）；"
+            "propose：仅当发现重大问题（测试持续失败、配置失效、安全/数据风险）时提议，须充分 rationale，每日有上限；"
+            "禁止把代码里的 TODO/FIXME 扫描结果批量入队。"
+            "done/dismiss/snooze 需要 task_id。"
+        ),
+        "parameters": {
+            "action": "list|add|propose|done|dismiss|snooze",
+            "title": "add/propose 时的可读标题",
+            "rationale": "add/propose 必填：为何值得占用用户注意力",
+            "task_id": "done/dismiss/snooze 时的待办 id",
+            "days": "snooze 搁置天数，默认 1",
+            "complete_hint": "可选，如何办完",
+            "evidence": "可选，旁证如 path:line",
+        },
     },
     {
         "name": "query_memories",
@@ -748,6 +844,21 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> str:
         except (TypeError, ValueError):
             days = 7
         return workspace_context_tool(days=days)
+    if name == "workspace_task":
+        days_raw = arguments.get("days", 1)
+        try:
+            snooze_days = int(days_raw)
+        except (TypeError, ValueError):
+            snooze_days = 1
+        return workspace_task_tool(
+            str(arguments.get("action") or "list"),
+            title=str(arguments.get("title") or ""),
+            rationale=str(arguments.get("rationale") or arguments.get("why") or ""),
+            task_id=str(arguments.get("task_id") or arguments.get("id") or ""),
+            days=snooze_days,
+            complete_hint=str(arguments.get("complete_hint") or ""),
+            evidence=str(arguments.get("evidence") or ""),
+        )
     if name == "query_memories":
         tags_raw = arguments.get("tags")
         tags: list[str] | None = None

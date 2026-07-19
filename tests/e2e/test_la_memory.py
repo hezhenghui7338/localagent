@@ -162,7 +162,7 @@ def test_e2e_memory_ingest_chat_empty_session(la_env, la_data_dir: Path):
         + "\n",
         encoding="utf-8",
     )
-    result = run_la(["memory", "ingest", "chat", "--session", sid], env=la_env, timeout=120)
+    result = run_la(["ingest", "chat", "--session", sid], env=la_env, timeout=120)
     assert result.returncode == 0
     assert "已保存" in result.stdout or "未提取" in result.stdout
 
@@ -181,7 +181,7 @@ def test_e2e_memory_ingest_chatgpt_file(la_env, tmp_path: Path):
         encoding="utf-8",
     )
     result = run_la(
-        ["memory", "ingest", "chatgpt", str(export)],
+        ["ingest", "chatgpt", str(export)],
         env=la_env,
         timeout=180,
     )
@@ -313,7 +313,7 @@ def test_e2e_memory_query_verbose(la_env):
 
 
 def test_e2e_memory_ingest_all_no_sessions(la_env):
-    result = run_la(["memory", "ingest", "all"], env=la_env, timeout=120)
+    result = run_la(["ingest", "all"], env=la_env, timeout=120)
     assert result.returncode == 0
 
 
@@ -328,10 +328,10 @@ def test_e2e_memory_ingest_chat_force_flag(la_env, la_data_dir: Path):
         + "\n",
         encoding="utf-8",
     )
-    first = run_la(["memory", "ingest", "chat", "--session", sid], env=la_env, timeout=120)
+    first = run_la(["ingest", "chat", "--session", sid], env=la_env, timeout=120)
     assert first.returncode == 0
     second = run_la(
-        ["memory", "ingest", "chat", "--session", sid, "--force"],
+        ["ingest", "chat", "--session", sid, "--force"],
         env=la_env,
         timeout=120,
     )

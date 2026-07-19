@@ -131,6 +131,11 @@ def list_sessions(*, limit: int = 20) -> list[SummarizeSessionRecord]:
     return items[: max(1, limit)]
 
 
+def count_kept_sessions() -> int:
+    """Count summarize sessions marked kept (favorited into Cold kb)."""
+    return sum(1 for item in (_load_index().get("sessions") or []) if item.get("kept"))
+
+
 def record_from_result(
     result: Any,
     *,

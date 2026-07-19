@@ -472,9 +472,20 @@ def test_cmd_brief_enters_browser_when_tty(isolated_data, monkeypatch):
     )
 
     parser = build_parser()
+    # sync on TTY should enter brief immediately (no separate brief call)
+    called.clear()
     assert parser.parse_args(["news", "sync"]).func(
         parser.parse_args(["news", "sync"])
     ) == 0
+    assert called.get("n", 0) >= 1
+
+    # sync --no-ui must not enter browser
+    called.clear()
+    assert parser.parse_args(["news", "sync", "--no-ui"]).func(
+        parser.parse_args(["news", "sync", "--no-ui"])
+    ) == 0
+    assert "n" not in called
+
     args = parser.parse_args(["news", "brief", "--limit", "3"])
     assert args.func(args) == 0
     assert called.get("n", 0) >= 1

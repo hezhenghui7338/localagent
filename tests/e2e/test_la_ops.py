@@ -107,18 +107,19 @@ def test_e2e_workspace_summary(la_env):
 
 
 def test_e2e_workspace_todos_only(la_env, tmp_path: Path):
-    todo = tmp_path / "TODO.md"
+    todo = tmp_path / "notes.md"
     todo.write_text("- [ ] e2e workspace todo item\n", encoding="utf-8")
     result = run_la(["workspace", "--todos-only", "--cwd", str(tmp_path)], env=la_env)
     assert result.returncode == 0
-    assert "workspace" in result.stdout.lower() or "待办" in result.stdout or "TODO" in result.stdout
+    assert "未入队" in result.stdout or "诊断" in result.stdout
+    assert "e2e workspace todo item" in result.stdout
 
 
 def test_e2e_workspace_help(la_env):
     result = run_la(["workspace", "--help"], env=la_env)
     assert result.returncode == 0
     assert "--days" in result.stdout
-    assert "--todos-only" in result.stdout or "todos" in result.stdout
+    assert "--todos-only" in result.stdout or "todos" in result.stdout or "tasks" in result.stdout
 
 
 def test_e2e_workspace_empty_todos(la_env, tmp_path: Path):
@@ -126,7 +127,27 @@ def test_e2e_workspace_empty_todos(la_env, tmp_path: Path):
     empty.mkdir()
     result = run_la(["workspace", "--todos-only", "--cwd", str(empty)], env=la_env)
     assert result.returncode == 0
-    assert "未扫描" in result.stdout or "0" in result.stdout or "待办" in result.stdout
+    assert "未扫描" in result.stdout or "0" in result.stdout or "诊断" in result.stdout
+
+
+def test_e2e_workspace_managed_tasks(la_env, tmp_path: Path):
+    add = run_la(
+        [
+            "workspace",
+            "add",
+            "e2e managed task",
+            "--why",
+            "e2e verifies managed task lifecycle",
+            "--cwd",
+            str(tmp_path),
+        ],
+        env=la_env,
+    )
+    assert add.returncode == 0
+    assert "已添加" in add.stdout
+    listed = run_la(["workspace", "tasks", "--cwd", str(tmp_path)], env=la_env)
+    assert listed.returncode == 0
+    assert "e2e managed task" in listed.stdout
 
 
 def test_e2e_audit_summary(la_env):
@@ -195,7 +216,7 @@ def test_e2e_tasks_unknown_id(la_env):
 
 def test_e2e_tasks_logs_and_delete(la_env, tmp_path: Path):
     doc = write_kb_doc(tmp_path, "task-ops.md", "# TaskOps\n\ntasks logs and delete coverage\n")
-    queued = run_la(["rag", "add", "--background", str(doc)], env=la_env)
+    queued = run_la(["ingest", "doc", "--background", str(doc)], env=la_env)
     assert queued.returncode == 0
     task_id = parse_task_id(queued.stdout)
     wait_for_task(task_id, env=la_env, timeout=60)
@@ -219,7 +240,7 @@ def test_e2e_cross_memory_and_rag_isolation(la_env, tmp_path: Path):
         "cold-only.md",
         "# Cold\n\n这篇文档只进知识库：UNIQUE_COLD_TOKEN_XYZ\n",
     )
-    assert run_la(["rag", "add", str(doc)], env=la_env).returncode == 0
+    assert run_la(["ingest", "doc", str(doc)], env=la_env).returncode == 0
 
     mem = run_la(["memory", "search", "Warm 事实"], env=la_env)
     assert mem.returncode == 0
