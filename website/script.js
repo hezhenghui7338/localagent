@@ -17,7 +17,7 @@
       "nav.install": "安装",
       "nav.contact": "联系",
       "hero.tagline": "栖居在你电脑里的 AI。",
-      "hero.lead": "本地优先。记忆永续。行动自动化。",
+      "hero.lead": "本地优先。真记得你。把事办完。",
       "hero.ctaGithub": "在 GitHub 查看",
       "hero.ctaInstall": "快速安装",
       "hero.ctaDemo": "看演示 →",
@@ -93,7 +93,7 @@
       "footer.line": "LocalAgent · MIT · v0.6.0",
       title: "LocalAgent — 栖居在你电脑里的 AI",
       description:
-        "LocalAgent — 栖居在你电脑里的 AI。本地优先。记忆永续。行动自动化。",
+        "LocalAgent — 栖居在你电脑里的 AI。本地优先。真记得你。把事办完。",
     },
     en: {
       "nav.features": "Features",
