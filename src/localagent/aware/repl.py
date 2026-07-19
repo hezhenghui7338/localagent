@@ -8,6 +8,7 @@ from localagent import config
 from localagent.agent.runtime import run_agent_turn
 from localagent.aware.digest import format_view
 from localagent.aware.episode import retrieve_aware_context
+from localagent.i18n import t
 from localagent.models.router import get_model_router, shutdown_cursor_sdk
 from localagent.persist.conversations import append_message, new_session_id
 from localagent.session_commands import (
@@ -32,16 +33,16 @@ def should_enter_aware_chat(*, no_chat: bool) -> bool:
 
 
 def _print_help() -> None:
-    print("当前是「感知对话」：围绕本机 Aware 行为深入聊；闲聊请另开 la chat。")
-    print("命令：")
-    print("  /overview, /o   重新显示智能概览")
-    print("  /detail         显示分源明细")
-    print("  /context, /c    显示当前注入的感知上下文")
-    print("  /status         授权 / suggestion / session")
-    print("  /help, /h       显示本帮助")
-    print("  /provider, /p   切换模型路径")
-    print("  /q, /quit, /exit 结束感知对话")
-    print("直接输入问题即可，例如：我今天下午改了哪些文件？")
+    print(t("aware.repl_help_intro"))
+    print(t("aware.repl_help_cmds"))
+    print(t("aware.repl_help_overview"))
+    print(t("aware.repl_help_detail"))
+    print(t("aware.repl_help_context"))
+    print(t("aware.repl_help_status"))
+    print(t("aware.repl_help_help"))
+    print(t("aware.repl_help_provider"))
+    print(t("aware.repl_help_quit"))
+    print(t("aware.repl_help_example"))
 
 
 class AwareChatREPL:
@@ -74,20 +75,13 @@ class AwareChatREPL:
         )
 
     def _aware_context(self, user_input: str = "") -> str:
-        hours = 24.0
+        # Prefer CLI --since token (enables rollup tier); else infer from the question.
         if self.since:
             try:
-                from localagent.aware.timewin import since_to_datetime
-                from datetime import datetime, timezone
-
-                start = since_to_datetime(self.since)
-                hours = max(
-                    1.0,
-                    (datetime.now(timezone.utc) - start).total_seconds() / 3600.0,
-                )
+                return retrieve_aware_context(user_input, since=self.since)
             except ValueError:
-                hours = 24.0
-        return retrieve_aware_context(user_input, since_hours=hours)
+                pass
+        return retrieve_aware_context(user_input)
 
     def run(self) -> int:
         if not use_prompt_toolkit_repl():
@@ -96,8 +90,8 @@ class AwareChatREPL:
             install_repl_readline_completer()
 
         print()
-        print(f"[aware] 已进入感知对话（session={self.session_id}）")
-        print("[aware] 可追问本机行为；/help 查看命令，/exit 结束。")
+        print(t("aware.repl_entered", session=self.session_id))
+        print(t("aware.repl_hint"))
         interrupt_count = 0
         while True:
             try:
@@ -112,7 +106,7 @@ class AwareChatREPL:
                 if interrupt_count >= 2:
                     print()
                     break
-                print("\n[aware] 已取消；再按一次 Ctrl+C 退出，或继续提问")
+                print(t("aware.repl_cancel_once"))
                 continue
             if not line:
                 continue
@@ -133,7 +127,7 @@ class AwareChatREPL:
                 continue
             self._handle_chat(line)
 
-        print("[aware] 感知对话结束（可再运行 la aware 继续）")
+        print(t("aware.repl_ended"))
         shutdown_cursor_sdk()
         return 0
 
@@ -167,11 +161,15 @@ class AwareChatREPL:
             from localagent.aware.suggestion import suggestion_count
 
             profile = load_profile()
-            print(f"[aware] session: {self.session_id}")
-            print(f"[aware] 上次 tick · {profile.last_tick_at or '尚未运行'}")
+            print(t("aware.repl_status_session", session=self.session_id))
+            when = profile.last_tick_at or t("aware.status_never")
+            print(t("aware.repl_status_last_tick", when=when))
             print(
-                f"[aware] 今日事件 {events_count_today()} · "
-                f"suggestion {suggestion_count()}"
+                t(
+                    "aware.repl_status_counts",
+                    events=events_count_today(),
+                    sug=suggestion_count(),
+                )
             )
             return True
         return False
@@ -190,7 +188,7 @@ class AwareChatREPL:
                 streamed = True
             print(chunk, end="", flush=True)
 
-        with ActivityIndicator("aware", "围绕感知上下文回答…") as activity:
+        with ActivityIndicator("aware", t("aware.repl_answering")) as activity:
             try:
                 self.history.append({"role": "user", "content": user_input})
                 user_appended = True
@@ -221,18 +219,18 @@ class AwareChatREPL:
                 response = result.response
                 provider_source = get_model_router().format_last_source()
             except KeyboardInterrupt:
-                print("\n[aware] 请求已取消")
+                print(t("aware.repl_request_cancelled"))
                 if user_appended:
                     self.history.pop()
                 activity.begin_streaming()
                 return
             except Exception as exc:
-                response = f"[错误] {exc}"
+                response = t("aware.repl_error", exc=exc)
 
         if response is None:
             return
         if not str(response).strip():
-            response = "[错误] 模型返回了空内容，请重试。"
+            response = t("aware.repl_empty_response")
         if streamed:
             print()
         else:
@@ -246,7 +244,7 @@ class AwareChatREPL:
             and router.last_provider != "ollama"
             and not self._shown_fallback_hint
         ):
-            print(f"[aware] 本地 Ollama 响应过慢，已自动切换 {router.last_provider}")
+            print(t("aware.repl_ollama_failover", provider=router.last_provider))
             self._shown_fallback_hint = True
 
         append_message(self.session_id, "user", user_input)

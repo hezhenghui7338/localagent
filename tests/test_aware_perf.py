@@ -41,6 +41,9 @@ def aware_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     )
     monkeypatch.setattr(config, "AWARE_SUGGESTIONS_FILE", data / "aware" / "suggestions.json")
     monkeypatch.setattr(config, "AWARE_NOW_DIR", data / "aware" / "now")
+    monkeypatch.setattr(config, "AWARE_CONTEXT_DIR", data / "aware" / "context")
+    monkeypatch.setattr(config, "AWARE_HOT_FILE", data / "aware" / "context" / "hot.json")
+    monkeypatch.setattr(config, "AWARE_DIFF_FILE", data / "aware" / "context" / "diff.json")
     monkeypatch.setattr(config, "AWARE_TICK_LOCK_FILE", data / "aware" / "tick.lock")
     monkeypatch.setattr(config, "KB_DIR", data / "kb")
     monkeypatch.setattr(config, "AUDIT_DIR", data / "audit")
@@ -56,6 +59,7 @@ def aware_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(config, "AWARE_EVENTS_MAX_BYTES", 1024)
     (data / "aware").mkdir(parents=True, exist_ok=True)
     (data / "aware" / "now").mkdir(parents=True, exist_ok=True)
+    (data / "aware" / "context").mkdir(parents=True, exist_ok=True)
     (data / "kb").mkdir(parents=True, exist_ok=True)
     (data / "audit").mkdir(parents=True, exist_ok=True)
     return data

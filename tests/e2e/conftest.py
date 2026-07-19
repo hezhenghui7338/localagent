@@ -24,6 +24,8 @@ def la_env(la_data_dir: Path) -> dict[str, str]:
         "LA_MEMORY_BACKEND": "json",
         "LA_MEMORY_SESSION_SUMMARY": "0",
         "LA_MEMORY_REFLECT_MAX_HOPS": "0",
+        # Pin Chinese UI so e2e assertions stay stable regardless of host LA_LANG.
+        "LA_LANG": "zh",
         # Subprocess does not inherit unit-test monkeypatches; disable LLM pin
         # so memory add cannot hang on a slow/local Ollama call.
         "LA_PROFILE_PIN_LLM": "0",

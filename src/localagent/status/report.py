@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from localagent.i18n import t
 from localagent.status.daily import (
     DailyActionsStatus,
     collect_daily_actions_status,
@@ -30,23 +31,23 @@ def format_status_report(
         "── Daily Actions ──",
         *format_daily_actions_lines(daily),
         "",
-        "── 数据层 ──",
+        t("status.section_layers"),
         *format_data_layer_detail_lines(layers),
         "",
-        "── 综合召回 ──",
+        t("status.section_recall"),
         *format_recall_priority_lines(),
         "",
-        "提示：",
-        "  la news brief          # 今日简报",
-        "  la memory pending      # 审阅待写入记忆",
-        "  la memory status       # Warm / Hot 引擎诊断",
-        "  la rag status          # Cold 知识库诊断",
-        "  la workspace tasks     # 托管待办（done/dismiss/snooze）",
-        "  la workspace add \"…\" --why \"…\"  # 显式添加待办",
-        "  la workspace scan      # 诊断扫描代码 TODO（未入队）",
-        "  la aware               # 当前状态 + 近 3 小时动态",
-        "  la aware --since 1w    # 最近一周变化",
-        "  la aware suggestion    # 感知建议（approve/reject 为其子命令）",
-        "  la aware ungrant …     # 解除监测授权",
+        t("status.tips_header"),
+        t("status.tip_news"),
+        t("status.tip_pending"),
+        t("status.tip_memory"),
+        t("status.tip_rag"),
+        t("status.tip_tasks"),
+        t("status.tip_add"),
+        t("status.tip_scan"),
+        t("status.tip_aware"),
+        t("status.tip_aware_since"),
+        t("status.tip_aware_sug"),
+        t("status.tip_ungrant"),
     ]
     return "\n".join(lines)

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from localagent import config
+from localagent.i18n import t
 from localagent.ingest.sync_index import get_sync_index
 from localagent.memory.store import get_memory_store
 
@@ -33,15 +34,15 @@ class MemoryHealth:
 
     def to_text(self) -> str:
         lines = [
-            f"记忆条目: {self.memory_facts}",
-            f"kb/ 文件: {self.kb_files}，已索引: {self.indexed_files}",
+            t("audit.health_facts", n=self.memory_facts),
+            t("audit.health_kb", kb=self.kb_files, indexed=self.indexed_files),
         ]
         if self.failed_tasks:
-            lines.append(f"失败的后台索引任务: {self.failed_tasks}")
+            lines.append(t("audit.health_failed", n=self.failed_tasks))
         if self.orphan_kb_entries:
-            lines.append(f"sync_index 孤儿条目: {len(self.orphan_kb_entries)}")
+            lines.append(t("audit.health_orphan", n=len(self.orphan_kb_entries)))
         if self.missing_kb_files:
-            lines.append(f"kb/ 未索引文件: {len(self.missing_kb_files)}")
+            lines.append(t("audit.health_missing", n=len(self.missing_kb_files)))
         for note in self.notes:
             lines.append(f"  ! {note}")
         return "\n".join(lines)
@@ -70,10 +71,10 @@ def collect_memory_health() -> MemoryHealth:
         from localagent.ingest.tasks import TaskStatus, get_task_store
 
         tasks = get_task_store().list_tasks(limit=50, reconcile=False)
-        health.failed_tasks = sum(1 for t in tasks if t.status == TaskStatus.FAILED)
+        health.failed_tasks = sum(1 for task in tasks if task.status == TaskStatus.FAILED)
     except Exception:
         pass
 
     if health.missing_kb_files:
-        health.notes.append("存在 kb/ 文件未索引，运行 LA rag ingest")
+        health.notes.append(t("audit.health_note_ingest"))
     return health

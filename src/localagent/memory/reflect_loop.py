@@ -170,12 +170,23 @@ def _synthesize(query: str, hits: list[dict[str, Any]]) -> str | None:
         from localagent.models.router import ChatMessage, get_model_router
     except Exception:
         return None
-    prompt = (
-        "你是 LocalAgent 的综合推理模块。根据下列已召回的长期记忆与知识库资料，"
-        "回答用户问题。优先依据记忆中的个人事实，知识库作补充；只依据证据归纳，不要编造；"
-        "若仍不足请明确说明缺什么。\n\n"
-        f"问题：{query}\n\n证据：\n{evidence}\n\n请用简洁中文回答："
-    )
+    from localagent.i18n import resolve_lang, t
+
+    if resolve_lang() == "en":
+        prompt = (
+            "You are LocalAgent's synthesis module. Using the recalled long-term memories "
+            "and knowledge-base evidence below, answer the user. Prefer personal facts from "
+            "memory; knowledge is supplemental. Only synthesize from evidence — do not invent. "
+            "If evidence is insufficient, say what is missing.\n\n"
+            + t("prompt.reflect_answer", query=query, evidence=evidence)
+        )
+    else:
+        prompt = (
+            "你是 LocalAgent 的综合推理模块。根据下列已召回的长期记忆与知识库资料，"
+            "回答用户问题。优先依据记忆中的个人事实，知识库作补充；只依据证据归纳，不要编造；"
+            "若仍不足请明确说明缺什么。\n\n"
+            + t("prompt.reflect_answer", query=query, evidence=evidence)
+        )
     try:
         answer = get_model_router().chat(
             [ChatMessage(role="user", content=prompt)],

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from localagent.i18n import t
 from localagent.news.store import today_synced
 from localagent.pending.queue import pending_count
 
@@ -78,11 +79,11 @@ def collect_daily_actions_status(*, todo_limit: int = 50) -> DailyActionsStatus:
 def format_daily_actions_lines(status: DailyActionsStatus | None = None) -> list[str]:
     """Short lines for welcome banner / status command."""
     status = status or collect_daily_actions_status()
-    news = "今日新闻已就绪" if status.news_synced_today else "今日新闻未 sync"
+    news = t("daily.news_ready") if status.news_synced_today else t("daily.news_unsynced")
     lines = [
-        f"新闻 · {news}",
-        f"记忆 pending · {status.pending_count}",
-        f"workspace 待办 · {status.todo_count}",
+        t("daily.news_line", news=news),
+        t("daily.pending_line", n=status.pending_count),
+        t("daily.todo_line", n=status.todo_count),
     ]
     for tid, title in status.todo_previews:
         short = title if len(title) <= 36 else title[:33] + "..."
@@ -90,7 +91,11 @@ def format_daily_actions_lines(status: DailyActionsStatus | None = None) -> list
     if status.todo_count > 0:
         lines.append("  la workspace tasks / done <id>")
     lines.append(
-        f"aware · 今日事件 {status.aware_events_today} / suggestion {status.aware_suggestion_count}"
+        t(
+            "daily.aware_line",
+            events=status.aware_events_today,
+            sug=status.aware_suggestion_count,
+        )
     )
     return lines
 
@@ -107,15 +112,15 @@ def format_daily_actions_report(status: DailyActionsStatus | None = None) -> str
         "",
         *format_daily_actions_lines(status),
         "",
-        "提示：",
-        "  la news brief          # 今日简报",
-        "  la memory pending      # 审阅待写入记忆",
-        "  la workspace tasks     # 托管待办（done/dismiss/snooze）",
-        "  la workspace add \"…\" --why \"…\"  # 显式添加待办",
-        "  la workspace scan      # 诊断扫描代码 TODO（未入队）",
-        "  la aware               # 当前状态 + 近 3 小时动态",
-        "  la aware --since 1w    # 最近一周变化",
-        "  la aware suggestion    # 感知建议（approve/reject 为其子命令）",
-        "  la aware ungrant …     # 解除监测授权",
+        t("status.tips_header"),
+        t("status.tip_news"),
+        t("status.tip_pending"),
+        t("status.tip_tasks"),
+        t("status.tip_add"),
+        t("status.tip_scan"),
+        t("status.tip_aware"),
+        t("status.tip_aware_since"),
+        t("status.tip_aware_sug"),
+        t("status.tip_ungrant"),
     ]
     return "\n".join(lines)

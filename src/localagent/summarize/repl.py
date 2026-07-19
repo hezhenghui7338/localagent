@@ -7,6 +7,7 @@ from pathlib import Path
 
 from localagent import config
 from localagent.agent.runtime import run_agent_turn
+from localagent.i18n import t
 from localagent.models.router import get_model_router, shutdown_cursor_sdk
 from localagent.persist.conversations import append_message, load_conversation, new_session_id
 from localagent.session_commands import (
@@ -16,7 +17,6 @@ from localagent.session_commands import (
     set_repl_provider,
 )
 from localagent.summarize.document import (
-    KEEP_HINT,
     SummarizeResult,
     format_document_context,
 )
@@ -34,17 +34,17 @@ from localagent.ui.console import (
 
 
 def _print_doc_help(*, kept: bool) -> None:
-    print("当前是「文档对话」：只围绕已打开的文件；和助手闲聊请另开 la chat。")
-    print("命令：")
-    print("  /summary, /s     重新显示速读卡")
-    print("  /keep            收藏当前文档到知识库（默认不入库）")
+    print(t("summarize.help_intro"))
+    print(t("summarize.help_commands"))
+    print(t("summarize.help_summary"))
+    print(t("summarize.help_keep"))
     if kept:
-        print("                   （已收藏，再执行会提示路径）")
-    print("  /status          显示文件路径 / 是否已收藏 / session")
-    print("  /help, /h        显示本帮助")
-    print("  /provider, /p    切换模型路径")
-    print("  /q, /quit, /exit 结束文档对话（可 la summarize <path> --resume 续聊）")
-    print("直接输入问题即可围绕该文档深入追问。")
+        print(t("summarize.help_keep_again"))
+    print(t("summarize.help_status"))
+    print(t("summarize.help_help"))
+    print(t("summarize.help_provider"))
+    print(t("summarize.help_quit"))
+    print(t("summarize.help_ask"))
 
 
 def _history_from_conversation(session_id: str) -> list[dict[str, str]]:
@@ -128,22 +128,32 @@ class DocumentChatREPL:
 
             install_repl_readline_completer()
 
-        pages = f" · {self.result.page_count} 页" if self.result.page_count else ""
+        pages = (
+            t("summarize.pages_suffix", n=self.result.page_count)
+            if self.result.page_count
+            else ""
+        )
         print()
         print(
-            f"[summarize] 已进入文档对话：{self.result.filename}{pages}"
-            f"（session={self.summarize_session_id}）"
+            t(
+                "summarize.entered",
+                filename=self.result.filename,
+                pages=pages,
+                session=self.summarize_session_id,
+            )
         )
-        print("[summarize] 可继续追问本文件；/help 查看命令，/exit 结束。")
+        print(t("summarize.enter_hint"))
         if self.result.uses_retrieval:
             print(
-                f"[summarize] 长文模式：按问题检索原文片段"
-                f"（index={self.result.session_source_key}）"
+                t(
+                    "summarize.retrieval_mode",
+                    index=self.result.session_source_key,
+                )
             )
         if not self.result.kept:
-            print(f"[summarize] 未收藏。会话内输入 /keep 可收藏到知识库。")
+            print(t("summarize.not_kept_repl"))
         else:
-            print(f"[summarize] 已收藏: {self.result.keep_target}")
+            print(t("summarize.kept_path", target=self.result.keep_target))
         interrupt_count = 0
         while True:
             try:
@@ -158,7 +168,7 @@ class DocumentChatREPL:
                 if interrupt_count >= 2:
                     print()
                     break
-                print("\n[summarize] 已取消；再按一次 Ctrl+C 退出，或继续提问")
+                print(t("summarize.cancel_once"))
                 continue
             if not line:
                 continue
@@ -180,7 +190,7 @@ class DocumentChatREPL:
             self._handle_chat(line)
 
         self._persist()
-        print("[summarize] 文档对话结束（可用 la summarize <path> --resume 续聊）")
+        print(t("summarize.ended"))
         shutdown_cursor_sdk()
         return 0
 
@@ -207,33 +217,33 @@ class DocumentChatREPL:
 
     def _print_status(self) -> None:
         kept = (
-            f"已收藏 → {self.result.keep_target}"
+            t("summarize.status_kept", target=self.result.keep_target)
             if self.result.kept and self.result.keep_target
-            else "未收藏（默认；/keep 写入知识库）"
+            else t("summarize.status_not_kept")
         )
-        print(f"[summarize] 文件: {self.result.path}")
-        print(f"[summarize] 收藏: {kept}")
-        print(f"[summarize] session: {self.summarize_session_id}")
-        print(f"[summarize] 对话档案: {self.session_id}")
-        print(f"[summarize] 字数: {self.result.char_count}")
+        print(t("summarize.status_file", path=self.result.path))
+        print(t("summarize.status_kept_label", kept=kept))
+        print(t("summarize.status_session", session=self.summarize_session_id))
+        print(t("summarize.status_archive", session=self.session_id))
+        print(t("summarize.status_chars", n=self.result.char_count))
         if self.result.page_count is not None:
-            print(f"[summarize] 页数: {self.result.page_count}")
+            print(t("summarize.status_pages", n=self.result.page_count))
 
     def _do_keep(self) -> None:
         if self.result.kept and self.result.keep_target is not None:
-            print(f"[summarize] 已收藏到知识库: {self.result.keep_target}")
+            print(t("summarize.kept", target=self.result.keep_target))
             return
         try:
             from localagent.ingest.add_file import add_file
 
             target, _ingest = add_file(self.result.path)
         except Exception as exc:
-            print(f"[summarize] 收藏失败: {exc}")
+            print(t("summarize.keep_fail", exc=exc))
             return
         self.result.kept = True
         self.result.keep_target = target
         self._persist()
-        print(f"[summarize] 已收藏到知识库: {target}")
+        print(t("summarize.kept", target=target))
 
     def _handle_chat(self, user_input: str) -> None:
         streamed = False
@@ -248,7 +258,7 @@ class DocumentChatREPL:
                 streamed = True
             print(chunk, end="", flush=True)
 
-        with ActivityIndicator("summarize", "围绕文档回答…") as activity:
+        with ActivityIndicator("summarize", t("summarize.answering")) as activity:
             try:
                 self.history.append({"role": "user", "content": user_input})
                 user_appended = True
@@ -279,18 +289,18 @@ class DocumentChatREPL:
                 response = result.response
                 provider_source = get_model_router().format_last_source()
             except KeyboardInterrupt:
-                print("\n[summarize] 请求已取消")
+                print(t("summarize.request_cancelled"))
                 if user_appended:
                     self.history.pop()
                 activity.begin_streaming()
                 return
             except Exception as exc:
-                response = f"[错误] {exc}"
+                response = t("chat.error", exc=exc)
 
         if response is None:
             return
         if not str(response).strip():
-            response = "[错误] 模型返回了空内容，请重试。"
+            response = t("chat.empty_response")
         if streamed:
             print()
         else:
@@ -304,7 +314,7 @@ class DocumentChatREPL:
             and router.last_provider != "ollama"
             and not self._shown_fallback_hint
         ):
-            print(f"[summarize] 本地 Ollama 响应过慢，已自动切换 {router.last_provider}")
+            print(t("summarize.ollama_failover", provider=router.last_provider))
             self._shown_fallback_hint = True
 
         append_message(self.session_id, "user", user_input)
@@ -358,7 +368,7 @@ def rebuild_result_from_disk(
 
     doc = load_doc(path)
     if doc is None:
-        raise FileNotFoundError(f"无法读取文件: {path}")
+        raise FileNotFoundError(t("summarize.read_fail", path=path))
     annotated = _annotate_for_cite(doc)
     pages = page_count
     if pages is None:

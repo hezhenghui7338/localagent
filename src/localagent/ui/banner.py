@@ -38,20 +38,21 @@ class WelcomeInfo:
     tagline: str = "Local First. Memory Forever. Actions Automated."
 
 
-_WEB_SEARCH_LABELS = {
-    "tavily": "Tavily",
-    "ddgs": "ddgs（免费）",
-    "searxng": "SearXNG",
-}
-
-
 def format_web_search_hint() -> str:
     """Human-readable web backend for the welcome banner (resolved from config)."""
+    from localagent.i18n import t
     from localagent.tools.web_search import resolve_web_search_provider
 
     provider = resolve_web_search_provider()
-    label = _WEB_SEARCH_LABELS.get(provider, provider)
-    return f"联网 · {label}"
+    if provider == "ddgs":
+        label = t("web_search.ddgs")
+    elif provider == "tavily":
+        label = "Tavily"
+    elif provider == "searxng":
+        label = "SearXNG"
+    else:
+        label = provider
+    return t("banner.web_search", label=label)
 
 
 def _use_color() -> bool:
@@ -199,19 +200,21 @@ def render_welcome(info: WelcomeInfo, *, width: int | None = None, color: bool |
         f"{_c('─' * rule_len, _DIM, enabled=use_color)}╮"
     )
 
+    from localagent.i18n import t
+
     tips = [
-        _c("入门提示", _BOLD, _CYAN, enabled=use_color),
-        "直接输入问题开始对话",
-        "/ + Tab 补全命令",
-        "/help 查看全部命令",
-        "/status 查看数据层",
-        "/provider 切换模型路径",
-        "/model 切换默认模型",
-        "/websearch <关键词> 联网",
-        "/deepsearch <主题> 研究",
-        "/q / Ctrl+C×2 退出",
+        _c(t("banner.tips_title"), _BOLD, _CYAN, enabled=use_color),
+        t("banner.tip_chat"),
+        t("banner.tip_tab"),
+        t("banner.tip_help"),
+        t("banner.tip_status"),
+        t("banner.tip_provider"),
+        t("banner.tip_model"),
+        t("banner.tip_websearch"),
+        t("banner.tip_deepsearch"),
+        t("banner.tip_quit"),
         _c("───────────────", _DIM, enabled=use_color),
-        _c("Daily Actions", _BOLD, _CYAN, enabled=use_color),
+        _c(t("banner.daily_actions"), _BOLD, _CYAN, enabled=use_color),
     ]
     try:
         from localagent.status.daily import format_daily_actions_lines
@@ -219,14 +222,14 @@ def render_welcome(info: WelcomeInfo, *, width: int | None = None, color: bool |
         for line in format_daily_actions_lines():
             tips.append(_truncate(line, right_w - 2))
     except Exception:
-        tips.append("la status 查看今日信号")
+        tips.append(t("banner.daily_fallback"))
     tips.extend(
         [
             _c("───────────────", _DIM, enabled=use_color),
-            _c("数据层", _BOLD, _CYAN, enabled=use_color),
+            _c(t("banner.data_layers"), _BOLD, _CYAN, enabled=use_color),
         ]
     )
-    layer_lines = info.layer_lines or ("la status 查看数据层",)
+    layer_lines = info.layer_lines or (t("banner.layers_fallback"),)
     for line in layer_lines:
         tips.append(_truncate(line, right_w - 2))
 

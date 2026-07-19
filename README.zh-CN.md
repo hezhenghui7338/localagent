@@ -417,7 +417,8 @@ source .venv/bin/activate   # 或: source ~/.zshrc
 | `LA_SHELL_TIMEOUT` / `LA_SHELL_MAX_OUTPUT` | Agent `run_shell` 超时秒数与输出截断上限（默认 30s / 12000 字符） |
 | `LA_TOOL_APPROVAL`                      | 工具执行前用户确认：`always`（默认，每次）/ `dangerous`（仅危险）/ `off` |
 | `LA_DATA_DIR`                           | 自定义数据目录（测试隔离用）                                   |
-| `LA_NEWS_RSS_URL`                       | 新闻嗅探 RSS（默认 BestBlogs AI 精选）                      |
+| `LA_LANG`                               | UI 与模型回答语言：`auto`（跟随系统 locale，默认）/ `en` / `zh` |
+| `LA_NEWS_RSS_URL`                       | 新闻嗅探 RSS（默认按当前语言选 BestBlogs AI 精选）              |
 | `LA_NEWS_AUTO_SYNC` / `_HOUR`           | 早间自动 sync 意图与时刻（配合 `la news schedule on`）       |
 | `LA_SUMMARIZE_SHORT_MAX_CHARS`          | 一键总结短路径字数上限（默认 12000）                            |
 | `LA_LOG_LEVEL`                          | 诊断日志级别：`INFO`（默认）/ `DEBUG` / `WARNING` …           |

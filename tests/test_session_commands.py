@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from localagent.agent.runtime import AgentResult
 from localagent.chat_repl import ChatREPL
+from localagent.i18n import reset_lang_cache
 from localagent.memory.conversation_extract import ExtractedMemory
 from localagent.persist.conversations import load_conversation
 from localagent.session_commands import (
@@ -16,6 +19,15 @@ from localagent.session_commands import (
     is_session_command,
     normalize_session_argv,
 )
+
+
+@pytest.fixture(autouse=True)
+def _force_zh_ui_lang(monkeypatch):
+    """Session UI strings are asserted in Chinese; pin LA_LANG for CI locales."""
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
+    yield
+    reset_lang_cache()
 
 
 def test_is_session_command_slash_and_colon():

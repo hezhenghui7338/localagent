@@ -681,7 +681,11 @@ def test_run_agent_turn_prefetches_session_recall_without_web(isolated_data):
     assert "对话记录" in system_prompt
 
 
-def test_build_system_prompt_includes_prefetched_context():
+def test_build_system_prompt_includes_prefetched_context(monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     prompt = _build_system_prompt(
         personal_context="[个人上下文]\n姓名: 测试",
         web_context="[联网搜索结果]\n摘要: 新闻",

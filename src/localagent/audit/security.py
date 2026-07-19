@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from localagent import config
+from localagent.i18n import t
 
 SENSITIVE_NAME_RE = re.compile(
     r"(^|/)(\.env(\.|$)|id_rsa|credentials\.json|secrets?\.(json|ya?ml)|.*\.pem$|.*\.key$)",
@@ -17,9 +16,9 @@ SENSITIVE_NAME_RE = re.compile(
 # Back-compat alias
 _SENSITIVE_NAME = SENSITIVE_NAME_RE
 _SECRET_PATTERNS = [
-    (re.compile(r"AKIA[0-9A-Z]{16}"), "可能的 AWS Access Key"),
-    (re.compile(r"sk-[a-zA-Z0-9]{20,}"), "可能的 OpenAI/API sk- 密钥"),
-    (re.compile(r"-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----"), "私钥内容"),
+    (re.compile(r"AKIA[0-9A-Z]{16}"), "audit.sec_aws_key"),
+    (re.compile(r"sk-[a-zA-Z0-9]{20,}"), "audit.sec_openai_key"),
+    (re.compile(r"-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----"), "audit.sec_private_key"),
 ]
 
 
@@ -31,7 +30,7 @@ def is_sensitive_path(path: str | Path) -> bool:
 
 
 def sensitive_path_reason(path: str | Path) -> str:
-    return f"敏感路径禁止索引/读取: {Path(path).name}"
+    return t("audit.sec_path_blocked", name=Path(path).name)
 
 
 @dataclass
@@ -62,13 +61,13 @@ class SecurityReport:
 
     def to_text(self) -> str:
         if not self.findings:
-            return "文件安全: 未发现高风险项"
-        lines = [f"文件安全: {len(self.findings)} 项发现（高危 {self.high_count}）"]
+            return t("audit.sec_ok")
+        lines = [t("audit.sec_header", n=len(self.findings), high=self.high_count)]
         for item in self.findings[:20]:
             lines.append(f"  [{item.severity}] {item.path}: {item.message}")
             lines.append(f"    → {item.remediation}")
         if len(self.findings) > 20:
-            lines.append(f"  … 共 {len(self.findings)} 项")
+            lines.append(t("audit.sec_more", n=len(self.findings)))
         return "\n".join(lines)
 
 
@@ -82,8 +81,8 @@ def _check_world_readable(path: Path) -> SecurityFinding | None:
             severity="medium",
             category="permissions",
             path=str(path),
-            message="文件对其他用户可读",
-            remediation="考虑 chmod 600 或移出索引目录",
+            message=t("audit.sec_world_readable"),
+            remediation=t("audit.sec_world_fix"),
         )
     return None
 
@@ -94,15 +93,15 @@ def _scan_file_content(path: Path, *, max_bytes: int = 8192) -> list[SecurityFin
         sample = path.read_bytes()[:max_bytes].decode("utf-8", errors="ignore")
     except OSError:
         return findings
-    for pattern, label in _SECRET_PATTERNS:
+    for pattern, label_key in _SECRET_PATTERNS:
         if pattern.search(sample):
             findings.append(
                 SecurityFinding(
                     severity="high",
                     category="secret_content",
                     path=str(path),
-                    message=label,
-                    remediation="从 kb/ 移除该文件，轮换已泄露密钥，检查 git 历史",
+                    message=t(label_key),
+                    remediation=t("audit.sec_secret_fix"),
                 )
             )
             break
@@ -127,8 +126,8 @@ def scan_kb_symlinks() -> list[SecurityFinding]:
                         severity="medium",
                         category="symlink",
                         path=str(entry),
-                        message="软链目标无法解析",
-                        remediation="检查 LA add-file 源路径是否有效",
+                        message=t("audit.sec_symlink_bad"),
+                        remediation=t("audit.sec_symlink_fix"),
                     )
                 )
                 continue
@@ -145,8 +144,8 @@ def scan_kb_symlinks() -> list[SecurityFinding]:
                     severity="high",
                     category="sensitive_filename",
                     path=f"{entry} → {target}",
-                    message="索引了敏感文件名（.env、密钥等）",
-                    remediation="LA reset-memory 后删除 kb/ 软链，勿将密钥文件加入索引",
+                    message=t("audit.sec_sensitive_name"),
+                    remediation=t("audit.sec_sensitive_fix"),
                 )
             )
 
@@ -173,8 +172,8 @@ def scan_workspace(workspace: Path | None = None) -> list[SecurityFinding]:
                 severity="high",
                 category="env_indexed",
                 path=str(config.KB_DIR / ".env"),
-                message="工作区 .env 已被索引到 kb/",
-                remediation="删除 kb/.env 软链并 reset-memory 中相关条目",
+                message=t("audit.sec_env_indexed"),
+                remediation=t("audit.sec_env_fix"),
             )
         )
     return findings

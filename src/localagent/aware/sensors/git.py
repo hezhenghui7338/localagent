@@ -8,6 +8,7 @@ from typing import Any
 
 from localagent.aware.profile import SourceGrant
 from localagent.aware.types import AwareEvent
+from localagent.i18n import t
 from localagent.workspace.context import resolve_workspace
 
 
@@ -49,7 +50,7 @@ class GitSensor:
         repos = self._repos()
         if repos:
             return [str(r) for r in repos]
-        return [f"工作区（若为 git 仓库）: {resolve_workspace()}"]
+        return [t("aware.sensor_git_workspace", path=resolve_workspace())]
 
     def collect(self, cursor: dict[str, Any]) -> tuple[list[AwareEvent], dict[str, Any]]:
         events: list[AwareEvent] = []

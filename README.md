@@ -404,7 +404,8 @@ See [`.env.example`](.env.example). Common variables:
 | `LA_SHELL_TIMEOUT` / `LA_SHELL_MAX_OUTPUT` | Agent `run_shell` timeout (s) and output cap (default 30s / 12000 chars) |
 | `LA_TOOL_APPROVAL` | Approve before tools run: `always` (default) / `dangerous` / `off` |
 | `LA_DATA_DIR` | Custom data dir (for test isolation) |
-| `LA_NEWS_RSS_URL` | News sniff RSS (default BestBlogs AI curated) |
+| `LA_LANG` | UI + model reply language: `auto` (follow system locale, default) / `en` / `zh` |
+| `LA_NEWS_RSS_URL` | News sniff RSS (default BestBlogs AI curated for active language) |
 | `LA_NEWS_AUTO_SYNC` / `_HOUR` | Morning auto-sync intent + hour (`la news schedule on`) |
 | `LA_SUMMARIZE_SHORT_MAX_CHARS` | Summarize short-path char cap (default 12000) |
 | `LA_LOG_LEVEL` | Diagnostic log level: `INFO` (default) / `DEBUG` / `WARNING` … |

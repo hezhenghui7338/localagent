@@ -18,12 +18,21 @@ from localagent import config
 from localagent.hardware import (
     DEFAULT_TIER_MODEL,
     MINI_OLLAMA_MODEL,
+    ModelTier,
     format_ram_gb,
     model_size_hint,
     recommend_ollama_model,
     tier_for_ram,
     total_ram_bytes,
 )
+from localagent.i18n import t
+
+
+def _tier_label(tier: ModelTier) -> str:
+    """Localized short tier label for user-facing Ollama setup lines."""
+    key = f"ollama.tier_{tier.label}"
+    translated = t(key)
+    return translated if translated != key else tier.label
 
 DEFAULT_OLLAMA_MODEL = DEFAULT_TIER_MODEL
 _INSTALL_SCRIPT = "https://ollama.com/install.sh"
@@ -453,8 +462,13 @@ def _prompt_model_choice(
     """Interactive model pick when pulling a fresh default; Enter keeps recommendation."""
     tier = tier_for_ram(ram_bytes)
     log(
-        f"检测到系统内存 {format_ram_gb(ram_bytes)} → 推荐 {recommended}"
-        f"（{tier.label}，{tier.size_hint}）"
+        t(
+            "ollama.ram_recommend",
+            ram=format_ram_gb(ram_bytes),
+            model=recommended,
+            label=_tier_label(tier),
+            size=tier.size_hint,
+        )
     )
     if tier.note:
         log(tier.note)
@@ -496,9 +510,15 @@ def ensure_ollama_ready(
     preferred = preferred.strip() or DEFAULT_OLLAMA_MODEL
     target = preferred
     if source == "ram":
+        tier = tier_for_ram(ram)
         emit(
-            f"检测到系统内存 {format_ram_gb(ram)} → 选用 {preferred}"
-            f"（{tier_for_ram(ram).label}，{model_size_hint(preferred)}）"
+            t(
+                "ollama.ram_choose",
+                ram=format_ram_gb(ram),
+                model=preferred,
+                label=_tier_label(tier),
+                size=model_size_hint(preferred),
+            )
         )
 
     if _env_skip():
@@ -536,7 +556,7 @@ def ensure_ollama_ready(
 
         should_install = assume_yes
         if not should_install and prompt:
-            emit("未检测到本机 Ollama。")
+            emit(t("ollama.not_detected"))
             emit(
                 "本地对话优先用本机已有 Ollama 模型；"
                 f"若无可用模型再按内存拉取推荐模型（当前推荐 {preferred}）。"

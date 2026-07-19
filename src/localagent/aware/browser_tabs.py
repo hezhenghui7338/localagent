@@ -8,6 +8,8 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Any
 
+from localagent.i18n import t
+
 
 @dataclass
 class BrowserNow:
@@ -111,7 +113,7 @@ def collect_open_tabs() -> list[BrowserNow]:
         return [
             BrowserNow(
                 browser="-",
-                error="当前平台暂不支持读取打开的标签页（仅 macOS）；可用 la aware --since 查看近期访问",
+                error=t("aware.tabs_unsupported"),
             )
         ]
     try:
@@ -123,28 +125,33 @@ def collect_open_tabs() -> list[BrowserNow]:
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        return [BrowserNow(browser="-", error=f"osascript 失败: {exc}")]
+        return [BrowserNow(browser="-", error=t("aware.tabs_osascript_fail", exc=exc))]
 
     if proc.returncode != 0:
-        err = (proc.stderr or proc.stdout or "未知错误").strip()
-        hint = (
-            "请在「系统设置 → 隐私与安全性 → 自动化」中允许终端/LA 控制浏览器；"
-            "Chrome 或需开启「查看 → 开发者 → 允许来自 Apple 事件的 JavaScript」。"
-        )
-        return [BrowserNow(browser="-", error=f"{err}。{hint}")]
+        err = (proc.stderr or proc.stdout or t("aware.tabs_unknown_err")).strip()
+        return [
+            BrowserNow(
+                browser="-",
+                error=t(
+                    "aware.tabs_error_with_hint",
+                    err=err,
+                    hint=t("aware.tabs_permission_hint"),
+                ),
+            )
+        ]
 
     text = (proc.stdout or "").strip()
     if not text:
         return [
             BrowserNow(
                 browser="-",
-                error="未检测到运行中的浏览器窗口（或缺少自动化权限）",
+                error=t("aware.tabs_no_browser"),
             )
         ]
     try:
         rows = json.loads(text)
     except json.JSONDecodeError:
-        return [BrowserNow(browser="-", error="解析浏览器标签失败")]
+        return [BrowserNow(browser="-", error=t("aware.tabs_parse_fail"))]
 
     out: list[BrowserNow] = []
     for row in rows if isinstance(rows, list) else []:
@@ -175,7 +182,7 @@ def collect_open_tabs() -> list[BrowserNow]:
         return [
             BrowserNow(
                 browser="-",
-                error="未检测到运行中的浏览器窗口（或缺少自动化权限）",
+                error=t("aware.tabs_no_browser"),
             )
         ]
     return out

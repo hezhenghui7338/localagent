@@ -18,15 +18,22 @@ from localagent.tools import search_knowledge, search_memory
 from conftest import write_doc
 
 
-def test_cli_bare_memory_shows_status(capsys):
+def test_cli_bare_memory_shows_status(capsys, monkeypatch):
     """Bare `LA memory` defaults to status overview (no argparse error)."""
-    rc = main(["memory"])
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "[memory status]" in out
-    assert "来源分布" in out
-    assert "下一步" in out
-    assert "memory query" in out
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
+    try:
+        rc = main(["memory"])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "[memory status]" in out
+        assert "来源分布" in out
+        assert "下一步" in out
+        assert "memory query" in out
+    finally:
+        reset_lang_cache()
 
 
 def test_cli_bare_rag_shows_status(capsys):

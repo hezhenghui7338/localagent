@@ -2,6 +2,7 @@
   "width": 800,
   "height": 468,
   "fps": 18,
+  "hold_tail_sec": 2.5,
   "demos": {
     "setup.en": [
       { "kind": "prompt", "text": "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.6.0\"", "type": true },

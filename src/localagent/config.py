@@ -123,17 +123,21 @@ SUMMARIZE_LLM_INPUT_CHARS = _env_int("LA_SUMMARIZE_LLM_INPUT_CHARS", "10000")
 # Document deep-chat: retrieve this many Cold chunks when body exceeds prompt stuffing.
 DOC_SESSION_RETRIEVE_TOP_K = _env_int("LA_DOC_SESSION_RETRIEVE_TOP_K", "8")
 
+# --- Language (LA_LANG=auto|en|zh; default auto → system locale → en) ---
+from localagent.i18n import default_news_rss_url, resolve_lang  # noqa: E402
+
+LANG = resolve_lang()
+
 # --- News sniff (BestBlogs RSS → daily brief → deep read) ---
-DEFAULT_NEWS_RSS_URL = (
-    "https://www.bestblogs.dev/zh/feeds/rss?category=ai&minScore=80&timeFilter=1d"
-)
+DEFAULT_NEWS_RSS_URL = default_news_rss_url(LANG)
 NEWS_DIR = Path(_env("LA_NEWS_DIR")) if _env("LA_NEWS_DIR") else DATA_DIR / "news"
 NEWS_DB_FILE = NEWS_DIR / "articles.sqlite"
 NEWS_PROFILE_FILE = NEWS_DIR / "news_profile.json"
 NEWS_SYNC_STATE_FILE = NEWS_DIR / "sync_state.json"
 NEWS_SYNC_LOG_FILE = NEWS_DIR / "sync.log"
 NEWS_CACHE_DIR = NEWS_DIR / "cache"
-NEWS_RSS_URL = _env("LA_NEWS_RSS_URL", DEFAULT_NEWS_RSS_URL) or DEFAULT_NEWS_RSS_URL
+_NEWS_RSS_OVERRIDE = _env("LA_NEWS_RSS_URL")
+NEWS_RSS_URL = _NEWS_RSS_OVERRIDE or DEFAULT_NEWS_RSS_URL
 NEWS_BRIEF_SIZE = _env_int("LA_NEWS_BRIEF_SIZE", "30")
 NEWS_AUTO_SYNC = _env_bool("LA_NEWS_AUTO_SYNC", "1")
 NEWS_AUTO_SYNC_HOUR = _env_int("LA_NEWS_AUTO_SYNC_HOUR", "8")
@@ -157,6 +161,11 @@ AWARE_SUGGESTIONS_FILE = AWARE_DIR / "suggestions.json"
 AWARE_EPISODES_FILE = AWARE_DIR / "episodes.jsonl"
 AWARE_SESSIONS_DIR = AWARE_DIR / "sessions"
 AWARE_NOW_DIR = AWARE_DIR / "now"
+AWARE_CONTEXT_DIR = AWARE_DIR / "context"
+AWARE_HOT_FILE = AWARE_CONTEXT_DIR / "hot.json"
+AWARE_DIFF_FILE = AWARE_CONTEXT_DIR / "diff.json"
+AWARE_ROLLUPS_FILE = AWARE_DIR / "rollups.jsonl"
+AWARE_ROLLUP_KEEP_DAYS = _env_int("LA_AWARE_ROLLUP_KEEP_DAYS", "180")
 AWARE_TICK_LOG_FILE = AWARE_DIR / "tick.log"
 AWARE_TICK_INTERVAL_MINUTES = _env_int("LA_AWARE_TICK_INTERVAL_MINUTES", "15")
 AWARE_TICK_LOCK_FILE = AWARE_DIR / "tick.lock"
@@ -544,6 +553,7 @@ def ensure_data_dirs() -> None:
         SUMMARIZE_SESSIONS_DIR,
         AWARE_DIR,
         AWARE_NOW_DIR,
+        AWARE_CONTEXT_DIR,
         AWARE_SESSIONS_DIR,
         WORKSPACE_DIR,
     ):

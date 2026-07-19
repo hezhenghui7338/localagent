@@ -236,8 +236,12 @@ def _refresh_project_env(env_path: Path) -> None:
     """Re-read project .env into os.environ before loading model config."""
     from dotenv import load_dotenv
 
+    from localagent.i18n import reset_lang_cache
+
     if env_path.is_file():
         load_dotenv(env_path, override=True)
+        # LA_LANG (and friends) may have changed; drop stale resolve_lang() cache.
+        reset_lang_cache()
     pointer = read_env_value(env_path, LA_MODEL_SERVERS_FILE_ENV)
     if pointer:
         os.environ[LA_MODEL_SERVERS_FILE_ENV] = pointer

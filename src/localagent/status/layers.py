@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from localagent import config
+from localagent.i18n import t
 
 
 @dataclass(frozen=True)
@@ -185,14 +186,14 @@ def collect_data_layer_status() -> DataLayerStatus:
 
 
 def format_data_layer_banner_lines(status: DataLayerStatus | None = None) -> list[str]:
-    """Short lines for the welcome banner「数据层」section."""
+    """Short lines for the welcome banner data-layers section."""
     status = status or collect_data_layer_status()
     if status.hot_configured:
-        hot = f"Hot · 已配置 · {status.hot_pref_count}偏好"
+        hot = t("layers.hot_configured", prefs=status.hot_pref_count)
         if status.hot_anchor_count:
-            hot += f" · {status.hot_anchor_count}锚点"
+            hot += t("layers.hot_anchors", n=status.hot_anchor_count)
     else:
-        hot = "Hot · 未配置"
+        hot = t("layers.hot_unset")
 
     chat_chunks = int(status.cold_chunks.get("chat", 0) or 0)
     chatgpt_chunks = int(status.cold_chunks.get("chatgpt", 0) or 0)
@@ -200,13 +201,19 @@ def format_data_layer_banner_lines(status: DataLayerStatus | None = None) -> lis
 
     return [
         hot,
-        f"Warm · {status.warm_facts}事实 · pending {status.warm_pending}",
-        (
-            f"Cold · kb{status.cold_kb_files} · 对话块{cold_dialog}"
-            f" · ChatGPT{status.cold_chatgpt_imported}"
+        t(
+            "layers.warm_banner",
+            facts=status.warm_facts,
+            pending=status.warm_pending,
         ),
-        f"Aware · 今日{status.aware_events_today}",
-        "la status 查看明细",
+        t(
+            "layers.cold_banner",
+            kb=status.cold_kb_files,
+            dialog=cold_dialog,
+            chatgpt=status.cold_chatgpt_imported,
+        ),
+        t("layers.aware_banner", n=status.aware_events_today),
+        t("layers.banner_detail_hint"),
     ]
 
 
@@ -215,36 +222,45 @@ def format_data_layer_detail_lines(status: DataLayerStatus | None = None) -> lis
     status = status or collect_data_layer_status()
     if status.hot_configured:
         name = status.hot_name or "—"
-        hot = (
-            f"Hot   已配置 · {name} · {status.hot_pref_count}偏好"
-            f" · {status.hot_anchor_count}锚点"
+        hot = t(
+            "layers.hot_detail",
+            name=name,
+            prefs=status.hot_pref_count,
+            anchors=status.hot_anchor_count,
         )
         if status.hot_updated_at:
             hot += f" · updated {status.hot_updated_at}"
     else:
-        hot = "Hot   未配置"
+        hot = t("layers.hot_detail_unset")
 
     src = status.warm_sources or {}
-    warm = (
-        f"Warm  {status.warm_facts}事实 · pending {status.warm_pending}"
-        f" · 来源 chat={src.get('chat', 0)} chatgpt={src.get('chatgpt', 0)}"
-        f" file={src.get('file', 0)} other={src.get('other', 0)}"
+    warm = t(
+        "layers.warm_detail",
+        facts=status.warm_facts,
+        pending=status.warm_pending,
+        chat=src.get("chat", 0),
+        chatgpt=src.get("chatgpt", 0),
+        file=src.get("file", 0),
+        other=src.get("other", 0),
     )
 
     chunks = status.cold_chunks or {}
-    cold = (
-        f"Cold  kb={status.cold_kb_files}"
-        f" · 块 kb={chunks.get('kb', 0)} chat={chunks.get('chat', 0)}"
-        f" chatgpt={chunks.get('chatgpt', 0)}"
-        f" · LA会话 {status.cold_chat_sessions}"
-        f" · ChatGPT已导入 {status.cold_chatgpt_imported}"
-        f" · 收藏 news={status.cold_news_bookmarks}"
-        f" summarize={status.cold_summarize_kept}"
+    cold = t(
+        "layers.cold_detail",
+        kb=status.cold_kb_files,
+        kb_chunks=chunks.get("kb", 0),
+        chat=chunks.get("chat", 0),
+        chatgpt=chunks.get("chatgpt", 0),
+        sessions=status.cold_chat_sessions,
+        imported=status.cold_chatgpt_imported,
+        bookmarks=status.cold_news_bookmarks,
+        summarize=status.cold_summarize_kept,
     )
 
-    aware = (
-        f"Aware 今日事件 {status.aware_events_today}"
-        f" · suggestion {status.aware_suggestions}"
+    aware = t(
+        "layers.aware_detail",
+        events=status.aware_events_today,
+        sug=status.aware_suggestions,
     )
     return [hot, warm, cold, aware]
 
@@ -254,9 +270,6 @@ def format_recall_priority_lines() -> list[str]:
     recency = getattr(config, "RECENCY_HALFLIFE_DAYS", 14)
     time_hl = getattr(config, "TIME_DECAY_HALFLIFE_DAYS", 90)
     return [
-        "默认顺序: Hot/Warm(personal) → Cold对话归档(archive) → session → web → workspace → aware",
-        (
-            f"时间邻近加权已启用（记忆半衰期 {recency:g} 天 / 时间锚衰减 {time_hl:g} 天）；"
-            "STM 类问题会把 session 提前"
-        ),
+        t("layers.recall_order"),
+        t("layers.recall_time", recency=recency, time_hl=time_hl),
     ]

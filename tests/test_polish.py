@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
+from localagent.i18n import reset_lang_cache
 from localagent.writing.polish import (
     PolishError,
     PolishResult,
@@ -26,6 +27,15 @@ from localagent.writing.scenes import (
     heuristic_scene,
     normalize_scene,
 )
+
+
+@pytest.fixture(autouse=True)
+def _force_zh_ui_lang(monkeypatch):
+    """Polish UI strings are asserted in Chinese; pin LA_LANG for CI locales."""
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
+    yield
+    reset_lang_cache()
 
 
 def test_normalize_scene_aliases():

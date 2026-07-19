@@ -10,6 +10,7 @@ from pathlib import Path
 
 from localagent import config
 from localagent.aware.profile import load_profile, save_profile
+from localagent.i18n import t
 
 LAUNCH_LABEL = "dev.localagent.aware-tick"
 CRON_MARKER = "# localagent-aware-tick"
@@ -103,7 +104,7 @@ def schedule_status() -> ScheduleStatus:
         path = _plist_path()
         if path.exists():
             return ScheduleStatus(True, "launchd", str(path), minutes)
-        return ScheduleStatus(False, "launchd", "未安装 LaunchAgent", minutes)
+        return ScheduleStatus(False, "launchd", t("aware.sched_launchd_missing"), minutes)
 
     if system == "Windows":
         listed = subprocess.run(
@@ -114,7 +115,7 @@ def schedule_status() -> ScheduleStatus:
         )
         if listed.returncode == 0:
             return ScheduleStatus(True, "schtasks", SCHTASKS_NAME, minutes)
-        return ScheduleStatus(False, "schtasks", "未注册任务计划", minutes)
+        return ScheduleStatus(False, "schtasks", t("aware.sched_schtasks_missing"), minutes)
 
     # Linux / others
     try:
@@ -126,11 +127,11 @@ def schedule_status() -> ScheduleStatus:
         return ScheduleStatus(
             enabled,
             "cron",
-            "crontab 已含 aware tick" if enabled else "crontab 未配置",
+            t("aware.sched_cron_on") if enabled else t("aware.sched_cron_off"),
             minutes,
         )
     except FileNotFoundError:
-        return ScheduleStatus(False, "none", "本机无 crontab", minutes)
+        return ScheduleStatus(False, "none", t("aware.sched_no_crontab"), minutes)
 
 
 def enable_schedule(*, interval_minutes: int | None = None) -> ScheduleStatus:
@@ -156,7 +157,10 @@ def enable_schedule(*, interval_minutes: int | None = None) -> ScheduleStatus:
         )
         detail = str(path)
         if loaded.returncode != 0:
-            detail += f" （launchctl: {(loaded.stderr or loaded.stdout or '').strip() or '需手动 load'}）"
+            msg = (loaded.stderr or loaded.stdout or "").strip() or t(
+                "aware.sched_launchctl_manual"
+            )
+            detail += t("aware.sched_launchctl_suffix", msg=msg)
         return ScheduleStatus(True, "launchd", detail, minutes)
 
     if system == "Windows":
@@ -177,8 +181,8 @@ def enable_schedule(*, interval_minutes: int | None = None) -> ScheduleStatus:
         proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if proc.returncode != 0:
             raise RuntimeError(
-                (proc.stderr or proc.stdout or "schtasks 创建失败").strip()
-                + "；可手动运行: la aware tick"
+                (proc.stderr or proc.stdout or t("aware.sched_schtasks_fail")).strip()
+                + t("aware.sched_schtasks_hint")
             )
         return ScheduleStatus(True, "schtasks", SCHTASKS_NAME, minutes)
 
@@ -196,8 +200,8 @@ def enable_schedule(*, interval_minutes: int | None = None) -> ScheduleStatus:
         check=False,
     )
     if proc.returncode != 0:
-        raise RuntimeError(proc.stderr or "crontab 写入失败")
-    return ScheduleStatus(True, "cron", "已写入用户 crontab", minutes)
+        raise RuntimeError(proc.stderr or t("aware.sched_cron_write_fail"))
+    return ScheduleStatus(True, "cron", t("aware.sched_cron_written"), minutes)
 
 
 def disable_schedule() -> ScheduleStatus:
@@ -215,7 +219,7 @@ def disable_schedule() -> ScheduleStatus:
                 path.unlink()
             except OSError:
                 pass
-        return ScheduleStatus(False, "launchd", "已卸载 LaunchAgent", minutes)
+        return ScheduleStatus(False, "launchd", t("aware.sched_launchd_unloaded"), minutes)
 
     if system == "Windows":
         subprocess.run(
@@ -223,7 +227,7 @@ def disable_schedule() -> ScheduleStatus:
             capture_output=True,
             check=False,
         )
-        return ScheduleStatus(False, "schtasks", "已删除任务计划", minutes)
+        return ScheduleStatus(False, "schtasks", t("aware.sched_schtasks_deleted"), minutes)
 
     listed = subprocess.run(["crontab", "-l"], capture_output=True, text=True, check=False)
     if listed.returncode == 0 and listed.stdout:
@@ -235,4 +239,4 @@ def disable_schedule() -> ScheduleStatus:
             capture_output=True,
             check=False,
         )
-    return ScheduleStatus(False, "cron", "已从 crontab 移除", minutes)
+    return ScheduleStatus(False, "cron", t("aware.sched_cron_removed"), minutes)

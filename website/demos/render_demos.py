@@ -236,12 +236,13 @@ def _iter_animation(
     height: int,
     fps: int,
     fonts: dict[str, ImageFont.ImageFont],
+    hold_tail_sec: float = 2.5,
 ):
     probe = Image.new("RGB", (width, height))
     draw = ImageDraw.Draw(probe)
     bar_h = 42
     revealed: list[dict] = []
-    hold_tail = int(fps * 0.9)
+    hold_tail = max(1, int(fps * hold_tail_sec))
 
     for event in events:
         kind = event["kind"]
@@ -321,7 +322,16 @@ def _iter_animation(
         yield final
 
 
-def render_demo(name: str, events: list[dict], *, width: int, height: int, fps: int, out_dir: Path) -> None:
+def render_demo(
+    name: str,
+    events: list[dict],
+    *,
+    width: int,
+    height: int,
+    fps: int,
+    out_dir: Path,
+    hold_tail_sec: float = 2.5,
+) -> None:
     import imageio.v2 as imageio
 
     prefer_cjk = any(_needs_cjk(e.get("text", "")) for e in events if e.get("kind") != "gap")
@@ -332,17 +342,30 @@ def render_demo(name: str, events: list[dict], *, width: int, height: int, fps: 
         "title": _load_font(12, prefer_cjk=False),
     }
 
+    hold_tail = max(1, int(fps * hold_tail_sec))
     frames = list(
-        _iter_animation(events, width=width, height=height, fps=fps, fonts=fonts)
+        _iter_animation(
+            events,
+            width=width,
+            height=height,
+            fps=fps,
+            fonts=fonts,
+            hold_tail_sec=hold_tail_sec,
+        )
     )
     if not frames:
         raise RuntimeError(f"no frames for {name}")
 
-    # Cap duration ~12s by dropping frames if needed.
-    max_frames = fps * 12
+    # Cap duration ~14s by dropping body frames; keep the end hold intact.
+    max_frames = fps * 14
     if len(frames) > max_frames:
-        step = math.ceil(len(frames) / max_frames)
-        frames = frames[::step]
+        body = frames[:-hold_tail] if hold_tail < len(frames) else frames
+        tail = frames[-hold_tail:] if hold_tail < len(frames) else []
+        body_budget = max(1, max_frames - len(tail))
+        if len(body) > body_budget:
+            step = math.ceil(len(body) / body_budget)
+            body = body[::step]
+        frames = body + tail
 
     out_dir.mkdir(parents=True, exist_ok=True)
     mp4_path = out_dir / f"{name}.mp4"
@@ -395,6 +418,7 @@ def main(argv: list[str] | None = None) -> int:
     width = int(data["width"])
     height = int(data["height"])
     fps = int(data["fps"])
+    hold_tail_sec = float(data.get("hold_tail_sec", 2.5))
     demos: dict = data["demos"]
 
     keys = args.only or sorted(demos.keys())
@@ -402,7 +426,15 @@ def main(argv: list[str] | None = None) -> int:
         if key not in demos:
             print(f"unknown demo: {key}", file=sys.stderr)
             return 1
-        render_demo(key, demos[key], width=width, height=height, fps=fps, out_dir=args.out)
+        render_demo(
+            key,
+            demos[key],
+            width=width,
+            height=height,
+            fps=fps,
+            out_dir=args.out,
+            hold_tail_sec=hold_tail_sec,
+        )
     return 0
 
 

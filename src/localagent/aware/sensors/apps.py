@@ -14,6 +14,7 @@ from localagent.aware.engagement import (
 )
 from localagent.aware.profile import SourceGrant
 from localagent.aware.types import AwareEvent, utc_now
+from localagent.i18n import t
 
 _JXA = r"""
 function run() {
@@ -73,10 +74,10 @@ class AppsSensor:
 
     def describe_access(self) -> list[str]:
         return [
-            "前台应用名称 / 窗口标题（System Events）",
-            "正在播放的曲目（Music / Spotify，若在播放）",
-            "根据系统空闲时间估算输入活跃时长（按前台应用分桶）",
-            "说明: 不记录按键内容；macOS 可能需「辅助功能 / 自动化」权限。",
+            t("aware.sensor_apps_front"),
+            t("aware.sensor_apps_media"),
+            t("aware.sensor_apps_idle"),
+            t("aware.sensor_apps_note"),
         ]
 
     def collect(
@@ -129,16 +130,12 @@ class AppsSensor:
             interval_sec=quantum,
         )
 
-        from localagent.aware.input_activity import is_input_active, record_input_activity
+        from localagent.aware.input_activity import (
+            counts_as_input,
+            is_input_active,
+            record_input_activity,
+        )
         from localagent.aware.scenes import classify_focus
-
-        input_active = is_input_active(idle_seconds=idle, app=app, error=err)
-        if record_activity:
-            record_input_activity(
-                app=app,
-                idle_seconds=idle,
-                error=err,
-            )
 
         scene = classify_focus(
             app=app,
@@ -147,6 +144,18 @@ class AppsSensor:
             media_title=media_title,
             media_app=str(snap.get("media_app") or ""),
         )
+        hid_active = is_input_active(idle_seconds=idle, app=app, error=err)
+        # Sensor-local recording has no same-tick fs/term/git yet; tick may re-record
+        # with corroborated=True. input_active on the event means corroborated input.
+        input_active = hid_active and counts_as_input(scene=scene, corroborated=False)
+        if record_activity:
+            record_input_activity(
+                app=app,
+                idle_seconds=idle,
+                error=err,
+                scene=scene,
+                corroborated=False,
+            )
         event = AwareEvent(
             source="apps",
             kind="apps.focus",
@@ -198,7 +207,7 @@ def _collect_focus_snapshot() -> dict[str, Any]:
     if platform.system() != "Darwin":
         return {
             "app": "",
-            "error": "apps 传感器当前仅支持 macOS",
+            "error": t("aware.sensor_apps_macos_only"),
         }
     try:
         proc = subprocess.run(
@@ -209,19 +218,19 @@ def _collect_focus_snapshot() -> dict[str, Any]:
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        return {"app": "", "error": f"osascript 失败: {exc}"}
+        return {"app": "", "error": t("aware.sensor_apps_osascript_fail", exc=exc)}
     if proc.returncode != 0:
-        err = (proc.stderr or proc.stdout or "未知错误").strip()
+        err = (proc.stderr or proc.stdout or t("aware.sensor_apps_unknown_err")).strip()
         return {"app": "", "error": err[:200]}
     text = (proc.stdout or "").strip()
     if not text:
-        return {"app": "", "error": "未读到前台应用"}
+        return {"app": "", "error": t("aware.sensor_apps_no_front")}
     try:
         raw = json.loads(text)
     except json.JSONDecodeError:
-        return {"app": "", "error": "解析前台应用失败"}
+        return {"app": "", "error": t("aware.sensor_apps_parse_fail")}
     if not isinstance(raw, dict):
-        return {"app": "", "error": "前台应用格式异常"}
+        return {"app": "", "error": t("aware.sensor_apps_format_bad")}
     return {
         "app": str(raw.get("app") or ""),
         "bundle_id": str(raw.get("bundle_id") or ""),

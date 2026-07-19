@@ -382,11 +382,14 @@ def deep_search(
         evidence = web_search(q)
         all_evidence.append(f"## Query: {q}\n{evidence}")
 
-    _status("综合多轮结果，撰写研究报告…")
-    synthesis_prompt = (
-        f"基于以下多轮搜索结果，撰写关于「{topic}」的深度研究报告（中文，结构化）：\n\n"
-        + "\n\n".join(all_evidence)
+    from localagent.i18n import resolve_lang, t
+
+    _status(
+        "Synthesizing research report…"
+        if resolve_lang() == "en"
+        else "综合多轮结果，撰写研究报告…"
     )
+    synthesis_prompt = t("prompt.deep_report", topic=topic) + "\n\n".join(all_evidence)
     return router.chat([ChatMessage(role="user", content=synthesis_prompt)], temperature=0.4, usage_command="deepsearch")
 
 

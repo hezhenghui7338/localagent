@@ -77,7 +77,11 @@ def test_activity_indicator_exit(capsys):
     assert "\r" not in out
 
 
-def test_render_welcome_shows_project_basics():
+def test_render_welcome_shows_project_basics(monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     info = WelcomeInfo(
         version=__version__,
         provider_line="qwen3.5:4b · auto(ollama→openrouter)",
@@ -116,6 +120,10 @@ def test_render_welcome_shows_project_basics():
 
 
 def test_format_web_search_hint_tavily_when_key_set(monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     monkeypatch.setattr("localagent.config.WEB_SEARCH_PROVIDER", "auto")
     monkeypatch.setattr("localagent.config.TAVILY_API_KEY", "tvly-x")
     monkeypatch.setattr("localagent.config.SEARXNG_URL", "")
@@ -123,6 +131,10 @@ def test_format_web_search_hint_tavily_when_key_set(monkeypatch):
 
 
 def test_format_web_search_hint_ddgs_without_key(monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     monkeypatch.setattr("localagent.config.WEB_SEARCH_PROVIDER", "auto")
     monkeypatch.setattr("localagent.config.TAVILY_API_KEY", "")
     monkeypatch.setattr("localagent.config.SEARXNG_URL", "")
@@ -130,6 +142,10 @@ def test_format_web_search_hint_ddgs_without_key(monkeypatch):
 
 
 def test_collect_welcome_info_includes_web_search(monkeypatch, tmp_path: Path):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     monkeypatch.setattr("localagent.config.WEB_SEARCH_PROVIDER", "auto")
     monkeypatch.setattr("localagent.config.TAVILY_API_KEY", "tvly-x")
     monkeypatch.setattr("localagent.config.SEARXNG_URL", "")
@@ -164,7 +180,10 @@ def test_cli_bare_la_defaults_to_chat():
 
 def test_chat_repl_prints_welcome(capsys, monkeypatch, tmp_path: Path):
     from localagent.chat_repl import ChatREPL
+    from localagent.i18n import reset_lang_cache
 
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     inputs = iter([":q"])
     monkeypatch.setattr("localagent.chat_repl.read_repl_line", lambda _prompt="> ": next(inputs))
     monkeypatch.setattr(

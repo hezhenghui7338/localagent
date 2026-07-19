@@ -36,6 +36,7 @@ from localagent.aware.suggestion import (
 from localagent.aware.tick import run_tick
 from localagent.aware.timewin import DEFAULT_SINCE, parse_since
 from localagent.aware.types import ALL_SOURCES, IMPLEMENTED_SOURCES, SENSITIVE_SOURCES
+from localagent.i18n import t
 from localagent.workspace.context import resolve_workspace
 
 
@@ -55,7 +56,7 @@ def cmd_aware(args: argparse.Namespace) -> int:
     }
     fn = handlers.get(action)
     if not fn:
-        print(f"[aware] 未知子命令: {action}")
+        print(t("aware.cmd_unknown", action=action))
         return 1
     return fn(args)
 
@@ -97,23 +98,40 @@ def _cmd_view(args: argparse.Namespace) -> int:
 def _cmd_status(_args: argparse.Namespace) -> int:
     profile = load_profile()
     sched = schedule_status()
-    print("LocalAgent · Aware")
-    print(f"上次 tick · {profile.last_tick_at or '尚未运行'}")
+    print(t("aware.status_title"))
+    when = profile.last_tick_at or t("aware.status_never")
+    print(t("aware.status_last_tick", when=when))
+    state = t("aware.status_sched_on") if sched.enabled else t("aware.status_sched_off")
     print(
-        f"定时 · {'开' if sched.enabled else '关'} "
-        f"({sched.backend}, 每 {sched.interval_minutes} 分钟) · {sched.detail}"
+        t(
+            "aware.status_schedule",
+            state=state,
+            backend=sched.backend,
+            minutes=sched.interval_minutes,
+            detail=sched.detail,
+        )
     )
-    print(f"今日事件 · {events_count_today()}  |  suggestion · {suggestion_count()}")
-    print("授权（grant / ungrant）：")
+    print(
+        t(
+            "aware.status_counts",
+            events=events_count_today(),
+            sug=suggestion_count(),
+        )
+    )
+    print(t("aware.status_grants"))
     for name in ALL_SOURCES:
         g = profile.grant_for(name)
         mark = "✓" if g.granted else "·"
-        impl = "" if name in IMPLEMENTED_SOURCES else " (尚未实现)"
-        hint = f"  → ungrant {name}" if g.granted and name in IMPLEMENTED_SOURCES else ""
+        impl = "" if name in IMPLEMENTED_SOURCES else t("aware.status_not_impl")
+        hint = (
+            t("aware.status_hint_ungrant", name=name)
+            if g.granted and name in IMPLEMENTED_SOURCES
+            else ""
+        )
         print(f"  {mark} {name}{impl}{hint}")
-    print("查看: la aware · la aware --since 1w · la aware tick")
-    print("解除: la aware ungrant <source>|all")
-    print("建议: la aware suggestion · approve|reject")
+    print(t("aware.status_view_hint"))
+    print(t("aware.status_ungrant_hint"))
+    print(t("aware.status_sug_hint"))
     return 0
 
 
@@ -140,27 +158,27 @@ def _expand_grant_sources(sources: list[str]) -> list[str]:
 def _cmd_grant(args: argparse.Namespace) -> int:
     sources = _expand_grant_sources(list(getattr(args, "sources", []) or []))
     if not sources:
-        print("[aware] 用法: la aware grant <source>|all …")
-        print(f"[aware] 可选: all {' '.join(ALL_SOURCES)}")
+        print(t("aware.grant_usage"))
+        print(t("aware.grant_choices", sources=" ".join(ALL_SOURCES)))
         return 1
     yes = bool(getattr(args, "yes", False))
 
     for source in sources:
         if source not in ALL_SOURCES:
-            print(f"[aware] 未知 source: {source}")
+            print(t("aware.grant_unknown", source=source))
             return 1
         if source not in IMPLEMENTED_SOURCES:
-            print(f"[aware] {source} 尚未实现，跳过")
+            print(t("aware.grant_not_impl", source=source))
             continue
 
         grant = load_profile().grant_for(source)
         sensor = build_sensor(source, grant)
-        print(f"[aware] 将授权读取 ({source})：")
+        print(t("aware.grant_will", source=source))
         for line in sensor.describe_access():
             print(f"  - {line}")
         if source in SENSITIVE_SOURCES and not yes:
-            if not _confirm(f"确认授权 {source}？"):
-                print(f"[aware] 已取消: {source}")
+            if not _confirm(t("aware.grant_confirm", source=source)):
+                print(t("aware.grant_cancelled", source=source))
                 continue
 
         paths = None
@@ -175,7 +193,7 @@ def _cmd_grant(args: argparse.Namespace) -> int:
         elif source == "terminal":
             history_files = [str(p) for p in discover_history_files()]
         elif source == "browser" and not discover_browser_dbs():
-            print("[aware] 未发现浏览器 History；仍写入授权")
+            print(t("aware.grant_no_browser"))
 
         grant_source(
             source,
@@ -184,22 +202,22 @@ def _cmd_grant(args: argparse.Namespace) -> int:
             history_files=history_files,
         )
         log_event("aware.grant", source=source, summary=f"granted {source}")
-        print(f"[aware] 已授权: {source}")
+        print(t("aware.grant_ok", source=source))
     return 0
 
 
 def _cmd_ungrant(args: argparse.Namespace) -> int:
     sources = list(getattr(args, "sources", []) or [])
     if not sources:
-        print("[aware] 用法: la aware ungrant <source>|all")
+        print(t("aware.ungrant_usage"))
         return 1
     for source in sources:
         if source != "all" and source not in ALL_SOURCES:
-            print(f"[aware] 未知 source: {source}")
+            print(t("aware.ungrant_unknown", source=source))
             return 1
         ungrant_source(source)
         log_event("aware.ungrant", source=source, summary=f"ungranted {source}")
-        print(f"[aware] 已解除: {source} · 可用 la aware grant {source} 重新授权")
+        print(t("aware.ungrant_ok", source=source))
     return 0
 
 
@@ -209,14 +227,14 @@ def _cmd_paths(args: argparse.Namespace) -> int:
     grant = profile.grant_for("fs")
     if sub == "list":
         paths = grant.paths or [str(p) for p in default_fs_watch_paths()]
-        print("[aware] fs 监视路径：")
+        print(t("aware.paths_list"))
         for p in paths:
             print(f"  - {p}")
         return 0
     if sub == "add":
         path = Path(getattr(args, "path", "")).expanduser().resolve()
         if not path.is_dir():
-            print(f"[aware] 不是目录: {path}")
+            print(t("aware.paths_not_dir", path=path))
             return 1
         paths = list(grant.paths) if grant.paths else [
             str(p) for p in default_fs_watch_paths()
@@ -226,17 +244,17 @@ def _cmd_paths(args: argparse.Namespace) -> int:
             paths.append(s)
         grant.paths = paths
         if not grant.granted:
-            print("[aware] 提示: fs 尚未 grant；请再运行 la aware grant fs")
+            print(t("aware.paths_hint_grant"))
         save_profile(profile)
-        print(f"[aware] 已添加: {s}")
+        print(t("aware.paths_added", path=s))
         return 0
     if sub == "rm":
         target = str(Path(getattr(args, "path", "")).expanduser().resolve())
         grant.paths = [p for p in (grant.paths or []) if p != target]
         save_profile(profile)
-        print(f"[aware] 已移除: {target}")
+        print(t("aware.paths_removed", path=target))
         return 0
-    print("[aware] paths 子命令: list | add | rm")
+    print(t("aware.paths_usage"))
     return 1
 
 
@@ -245,23 +263,28 @@ def _cmd_schedule(args: argparse.Namespace) -> int:
     if sub == "status":
         st = schedule_status()
         print(
-            f"[aware] schedule: {'on' if st.enabled else 'off'} "
-            f"backend={st.backend} every={st.interval_minutes}m · {st.detail}"
+            t(
+                "aware.schedule_status",
+                state="on" if st.enabled else "off",
+                backend=st.backend,
+                minutes=st.interval_minutes,
+                detail=st.detail,
+            )
         )
         return 0
     if sub == "on":
         try:
             st = enable_schedule(interval_minutes=getattr(args, "interval", None))
         except RuntimeError as exc:
-            print(f"[aware] schedule on 失败: {exc}")
+            print(t("aware.schedule_on_fail", exc=exc))
             return 1
-        print(f"[aware] schedule on · {st.backend} · {st.detail}")
+        print(t("aware.schedule_on_ok", backend=st.backend, detail=st.detail))
         return 0
     if sub == "off":
         st = disable_schedule()
-        print(f"[aware] schedule off · {st.detail}")
+        print(t("aware.schedule_off_ok", detail=st.detail))
         return 0
-    print("[aware] schedule 子命令: on | off | status")
+    print(t("aware.schedule_usage"))
     return 1
 
 
@@ -270,14 +293,14 @@ def _cmd_tick(args: argparse.Namespace) -> int:
     detail = bool(getattr(args, "detail", False))
     result = run_tick()
     if result.skipped:
-        print(f"[aware] tick 跳过: {result.skipped}")
+        print(t("aware.tick_skipped", reason=result.skipped))
         return 0
     for line in result.auto:
-        print(f"  auto · {line}")
+        print(t("aware.tick_auto", line=line))
     if result.suggestions:
-        print(f"  suggestion 新增 · {len(result.suggestions)}（la aware suggestion）")
+        print(t("aware.tick_sug_new", n=len(result.suggestions)))
     for err in result.errors:
-        print(f"  ! {err}")
+        print(t("aware.tick_error", err=err))
     print(
         format_view(
             mode="delta",
@@ -306,24 +329,21 @@ def _cmd_suggestion(args: argparse.Namespace) -> int:
         return _cmd_suggestion_approve(args)
     if action == "reject":
         return _cmd_suggestion_reject(args)
-    print("[aware] suggestion 子命令: list | approve | reject")
+    print(t("aware.sug_usage"))
     return 1
 
 
 def _cmd_suggestion_list() -> int:
     items = load_suggestions()
     if not items:
-        print("[aware] suggestion 为空")
+        print(t("aware.sug_empty"))
         return 0
-    print(f"[aware] suggestion ({len(items)})：")
+    print(t("aware.sug_list_header", n=len(items)))
     for item in items:
         print(f"  [{item.id}] ({item.source}) {item.title}")
         print(f"      {item.rationale}")
         print(f"      → {item.suggested_cmd}")
-    print(
-        "批准: la aware suggestion approve <id>|all\n"
-        "拒绝: la aware suggestion reject <id>|all"
-    )
+    print(t("aware.sug_help"))
     return 0
 
 
@@ -335,19 +355,19 @@ def _cmd_suggestion_approve(args: argparse.Namespace) -> int:
     else:
         item = get_item(target)
         if not item:
-            print(f"[aware] 未找到: {target}")
+            print(t("aware.sug_not_found", target=target))
             return 1
         chosen = [item]
     ok = 0
     for item in chosen:
         cmd = item.suggested_cmd.strip()
         if not is_allowed_cmd(cmd):
-            print(f"[aware] 拒绝执行非白名单命令: {cmd}")
+            print(t("aware.sug_deny_cmd", cmd=cmd))
             continue
         if is_ack_only_cmd(cmd):
             remove_items([item.id])
             kind = str(item.data.get("kind") or "insight")
-            print(f"[aware] 已确认 {kind} · {item.title}")
+            print(t("aware.sug_acked", kind=kind, title=item.title))
             log_event("aware.approve", summary=cmd, item_id=item.id, exit_code=0)
             ok += 1
             continue
@@ -356,7 +376,7 @@ def _cmd_suggestion_approve(args: argparse.Namespace) -> int:
         argv = shlex.split(cmd)
         if argv and argv[0] in {"la", "LA"}:
             argv = [sys.executable, "-m", "localagent.cli", *argv[1:]]
-        print(f"[aware] 执行: {item.suggested_cmd}")
+        print(t("aware.sug_exec", cmd=item.suggested_cmd))
         proc = subprocess.run(argv, check=False)
         log_event(
             "aware.approve",
@@ -368,8 +388,8 @@ def _cmd_suggestion_approve(args: argparse.Namespace) -> int:
             remove_items([item.id])
             ok += 1
         else:
-            print(f"[aware] 命令退出码 {proc.returncode}")
-    print(f"[aware] 已批准执行 {ok}/{len(chosen)}")
+            print(t("aware.sug_exit_code", code=proc.returncode))
+    print(t("aware.sug_approved", ok=ok, total=len(chosen)))
     return 0 if ok == len(chosen) else 1
 
 
@@ -379,7 +399,7 @@ def _cmd_suggestion_reject(args: argparse.Namespace) -> int:
         n = remove_items(all_items=True)
     else:
         n = remove_items([target])
-    print(f"[aware] 已拒绝 {n} 条")
+    print(t("aware.sug_rejected", n=n))
     return 0 if n else 1
 
 
@@ -393,17 +413,17 @@ def _cmd_events(args: argparse.Namespace) -> int:
     since = datetime.now(timezone.utc) - timedelta(hours=since_hours)
     events = load_events(source=source, since=since, limit=limit if raw else 500)
     if not events:
-        print("[aware] 无事件")
+        print(t("aware.events_none"))
         return 0
     if not raw:
         by_src = Counter(e.source for e in events)
-        print(f"[aware] 近 {since_hours}h 事件摘要（--raw 看明细）")
+        print(t("aware.events_summary", hours=since_hours))
         for src, n in by_src.most_common():
             sample = [e.title for e in events if e.source == src][-3:]
             print(f"  {src} · {n}  · {', '.join(sample)}")
-        print(f"[aware] 共 {len(events)} 条")
+        print(t("aware.events_total", n=len(events)))
         return 0
     for ev in events[:limit]:
         print(f"[{ev.ts}] {ev.source}/{ev.kind} · {ev.title}")
-    print(f"[aware] 共 {min(len(events), limit)} 条")
+    print(t("aware.events_total", n=min(len(events), limit)))
     return 0

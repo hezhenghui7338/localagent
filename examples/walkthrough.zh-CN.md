@@ -297,6 +297,8 @@ la polish --no-copy --scene email "您好，上次说的方案这周能给一下
 
 按源 `grant` 后才采集。**绝不自动写入 Cold / `kb/`**——可索引文件只进 suggestion。
 
+Aware 是可关闭的**本机事实层**（不是全知副脑）：`tick` 只做 Collect→Reduce（events / episodes / `context/hot.json`+`diff.json`），LLM 摘要与对话注入属于 Reason，仅在你主动问时跑。回答锚定事实卡；缺字段答「未观测到」，不瞎猜。
+
 ```bash
 la aware status
 la aware grant fs terminal browser apps -y
@@ -306,7 +308,6 @@ la aware --no-chat                 # 智能总结；TTY 去掉 --no-chat → awa
 ```
 
 **预期：** 当前状态 + 近时动态摘要；suggestion 为空也正常。不想开感知可跳过 grant。
-
 ---
 
 ## 一键演示脚本（可选）

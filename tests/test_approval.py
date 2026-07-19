@@ -35,7 +35,11 @@ def test_classify_shell_blocks_rm_rf_root():
     assert risk.reason
 
 
-def test_classify_shell_marks_rm_dangerous():
+def test_classify_shell_marks_rm_dangerous(monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     risk = classify_shell_command("rm -rf ./build")
     assert risk.level == "dangerous"
     assert "删除" in (risk.reason or "")
@@ -76,7 +80,11 @@ def test_needs_approval_skips_blocked():
     assert not needs_approval("run_shell", risk, policy="always")
 
 
-def test_format_approval_prompt_includes_command():
+def test_format_approval_prompt_includes_command(monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     risk = classify_shell_command("rm -rf ./tmp")
     text = format_approval_prompt("run_shell", {"command": "rm -rf ./tmp"}, risk)
     assert "rm -rf ./tmp" in text

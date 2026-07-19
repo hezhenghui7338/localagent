@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 from typing import Any
 
+from localagent.i18n import t
 from localagent.news.brief import format_article_detail, format_skim_card
 from localagent.news.mark import mark_article
 from localagent.news.nav import BriefNavState
@@ -14,10 +15,8 @@ from localagent.news.store import NewsStore
 from localagent.ui.clipboard import copy_text
 
 
-HELP_TEXT = (
-    "键位: ↑↓/jk 切换  PgUp/PgDn/空格 滚动  o/Enter 打开浏览器\n"
-    "      s 速读  r 精读并深聊  b 收藏  x 跳过  c 复制链接  ? 帮助  q/Esc 退出"
-)
+def _help_text() -> str:
+    return t("news.browser_help")
 
 
 def _term_width() -> int:
@@ -47,15 +46,16 @@ def render_browser_text(state: BriefNavState, *, plain_links: bool = False) -> s
     """Pure text render of the browser UI (also used in tests)."""
     del plain_links  # Detail panel keeps bare URL at the bottom; no title links.
     width = _term_width()
-    day = state.day or "今日"
+    day = state.day or t("news.browser_today")
+    help_text = _help_text()
     lines: list[str] = [
-        f"今日简报 · {day} · {state.position_label()}",
+        t("news.browser_header", day=day, pos=state.position_label()),
         "─" * min(width, 60),
     ]
     if state.empty:
-        lines.append("（暂无条目）")
+        lines.append(t("news.browser_empty"))
         lines.append("")
-        lines.append(HELP_TEXT)
+        lines.append(help_text)
         return "\n".join(lines)
 
     start, end = state.window_slice()
@@ -90,7 +90,7 @@ def render_browser_text(state: BriefNavState, *, plain_links: bool = False) -> s
         lines.append("")
         lines.append(f"· {state.message}")
     lines.append("")
-    lines.append(HELP_TEXT)
+    lines.append(help_text)
     return "\n".join(lines)
 
 
@@ -99,6 +99,21 @@ def _build_formatted(state: BriefNavState) -> Any:
 
     # Title links are plain text; users open via `o` / Enter.
     text = render_browser_text(state, plain_links=True)
+    header_prefix = t("news.browser_header", day="", pos="").split(" · ")[0]
+    help_prefix = _help_text().split("\n", 1)[0][:4]
+    prefix_current = t("news.prefix_current")
+    prefix_skim = t("news.prefix_skim")
+    section_labels = {
+        t("news.section_detail"),
+        t("news.section_viewpoints"),
+        t("news.section_quotes"),
+    }
+    meta_prefixes = (
+        t("news.meta_selected", reasons="").rstrip(),
+        t("news.meta_published", bits="").rstrip(),
+        t("news.meta_id", id="").rstrip(),
+        t("news.meta_url", url="").rstrip(),
+    )
     fragments: list[tuple[str, str]] = []
     after_title = False
     oneliner_done = False
@@ -110,10 +125,10 @@ def _build_formatted(state: BriefNavState) -> Any:
         elif bare.startswith("· "):
             fragments.append(("class:status", line))
             after_title = False
-        elif bare.startswith("今日简报") or bare.startswith("键位"):
+        elif bare.startswith(header_prefix) or bare.startswith(help_prefix):
             fragments.append(("class:header", line))
             after_title = False
-        elif bare.startswith("【当前】") or bare.startswith("【速读】"):
+        elif bare.startswith(prefix_current) or bare.startswith(prefix_skim):
             fragments.append(("class:title", line))
             after_title = True
             oneliner_done = False
@@ -121,9 +136,9 @@ def _build_formatted(state: BriefNavState) -> Any:
             fragments.append(("class:oneliner", line))
             oneliner_done = True
             after_title = False
-        elif bare in ("详细摘要", "主要观点", "金句"):
+        elif bare in section_labels:
             fragments.append(("class:section", line))
-        elif bare.startswith(("入选  ", "发布  ", "编号  ", "原文  ")):
+        elif any(bare.startswith(p) for p in meta_prefixes if p):
             fragments.append(("class:meta", line))
         else:
             fragments.append(("", line))
@@ -251,9 +266,7 @@ def _run_one_session(
             return
         ok = open_in_browser(art.url)
         state.message = (
-            f"已在浏览器打开"
-            if ok
-            else "打开浏览器失败，可按 c 复制链接"
+            t("news.browser_opened") if ok else t("news.browser_open_fail")
         )
         event.app.invalidate()
 
@@ -270,7 +283,7 @@ def _run_one_session(
             refreshed,
             reasons=list(cur.reasons) if cur and cur.reasons else None,
         )
-        state.message = "已显示速读卡 · 再按 ↑↓ 返回摘要"
+        state.message = t("news.browser_skim_shown")
         _reset_scroll()
         event.app.invalidate()
 
@@ -307,14 +320,14 @@ def _run_one_session(
         if not art:
             return
         if copy_text(art.url):
-            state.message = "已复制原文链接到剪贴板"
+            state.message = t("news.browser_copied")
         else:
-            state.message = f"复制失败: {art.url}"
+            state.message = t("news.browser_copy_fail", url=art.url)
         event.app.invalidate()
 
     @kb.add("?")
     def _help(event: Any) -> None:
-        state.message = HELP_TEXT.replace("\n", " | ")
+        state.message = _help_text().replace("\n", " | ")
         event.app.invalidate()
 
     @kb.add("q")
@@ -363,17 +376,17 @@ def run_news_browser(
 ) -> int:
     """Interactive brief loop. Returns process exit code."""
     if not ranked:
-        print("[news] 暂无条目。先运行 `la news sync`。")
+        print(t("news.browser_no_items"))
         return 0
 
     store = store or NewsStore()
     state = BriefNavState(items=list(ranked), day=day)
-    print("[news] 进入交互简报（↑↓ 切换 · PgDn/空格 滚动 · o 打开 · r 精读深聊 · q 退出）")
+    print(t("news.browser_enter"))
     print()
 
     while True:
         if state.empty:
-            print("[news] 列表已空。")
+            print(t("news.browser_list_empty"))
             return 0
         try:
             action = _run_one_session(state, store=store)
@@ -385,7 +398,7 @@ def run_news_browser(
             return 0
 
         if action == "quit":
-            print("[news] 已退出简报浏览器")
+            print(t("news.browser_quit"))
             return 0
 
         if action == "read":
@@ -394,21 +407,21 @@ def run_news_browser(
                 continue
             art = cur.article
             print()
-            print(f"[news] 精读: {art.title or art.id}")
+            print(t("news.browser_reading", title=art.title or art.id))
             from localagent.news.chat_bridge import run_article_chat
             from localagent.news.read import read_article
             from localagent.ui.console import ActivityIndicator
 
-            with ActivityIndicator("news", "抓取并总结原文…"):
+            with ActivityIndicator("news", t("news.browser_fetching")):
                 result = read_article(art.id, keep=False, plain_links=False, store=store)
             if result.error:
-                state.message = f"精读失败: {result.error}"
-                print(f"[news] {state.message}")
+                state.message = t("news.browser_read_fail", error=result.error)
+                print(t("news.msg_prefix", msg=state.message))
                 continue
             run_article_chat(result, provider=provider)
             print()
-            print("[news] 已返回简报浏览器")
-            state.message = "深聊结束 · 继续 ↑↓ 浏览"
+            print(t("news.browser_back"))
+            state.message = t("news.browser_chat_done")
             updated = store.get(art.id)
             if updated and state.current():
                 state.items[state.index] = RankedArticle(

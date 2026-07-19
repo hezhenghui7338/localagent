@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from localagent import config
+from localagent.i18n import t
 from localagent.agent.runtime import run_agent_turn
 from localagent.memory.core_profile import default_core_profile
 from localagent.memory.exit_extract import schedule_session_memory_extract
@@ -57,10 +58,7 @@ class ChatREPL:
         router = get_model_router()
         status = router.provider_status()
         if self.provider == "openai" and not status.get("openai"):
-            print(
-                "[chat] 警告: openai 未配置 api_key。"
-                " 请 LA config set-key openai <key> 或在 LA 会话中 /config set-key openai <key>。"
-            )
+            print(t("chat.warn_openai_key"))
         cloud_ready = any(
             name != "ollama" and name != "cursor" and status.get(name)
             for name in config.MODEL_PROVIDER_PRIORITY
@@ -70,7 +68,7 @@ class ChatREPL:
                 (n for n in config.MODEL_PROVIDER_PRIORITY if n not in ("ollama", "cursor") and status.get(n)),
                 "cloud",
             )
-            print(f"[chat] 提示: Ollama 本地模型较慢时可 /provider {alt} 加速")
+            print(t("chat.hint_ollama_slow", alt=alt))
         self._shown_fallback_hint = False
         interrupt_count = 0
         while True:
@@ -86,7 +84,7 @@ class ChatREPL:
                 if interrupt_count >= 2:
                     print()
                     break
-                print("\n[chat] 已取消；再按一次 Ctrl+C 退出，或继续输入")
+                print(t("chat.cancel_once"))
                 continue
             if not line:
                 continue
@@ -122,7 +120,7 @@ class ChatREPL:
                 streamed = True
             print(chunk, end="", flush=True)
 
-        with ActivityIndicator("chat", "处理中…") as activity:
+        with ActivityIndicator("chat", t("chat.processing")) as activity:
             try:
                 self.history.append({"role": "user", "content": user_input})
                 user_appended = True
@@ -152,18 +150,18 @@ class ChatREPL:
                 response = result.response
                 provider_source = get_model_router().format_last_source()
             except KeyboardInterrupt:
-                print("\n[chat] 请求已取消")
+                print(t("chat.request_cancelled"))
                 if user_appended:
                     self.history.pop()
                 activity.begin_streaming()
                 return
             except Exception as exc:
-                response = f"[错误] {exc}"
+                response = t("chat.error", exc=exc)
 
         if response is None:
             return
         if not str(response).strip():
-            response = "[错误] 模型返回了空内容，请重试。"
+            response = t("chat.empty_response")
         if streamed:
             print()
         else:
@@ -177,7 +175,7 @@ class ChatREPL:
             and router.last_provider != "ollama"
             and not self._shown_fallback_hint
         ):
-            print(f"[chat] 本地 Ollama 响应过慢，已自动切换 {router.last_provider}")
+            print(t("chat.ollama_failover", provider=router.last_provider))
             self._shown_fallback_hint = True
         append_message(self.session_id, "user", user_input)
         append_message(self.session_id, "assistant", response)

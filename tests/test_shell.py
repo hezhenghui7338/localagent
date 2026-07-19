@@ -15,16 +15,28 @@ def test_run_shell_command_echo(tmp_path: Path):
     assert str(tmp_path) in result
 
 
-def test_run_shell_command_empty():
+def test_run_shell_command_empty(monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     assert "不能为空" in run_shell_command("   ")
 
 
-def test_run_shell_command_blocks_rm_rf_root():
+def test_run_shell_command_blocks_rm_rf_root(monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     result = run_shell_command("rm -rf /")
     assert "禁止" in result
 
 
-def test_run_shell_command_timeout(tmp_path: Path):
+def test_run_shell_command_timeout(tmp_path: Path, monkeypatch):
+    from localagent.i18n import reset_lang_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    reset_lang_cache()
     result = run_shell_command("sleep 5", cwd=tmp_path, timeout=0.2)
     assert "超时" in result
 

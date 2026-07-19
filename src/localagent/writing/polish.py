@@ -8,6 +8,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from localagent.i18n import t
 from localagent.writing.scenes import (
     SCENE_BIZ,
     SCENE_IDS,
@@ -55,25 +56,29 @@ class PolishResult:
     def format_report(self) -> str:
         pack = get_scene_pack(self.brief.scene)
         bits = [
-            f"场景={pack.label}",
-            f"读者={self.brief.audience or '未指定'}",
-            f"态度={self.brief.attitude}",
+            t("polish.scene", label=pack.label),
+            t(
+                "polish.audience",
+                audience=self.brief.audience or t("polish.unspecified"),
+            ),
+            t("polish.attitude", attitude=self.brief.attitude),
         ]
         if self.brief.risks:
-            bits.append(f"风险={self.brief.risks}")
+            bits.append(t("polish.risks", risks=self.brief.risks))
         if self.brief.profile_note:
-            bits.append(f"文风={self.brief.profile_note}")
+            bits.append(t("polish.style", note=self.brief.profile_note))
         if self.brief.low_confidence:
-            bits.append("置信偏低·按默认场景处理")
+            bits.append(t("polish.low_conf"))
         lines = [
-            "【识别】" + " · ".join(bits),
-            "【主推】",
+            t("polish.tag_detect") + " · ".join(bits),
+            t("polish.tag_primary"),
             self.primary.strip(),
-            f"【备选·{self.soft_label}】",
+            t("polish.tag_alt", label=self.soft_label),
             self.softer.strip(),
-            f"【备选·{self.firm_label}】",
+            t("polish.tag_alt", label=self.firm_label),
             self.firmer.strip(),
-            "【改动】" + (self.changes.strip() or "微调措辞与语气"),
+            t("polish.tag_changes")
+            + (self.changes.strip() or t("polish.default_changes")),
         ]
         return "\n".join(lines)
 
@@ -129,7 +134,7 @@ def _chat_json(
     from localagent.models.router import ChatMessage, get_model_router
 
     if on_status:
-        on_status("调用模型…")
+        on_status(t("polish.status_model"))
     try:
         reply = get_model_router().chat(
             [ChatMessage(role="user", content=prompt)],
@@ -151,11 +156,12 @@ def detect_taste(
     """Infer scene / audience / attitude. Forced ``scene`` skips auto-detect."""
     draft = (text or "").strip()
     if not draft:
-        raise PolishError("草稿为空")
+        raise PolishError(t("polish.empty_draft"))
 
     forced = normalize_scene(scene)
     profile = _profile_snippet()
     heur_scene, heur_conf = heuristic_scene(draft)
+    unspecified = t("polish.unspecified")
 
     prompt = (
         "你是写作场合顾问。根据草稿判断场景与应有态度。"
@@ -172,7 +178,7 @@ def detect_taste(
         f"草稿:\n{draft[:4000]}"
     )
     if on_status:
-        on_status("识别场景与态度…")
+        on_status(t("polish.status_detect"))
     data = _chat_json(prompt, temperature=0.1, on_status=on_status)
 
     if forced:
@@ -191,7 +197,7 @@ def detect_taste(
             attitude = f"{attitude}；用户要求: {tone}"
         return TasteBrief(
             scene=pack.id,
-            audience=audience or "未指定",
+            audience=audience or unspecified,
             attitude=attitude,
             risks=risks,
             preserve=preserve,
@@ -215,7 +221,7 @@ def detect_taste(
             sid = SCENE_BIZ
         return TasteBrief(
             scene=sid,
-            audience=str(data.get("audience") or "未指定").strip() or "未指定",
+            audience=str(data.get("audience") or unspecified).strip() or unspecified,
             attitude=attitude,
             risks=str(data.get("risks") or "").strip(),
             preserve=preserve,
@@ -231,7 +237,7 @@ def detect_taste(
         attitude = f"{attitude}；用户要求: {tone}"
     return TasteBrief(
         scene=pack.id,
-        audience="未指定",
+        audience=unspecified,
         attitude=attitude,
         risks="避免越界承诺与指责",
         preserve=[],
@@ -255,43 +261,69 @@ def rewrite(
     on_status: StatusFn | None = None,
 ) -> PolishResult:
     """Rewrite draft given a taste brief. Raises PolishError on hard failure."""
+    from localagent.i18n import resolve_lang
+
     draft = (text or "").strip()
     if not draft:
-        raise PolishError("草稿为空")
+        raise PolishError(t("polish.empty_draft"))
     pack = get_scene_pack(brief.scene)
     preserve = "、".join(brief.preserve) if brief.preserve else "（无额外清单，勿新增事实）"
-    prompt = (
-        "你是资深中文写作润色编辑。根据场合态度改写草稿，保留原意与事实。\n"
-        "只输出一个 JSON 对象，不要 markdown，不要解释。字段：\n"
-        '  "primary": 主推版本（完整正文）\n'
-        f'  "softer": {pack.soft_label}备选（完整正文）\n'
-        f'  "firmer": {pack.firm_label}备选（完整正文）\n'
-        '  "changes": 改动说明（一句，列关键变化）\n'
-        "硬约束：\n"
-        "- 不新增原文没有的数字、公司、职位、承诺或截止日\n"
-        "- 不要工具调用、不要前言后语\n"
-        "- 三个版本都必须是可直接发送的完整正文\n"
-        f"{_pack_rules_block(pack)}\n"
-        f"读者: {brief.audience}\n"
-        f"态度: {brief.attitude}\n"
-        f"风险: {brief.risks or '无'}\n"
-        f"必须保留: {preserve}\n"
-        f"用户语气要求: {tone or '无'}\n"
-        f"用户画像: {brief.profile_note or '无'}\n\n"
-        f"草稿:\n{draft[:5000]}"
-    )
+
+    if resolve_lang() == "en":
+        preserve = ", ".join(brief.preserve) if brief.preserve else "(none; do not invent facts)"
+        prompt = (
+            t("prompt.polish_system")
+            + "Output one JSON object only — no markdown, no explanation. Fields:\n"
+            '  "primary": primary version (full body)\n'
+            f'  "softer": {pack.soft_label} alternative (full body)\n'
+            f'  "firmer": {pack.firm_label} alternative (full body)\n'
+            '  "changes": one-line change notes\n'
+            "Hard rules:\n"
+            "- Do not add numbers, companies, titles, promises, or deadlines absent from the draft\n"
+            "- No tool calls, no preamble\n"
+            "- All three versions must be sendable full body text\n"
+            f"{_pack_rules_block(pack)}\n"
+            f"Audience: {brief.audience}\n"
+            f"Attitude: {brief.attitude}\n"
+            f"Risks: {brief.risks or 'none'}\n"
+            f"Must keep: {preserve}\n"
+            f"Tone request: {tone or 'none'}\n"
+            f"Profile: {brief.profile_note or 'none'}\n\n"
+            f"Draft:\n{draft[:5000]}"
+        )
+    else:
+        prompt = (
+            t("prompt.polish_system")
+            + "只输出一个 JSON 对象，不要 markdown，不要解释。字段：\n"
+            '  "primary": 主推版本（完整正文）\n'
+            f'  "softer": {pack.soft_label}备选（完整正文）\n'
+            f'  "firmer": {pack.firm_label}备选（完整正文）\n'
+            '  "changes": 改动说明（一句，列关键变化）\n'
+            "硬约束：\n"
+            "- 不新增原文没有的数字、公司、职位、承诺或截止日\n"
+            "- 不要工具调用、不要前言后语\n"
+            "- 三个版本都必须是可直接发送的完整正文\n"
+            f"{_pack_rules_block(pack)}\n"
+            f"读者: {brief.audience}\n"
+            f"态度: {brief.attitude}\n"
+            f"风险: {brief.risks or '无'}\n"
+            f"必须保留: {preserve}\n"
+            f"用户语气要求: {tone or '无'}\n"
+            f"用户画像: {brief.profile_note or '无'}\n\n"
+            f"草稿:\n{draft[:5000]}"
+        )
     if on_status:
-        on_status("改写中…")
+        on_status(t("polish.status_rewrite"))
     data = _chat_json(prompt, temperature=0.45, on_status=on_status)
     if not data:
-        raise PolishError("模型未返回可用改写结果，请稍后重试或切换 /provider")
+        raise PolishError(t("polish.no_rewrite"))
 
     primary = str(data.get("primary") or "").strip()
     softer = str(data.get("softer") or "").strip()
     firmer = str(data.get("firmer") or "").strip()
     changes = str(data.get("changes") or "").strip()
     if not primary:
-        raise PolishError("模型未给出主推正文")
+        raise PolishError(t("polish.no_primary"))
     if not softer:
         softer = primary
     if not firmer:
@@ -301,7 +333,7 @@ def rewrite(
         primary=primary,
         softer=softer,
         firmer=firmer,
-        changes=changes or "微调措辞与语气",
+        changes=changes or t("polish.default_changes"),
         soft_label=pack.soft_label,
         firm_label=pack.firm_label,
     )
@@ -329,11 +361,11 @@ def copy_variant(result: PolishResult, choice: str) -> tuple[str, str] | None:
     if is_skip_choice(key):
         return None
     if key in ("1", "p", "primary", "主推"):
-        return ("主推", result.primary)
+        return (t("polish.label_primary"), result.primary)
     if key in ("2", "s", "soft", "softer", result.soft_label.lower(), "更软", "更淡", "更稳"):
-        return (f"备选·{result.soft_label}", result.softer)
+        return (t("polish.label_alt", label=result.soft_label), result.softer)
     if key in ("3", "f", "firm", "firmer", result.firm_label.lower(), "更硬", "更燃", "更亮"):
-        return (f"备选·{result.firm_label}", result.firmer)
+        return (t("polish.label_alt", label=result.firm_label), result.firmer)
     return None
 
 
@@ -362,15 +394,18 @@ def apply_clipboard(
 
     if do_copy(result.primary):
         hint = (
-            f"✓ 已复制【主推】到剪贴板 · 按 2={result.soft_label} / "
-            f"3={result.firm_label} 换拷 · 1=再拷主推 · Enter/n 结束"
+            t(
+                "polish.copied_primary_interactive",
+                soft=result.soft_label,
+                firm=result.firm_label,
+            )
             if interactive
-            else "✓ 已复制【主推】到剪贴板"
+            else t("polish.copied_primary")
         )
         lines.append(hint)
         print(hint)
     else:
-        msg = "剪贴板不可用，请手动复制【主推】区块"
+        msg = t("polish.clipboard_unavailable")
         lines.append(msg)
         print(msg)
         return lines
@@ -381,26 +416,31 @@ def apply_clipboard(
     reader = input_fn or input
     while True:
         try:
-            choice = reader("复制> ")
+            choice = reader(t("polish.copy_prompt"))
         except EOFError:
             break
         except KeyboardInterrupt:
             print()
-            lines.append("已结束复制")
+            lines.append(t("polish.copy_ended"))
             break
         if is_skip_choice(choice):
             break
         mapped = copy_variant(result, choice)
         if mapped is None:
-            msg = f"无效选项: {choice!r}（1=主推 / 2={result.soft_label} / 3={result.firm_label} / n）"
+            msg = t(
+                "polish.invalid_choice",
+                choice=choice,
+                soft=result.soft_label,
+                firm=result.firm_label,
+            )
             lines.append(msg)
             print(msg)
             continue
         label, body = mapped
         if do_copy(body):
-            msg = f"✓ 已复制【{label}】到剪贴板"
+            msg = t("polish.copied_label", label=label)
         else:
-            msg = f"复制【{label}】失败，请手动复制"
+            msg = t("polish.copy_failed", label=label)
         lines.append(msg)
         print(msg)
     return lines

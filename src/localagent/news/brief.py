@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from localagent.i18n import t
 from localagent.news.links import hyperlink
 from localagent.news.profile import NewsProfile, load_news_profile
 from localagent.news.rank import RankedArticle, rank_articles
@@ -40,8 +41,8 @@ def format_article_detail(
     """
     is_skim = mode == "skim"
     title = (article.title or article.id or "").strip() or article.url
-    prefix = "【速读】" if is_skim else "【当前】"
-    one = article.display_summary() or "（暂无摘要）"
+    prefix = t("news.prefix_skim") if is_skim else t("news.prefix_current")
+    one = article.display_summary() or t("news.no_summary")
     detail = article.resolved_detail()
     viewpoints = article.resolved_viewpoints()
     notes = article.resolved_viewpoint_notes() if is_skim else []
@@ -60,12 +61,12 @@ def format_article_detail(
 
     if detail:
         lines.append("")
-        lines.append("详细摘要")
+        lines.append(t("news.section_detail"))
         lines.extend(_indent_block(detail))
 
     if viewpoints:
         lines.append("")
-        lines.append("主要观点")
+        lines.append(t("news.section_viewpoints"))
         for i, claim in enumerate(viewpoints):
             lines.append(f"  · {claim}")
             if is_skim and i < len(notes):
@@ -75,7 +76,7 @@ def format_article_detail(
 
     if quotes:
         lines.append("")
-        lines.append("金句")
+        lines.append(t("news.section_quotes"))
         for q in quotes[:6]:
             lines.append(f"  · {q}")
 
@@ -83,25 +84,25 @@ def format_article_detail(
     lines.append("─" * max(20, min(rule_width, 60)))
 
     if reasons:
-        lines.append(f"入选  {' · '.join(reasons[:3])}")
+        lines.append(t("news.meta_selected", reasons=" · ".join(reasons[:3])))
     elif not is_skim:
-        lines.append("入选  候选")
+        lines.append(t("news.meta_selected", reasons=t("news.meta_candidate")))
 
     pub_bits: list[str] = []
     if article.published_at:
         pub_bits.append(article.published_at[:10])
     if meta.get("ai_score"):
-        pub_bits.append(f"AI初评 {meta['ai_score']}")
+        pub_bits.append(t("news.meta_ai_score", score=meta["ai_score"]))
     if meta.get("read_mins"):
-        pub_bits.append(f"{meta['read_mins']}分钟")
+        pub_bits.append(t("news.meta_mins", n=meta["read_mins"]))
     source = meta.get("source") or meta.get("author") or article.author
     if source:
         pub_bits.append(source)
     if pub_bits:
-        lines.append(f"发布  {' · '.join(pub_bits)}")
+        lines.append(t("news.meta_published", bits=" · ".join(pub_bits)))
 
-    lines.append(f"编号  {article.id}")
-    lines.append(f"原文  {article.url}")
+    lines.append(t("news.meta_id", id=article.id))
+    lines.append(t("news.meta_url", url=article.url))
     return "\n".join(lines)
 
 
@@ -113,13 +114,13 @@ def format_brief(
 ) -> str:
     day = brief_date or date.today().isoformat()
     lines = [
-        f"# 今日新闻简报 · {day}",
+        t("news.brief_title", day=day),
         "",
-        f"共 {len(ranked)} 条 · `la news read <id>` 精读 · 点击标题或原文链接打开浏览器",
+        t("news.brief_count", n=len(ranked)),
         "",
     ]
     if not ranked:
-        lines.append("_暂无条目。先运行 `la news sync`。_")
+        lines.append(t("news.brief_empty"))
         lines.append("")
         return "\n".join(lines)
 
@@ -128,19 +129,19 @@ def format_brief(
         summary = art.display_summary()
         if len(summary) > 220:
             summary = summary[:219] + "…"
-        reason = "；".join(item.reasons[:3]) if item.reasons else "候选"
+        reason = "；".join(item.reasons[:3]) if item.reasons else t("news.meta_candidate")
         title_link = hyperlink(art.title or art.url, art.url, force_plain=plain_links)
         lines.append(f"## {i}. {title_link}")
         lines.append(f"- id: `{art.id}`")
         if summary:
-            lines.append(f"- 一句话: {summary}")
-        lines.append(f"- 为何入选: {reason}")
+            lines.append(t("news.brief_one_liner", summary=summary))
+        lines.append(t("news.brief_why", reason=reason))
         if art.published_at:
-            lines.append(f"- 发布: {art.published_at[:10]}")
-        lines.append(f"- 原文: {art.url}")
+            lines.append(t("news.brief_published", day=art.published_at[:10]))
+        lines.append(t("news.brief_url", url=art.url))
         lines.append("")
     lines.append("---")
-    lines.append("提示: `la news skim <id>` 速读 · `la news mark <id> bookmark|skip`")
+    lines.append(t("news.brief_tip"))
     lines.append("")
     return "\n".join(lines)
 

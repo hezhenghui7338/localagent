@@ -5,13 +5,15 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-_TYPE_LABELS = {
-    "preference": "偏好",
-    "fact": "事实",
-    "plan": "计划",
-    "experience": "经历",
-    "observation": "观察",
-    "world": "世界知识",
+from localagent.i18n import t
+
+_TYPE_KEYS = {
+    "preference": "memory.type_preference",
+    "fact": "memory.type_fact",
+    "plan": "memory.type_plan",
+    "experience": "memory.type_experience",
+    "observation": "memory.type_observation",
+    "world": "memory.type_world",
 }
 
 _GENERIC_SOURCES = frozenset({"direct", "manual", "manual_add", "chat", "unknown"})
@@ -19,7 +21,7 @@ _GENERIC_SOURCES = frozenset({"direct", "manual", "manual_add", "chat", "unknown
 
 def _format_date(created_at: str) -> str:
     if not created_at:
-        return "未知时间"
+        return t("memory.unknown_time")
     try:
         dt = datetime.fromisoformat(created_at)
         return dt.strftime("%Y-%m-%d")
@@ -33,7 +35,7 @@ def _resolve_title(hit: dict[str, Any]) -> str:
     title = str(title).strip()
     if title.startswith("##"):
         title = title.lstrip("# ").strip()
-    return title or "未命名记忆"
+    return title or t("memory.untitled")
 
 
 def _resolve_tags(hit: dict[str, Any]) -> list[str]:
@@ -41,13 +43,14 @@ def _resolve_tags(hit: dict[str, Any]) -> list[str]:
     tags = meta.get("tags") or []
     if isinstance(tags, str):
         return [tags] if tags else []
-    return [str(t) for t in tags if str(t).strip()]
+    return [str(tag) for tag in tags if str(tag).strip()]
 
 
 def _resolve_type(hit: dict[str, Any]) -> str:
     meta = hit.get("metadata") or {}
     raw = str(meta.get("type") or hit.get("type") or "fact")
-    return _TYPE_LABELS.get(raw, raw)
+    key = _TYPE_KEYS.get(raw)
+    return t(key) if key else raw
 
 
 def _resolve_body(hit: dict[str, Any]) -> str:
@@ -69,7 +72,7 @@ def _resolve_source(hit: dict[str, Any]) -> str:
     heading = hit.get("section_heading") or ""
     if heading and heading != source:
         return f"{source} / {heading}" if source else heading
-    return source or "未知来源"
+    return source or t("memory.unknown_source")
 
 
 def format_memory_hit(
@@ -88,10 +91,10 @@ def format_memory_hit(
     mem_type = _resolve_type(hit)
     source = _resolve_source(hit)
 
-    tag_part = " · ".join(f"#{t}" for t in tags) if tags else ""
+    tag_part = " · ".join(f"#{tag}" for tag in tags) if tags else ""
     meta_line_parts: list[str] = []
     if score > 0:
-        meta_line_parts.append(f"相关度 {score:.2f}")
+        meta_line_parts.append(t("memory.relevance", score=score))
     meta_line_parts.extend([date_str, mem_type])
     if tag_part:
         meta_line_parts.append(tag_part)
@@ -104,7 +107,7 @@ def format_memory_hit(
         body,
     ]
 
-    footer_parts = [f"来源: {source}"]
+    footer_parts = [t("memory.source_label", source=source)]
     if show_ids and hit.get("id"):
         footer_parts.append(f"id: {hit['id'][:8]}")
     lines.extend(["", " · ".join(footer_parts)])
@@ -112,15 +115,18 @@ def format_memory_hit(
     if verbose:
         anchor = hit.get("anchor") or {}
         if anchor:
-            lines.append(f"时间锚点: {anchor}")
+            lines.append(t("memory.time_anchor", anchor=anchor))
         if hit.get("semantic_score") is not None:
             lines.append(
-                f"语义 {hit['semantic_score']:.2f} · "
-                f"时间衰减 {hit.get('temporal_score', 0):.2f}"
+                t(
+                    "memory.semantic_temporal",
+                    semantic=hit["semantic_score"],
+                    temporal=hit.get("temporal_score", 0),
+                )
             )
         full_text = str((hit.get("metadata") or {}).get("char_count", ""))
         if full_text:
-            lines.append(f"原始长度: {full_text} 字")
+            lines.append(t("memory.char_count", n=full_text))
 
     return "\n".join(lines)
 
@@ -136,9 +142,9 @@ def format_memory_hits(
     if not hits:
         return ""
 
-    header = f"找到 {len(hits)} 条相关记忆"
+    header = t("memory.found_n", n=len(hits))
     if query:
-        header += f"（查询: {query}）"
+        header += t("memory.found_query", query=query)
     blocks = [header, ""]
     for idx, hit in enumerate(hits, start=1):
         blocks.append(format_memory_hit(
