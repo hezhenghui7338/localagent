@@ -63,6 +63,12 @@ rerank = [
 neo4j = [
     "neo4j>=5.0.0",
 ]
+# Optional local OCR for scanned PDFs and screenshots (RapidOCR / PP-OCRv6).
+ocr = [
+    "rapidocr>=3.9.0",
+    "onnxruntime>=1.18.0",
+    "pymupdf>=1.24.0",
+]
 
 [project.urls]
 Homepage = "https://localagent.zhenghui7338.workers.dev/"

@@ -37,8 +37,97 @@ def _load_xlsx(path: Path) -> str:
     return "\n".join(parts)
 
 
+def _pdf_needs_ocr(page_count: int, pages_with_text: int) -> bool:
+    if page_count <= 0:
+        return False
+    if pages_with_text <= 0:
+        return True
+    ratio = pages_with_text / page_count
+    return ratio < config.OCR_PDF_TEXT_RATIO
+
+
 def _load_pdf(path: Path) -> tuple[str, dict]:
     """Extract text per page; inject ## [p.N] markers for citeable summarize."""
+    from pypdf import PdfReader
+
+    reader = PdfReader(str(path))
+    parts: list[str] = []
+    page_count = len(reader.pages)
+    non_empty = 0
+    for index, page in enumerate(reader.pages, start=1):
+        try:
+            raw = page.extract_text() or ""
+        except Exception:
+            raw = ""
+        text = raw.strip()
+        if not text:
+            continue
+        non_empty += 1
+        parts.append(f"## [p.{index}]\n{text}")
+    meta = {"page_count": page_count, "pages_with_text": non_empty}
+    body = "\n\n".join(parts)
+
+    if body.strip() or not _pdf_needs_ocr(page_count, non_empty):
+        return body, meta
+
+    if not config.OCR_ENABLED:
+        meta["needs_ocr"] = True
+        return "", meta
+
+    from localagent.ingest.ocr import ocr_metadata_from_result, ocr_pdf
+
+    ocr_result = ocr_pdf(path)
+    meta.update(ocr_metadata_from_result(ocr_result))
+    return ocr_result.text, meta
+
+
+def _load_image(path: Path) -> tuple[str, dict]:
+    if config.OCR_ENABLED:
+        from localagent.ingest.ocr import ocr_image, ocr_metadata_from_result
+
+        ocr_result = ocr_image(path)
+        return ocr_result.text, ocr_metadata_from_result(ocr_result)
+
+    if config.VL_ENABLED:
+        from localagent.ingest.vision import caption_image
+
+        return caption_image(path), {"vl_caption": True}
+
+    return "", {"needs_ocr": True}
+
+
+def explain_load_failure(path: Path) -> str:
+    """Return a user-facing hint when ``load_file`` would return None."""
+    from localagent.ingest.ocr import ocr_install_hint
+
+    path = Path(path)
+    suffix = path.suffix.lower()
+
+    if suffix == ".pdf":
+        try:
+            _, meta = _load_pdf_text_layer_only(path)
+        except Exception:
+            return f"无法读取 PDF: {path}"
+        page_count = int(meta.get("page_count") or 0)
+        pages_with_text = int(meta.get("pages_with_text") or 0)
+        if _pdf_needs_ocr(page_count, pages_with_text):
+            if config.OCR_ENABLED:
+                return f"扫描版 PDF OCR 失败或内容为空: {path}"
+            return f"扫描版 PDF 无文本层。{ocr_install_hint()}"
+        return f"无法读取 PDF 内容: {path}"
+
+    if suffix in IMAGE_SUFFIXES:
+        if not config.OCR_ENABLED and not config.VL_ENABLED:
+            return f"图片需要 OCR 或 VL 才能读取。{ocr_install_hint()}"
+        if config.OCR_ENABLED:
+            return f"图片 OCR 失败或内容为空: {path}"
+        return f"图片 VL 描述失败或内容为空: {path}"
+
+    return f"无法读取文件内容: {path}"
+
+
+def _load_pdf_text_layer_only(path: Path) -> tuple[str, dict]:
+    """Inspect PDF text layer without triggering OCR."""
     from pypdf import PdfReader
 
     reader = PdfReader(str(path))
@@ -76,11 +165,7 @@ def load_file(path: Path) -> LoadedDoc | None:
     elif suffix == ".pdf":
         text, extra_meta = _load_pdf(path)
     elif suffix in IMAGE_SUFFIXES:
-        if not config.VL_ENABLED:
-            return None
-        from localagent.ingest.vision import caption_image
-
-        text = caption_image(path)
+        text, extra_meta = _load_image(path)
     else:
         return None
 
