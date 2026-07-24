@@ -93,11 +93,13 @@ def ingest_file(
             error=str(exc),
         )
     if doc is None:
+        from localagent.ingest.loader import explain_load_failure
+
         return IngestResult(
             filename=filename,
             path=str(path),
             status=IngestStatus.FAILED,
-            error="unsupported or empty file",
+            error=explain_load_failure(path),
         )
 
     size_kb = max(len(doc.text.encode("utf-8")) / 1024, 0.1)

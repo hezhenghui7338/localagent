@@ -112,8 +112,8 @@ SUMMARIZE_SESSIONS_DIR = DATA_DIR / "summarize_sessions"
 SUMMARIZE_SESSIONS_INDEX = SUMMARIZE_SESSIONS_DIR / "index.json"
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
-# Text / tabular / PDF for RAG + one-click summarize.
-# Images stay in SUPPORTED_SUFFIXES but only load when LA_VL_ENABLED=1.
+# Text / tabular / PDF / images for RAG + one-click summarize.
+# Images load when LA_OCR_ENABLED=1 (exact text) or LA_VL_ENABLED=1 (semantic caption).
 SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt", ".xlsx", ".pdf"} | IMAGE_SUFFIXES
 SUMMARIZE_SUFFIXES = {".md", ".markdown", ".txt", ".xlsx", ".pdf"}
 DEFAULT_USER_ID = "default_user"
@@ -229,6 +229,14 @@ VL_ENABLED = _env_bool("LA_VL_ENABLED", "0")
 VL_MODEL = _env("LA_VL_MODEL", "qwen3-vl:4b") or "qwen3-vl:4b"
 VL_TIMEOUT = _env_float("LA_VL_TIMEOUT", "120")
 VL_NUM_PREDICT = _env_int("LA_VL_NUM_PREDICT", "1024")
+
+# --- OCR (scanned PDF / screenshot exact text; optional la-localagent[ocr]) ---
+OCR_ENABLED = _env_bool("LA_OCR_ENABLED", "0")
+OCR_TIER = (_env("LA_OCR_TIER", "medium") or "medium").strip().lower()
+OCR_LANG = (_env("LA_OCR_LANG", "ch") or "ch").strip()
+OCR_PDF_DPI = _env_int("LA_OCR_PDF_DPI", "150")
+OCR_MIN_CONF = _env_float("LA_OCR_MIN_CONF", "0.5")
+OCR_PDF_TEXT_RATIO = _env_float("LA_OCR_PDF_TEXT_RATIO", "0.1")
 
 
 def memory_user_id() -> str:

@@ -298,6 +298,15 @@ def cmd_summarize(args: argparse.Namespace) -> int:
         meta_bits = [t("summarize.chars", n=result.char_count)]
         if result.page_count is not None:
             meta_bits.append(t("summarize.pages", n=result.page_count))
+        if result.ocr_used:
+            ocr_bits = [t("summarize.ocr")]
+            if result.ocr_pages is not None:
+                ocr_bits.append(t("summarize.ocr_pages", n=result.ocr_pages))
+            if result.ocr_confidence_avg is not None:
+                ocr_bits.append(
+                    t("summarize.ocr_conf", conf=f"{result.ocr_confidence_avg:.2f}")
+                )
+            meta_bits.append(" · ".join(ocr_bits))
         meta_bits.append(t("summarize.llm") if result.used_llm else t("summarize.heuristic"))
         print(f"[summarize] {' · '.join(meta_bits)}")
         if result.warnings:
@@ -326,6 +335,41 @@ def cmd_summarize(args: argparse.Namespace) -> int:
         )
 
     return 1 if failures else 0
+
+
+def cmd_ocr(args: argparse.Namespace) -> int:
+    """Extract visible text from images or PDFs via local OCR (no LLM summarize)."""
+    from localagent.i18n import t
+    from localagent.ocr_cmd import OcrCommandError, render_ocr_result, run_ocr
+
+    raw_path = (getattr(args, "path", None) or "").strip()
+    if not raw_path:
+        print(t("ocr.usage"))
+        return 1
+
+    keep = bool(getattr(args, "keep", False))
+    as_json = bool(getattr(args, "json", False))
+    out_path = getattr(args, "out", None)
+
+    try:
+        result = run_ocr(raw_path, keep=keep)
+    except OcrCommandError as exc:
+        print(t("ocr.error", exc=exc))
+        return 1
+    except KeyboardInterrupt:
+        print(t("ocr.interrupted"))
+        return 130
+    except Exception as exc:
+        print(t("ocr.error", exc=exc))
+        return 1
+
+    rendered = render_ocr_result(result, as_json=as_json)
+    if out_path:
+        out = Path(out_path).expanduser().resolve()
+        out.write_text(result.text.rstrip() + "\n", encoding="utf-8")
+        print(t("ocr.wrote", path=out))
+    print(rendered)
+    return 0
 
 
 def _summarize_resume_one(
@@ -2404,7 +2448,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_summarize = sub.add_parser(
         "summarize",
         help=H("<path…> [--no-chat] [--keep] [--resume]  文档速读；默认进入文档对话", "<path…> [--no-chat] [--keep] [--resume]  doc skim; enter doc chat by default"),
-        description=H("针对本地文档的速读与文档对话（与 la chat「和助手聊」不同）。\n  默认：打印速读卡后进入 sum> 文档对话（TTY）。\n  --no-chat：仅速读（可多文件），不进入对话。\n支持 .txt / .md / .pdf / .xlsx。\n默认不入库；会话内 /keep 或 --keep 收藏到知识库（不每次追问）。\n  la summarize --list                 # 最近文档对话\n  la summarize <path> --resume        # 续聊\n", "Local document skim and doc chat (unlike la chat with the assistant).\n  Default: print skim card then enter sum> doc chat (TTY).\n  --no-chat: skim only (multi-file ok), no chat.\nSupports .txt / .md / .pdf / .xlsx.\nNot ingested by default; /keep or --keep bookmarks to knowledge (no prompt each time).\n  la summarize --list                 # recent doc chats\n  la summarize <path> --resume        # resume\n"),
+        description=H("针对本地文档的速读与文档对话（与 la chat「和助手聊」不同）。\n  默认：打印速读卡后进入 sum> 文档对话（TTY）。\n  --no-chat：仅速读（可多文件），不进入对话。\n支持 .txt / .md / .pdf / .xlsx；图片请用 la ocr。\n默认不入库；会话内 /keep 或 --keep 收藏到知识库（不每次追问）。\n  la summarize --list                 # 最近文档对话\n  la summarize <path> --resume        # 续聊\n", "Local document skim and doc chat (unlike la chat with the assistant).\n  Default: print skim card then enter sum> doc chat (TTY).\n  --no-chat: skim only (multi-file ok), no chat.\nSupports .txt / .md / .pdf / .xlsx; use la ocr for images.\nNot ingested by default; /keep or --keep bookmarks to knowledge (no prompt each time).\n  la summarize --list                 # recent doc chats\n  la summarize <path> --resume        # resume\n"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_summarize.add_argument(
@@ -2465,6 +2509,43 @@ def build_parser() -> argparse.ArgumentParser:
         help=H("强制使用本地启发式摘要（不调用模型；便于离线/测试）", "force local heuristic summary (no model; offline/testing)"),
     )
     p_summarize.set_defaults(func=cmd_summarize)
+
+    p_ocr = sub.add_parser(
+        "ocr",
+        help=H("<path> [--out FILE] [--keep] [--json]  本地 OCR 取字", "<path> [--out FILE] [--keep] [--json]  local OCR text extraction"),
+        description=H(
+            "从图片或 PDF 提取可见文字（RapidOCR / PP-OCRv6），不调用 LLM，不进入 summarize 文档对话。\n"
+            "  la ocr screenshot.png\n"
+            "  la ocr scan.pdf --out /tmp/scan.txt\n"
+            "  la ocr menu.png --keep\n"
+            "图片请用 la ocr；la summarize 仅支持 .txt / .md / .pdf / .xlsx。\n"
+            "需 LA_OCR_ENABLED=1 且 pip install 'la-localagent[ocr]'。",
+            "Extract visible text from images or PDFs (RapidOCR / PP-OCRv6); no LLM, no summarize doc chat.\n"
+            "  la ocr screenshot.png\n"
+            "  la ocr scan.pdf --out /tmp/scan.txt\n"
+            "  la ocr menu.png --keep\n"
+            "Use la ocr for images; la summarize supports .txt / .md / .pdf / .xlsx only.\n"
+            "Requires LA_OCR_ENABLED=1 and pip install 'la-localagent[ocr]'.",
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_ocr.add_argument("path", metavar="path", help=H("图片或 PDF 路径", "image or PDF path"))
+    p_ocr.add_argument(
+        "--out",
+        metavar="FILE",
+        help=H("将 OCR 文本写入文件（stdout 仍打印完整输出）", "write OCR text to file (stdout still prints full output)"),
+    )
+    p_ocr.add_argument(
+        "--keep",
+        action="store_true",
+        help=H("OCR 后将原文件 LA ingest doc 入库", "after OCR, LA ingest doc the source file"),
+    )
+    p_ocr.add_argument(
+        "--json",
+        action="store_true",
+        help=H("JSON 输出（含 text/confidence/warnings）", "JSON output (text/confidence/warnings)"),
+    )
+    p_ocr.set_defaults(func=cmd_ocr)
 
     p_news = sub.add_parser(
         "news",

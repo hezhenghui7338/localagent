@@ -8,7 +8,7 @@ from pathlib import Path
 from localagent import config
 from localagent.audit.security import is_sensitive_path, sensitive_path_reason
 from localagent.ingest.chunker import split_into_sections
-from localagent.ingest.loader import LoadedDoc, load_file
+from localagent.ingest.loader import LoadedDoc, explain_load_failure, load_file
 
 KEEP_HINT = (
     "默认不入库（瞬时读懂）。需要收藏到知识库时："
@@ -51,6 +51,9 @@ class SummarizeResult:
     warnings: list[str] = field(default_factory=list)
     annotated_text: str = ""
     session_source_key: str = ""
+    ocr_used: bool = False
+    ocr_pages: int | None = None
+    ocr_confidence_avg: float | None = None
 
     def render(self) -> str:
         return self.markdown
@@ -65,6 +68,16 @@ class SummarizeResult:
 
 def _suffix_ok(path: Path) -> bool:
     return path.suffix.lower() in config.SUMMARIZE_SUFFIXES
+
+
+def _summarize_reject_reason(path: Path) -> str | None:
+    suffix = path.suffix.lower()
+    if suffix in config.IMAGE_SUFFIXES:
+        return f"图片请使用 la ocr {path}；summarize 仅支持文档（.txt / .md / .pdf / .xlsx）"
+    if not _suffix_ok(path):
+        supported = ", ".join(sorted(config.SUMMARIZE_SUFFIXES))
+        return f"不支持的文件类型 {suffix!r}；支持: {supported}"
+    return None
 
 
 def _annotate_for_cite(doc: LoadedDoc) -> str:
@@ -286,6 +299,15 @@ def summarize_loaded(
     else:
         annotated_for_card = annotated
 
+    ocr_warnings = doc.metadata.get("ocr_warnings")
+    if isinstance(ocr_warnings, list):
+        warnings.extend(str(item) for item in ocr_warnings if str(item).strip())
+    ocr_used = bool(doc.metadata.get("ocr_used"))
+    ocr_pages_raw = doc.metadata.get("ocr_pages")
+    ocr_pages = int(ocr_pages_raw) if isinstance(ocr_pages_raw, int) else None
+    ocr_conf_raw = doc.metadata.get("ocr_confidence_avg")
+    ocr_confidence_avg = float(ocr_conf_raw) if isinstance(ocr_conf_raw, (int, float)) else None
+
     used_llm = False
     markdown: str | None = None
     if use_llm:
@@ -336,6 +358,9 @@ def summarize_loaded(
         used_llm=used_llm,
         warnings=warnings,
         annotated_text=annotated,
+        ocr_used=ocr_used,
+        ocr_pages=ocr_pages,
+        ocr_confidence_avg=ocr_confidence_avg,
     )
 
 
@@ -350,15 +375,16 @@ def summarize_path(
         raise SummarizeError(f"文件不存在: {source}")
     if is_sensitive_path(source):
         raise SummarizeError(sensitive_path_reason(source) or "敏感路径，拒绝读取")
+    reject = _summarize_reject_reason(source)
+    if reject:
+        raise SummarizeError(reject)
     if not _suffix_ok(source):
         supported = ", ".join(sorted(config.SUMMARIZE_SUFFIXES))
         raise SummarizeError(f"不支持的文件类型 {source.suffix!r}；支持: {supported}")
 
     doc = load_file(source)
     if doc is None:
-        raise SummarizeError(
-            f"无法读取文件内容（空文件、扫描版 PDF 无文本层，或解析失败）: {source}"
-        )
+        raise SummarizeError(explain_load_failure(source))
 
     result = summarize_loaded(doc, use_llm=use_llm, allow_long=True)
 
