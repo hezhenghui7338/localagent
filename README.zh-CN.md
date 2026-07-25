@@ -27,7 +27,7 @@ la
 有 API → `la config set-key openrouter sk-...`（或改 `~/.localagent/.env`）  
 无 API → `la setup -y`（按需装 Ollama，并按本机内存拉取 Qwen3.5 系列；≥10GB 为 `qwen3.5:4b`，≥18GB 为 `qwen3.5:9b`）
 
-日常旁路：`la ocr <path>` · `la summarize <path>` · `la news brief` · `la polish` · `la aware`  
+日常快捷功能：`la ocr <path>` · `la summarize <path>` · `la news brief` · `la polish` · `la aware`  
 升级 / 开发 / 卸载 → [安装与升级](#安装与升级)
 
 ## 要求
@@ -38,7 +38,7 @@ la
 
 ## 支持的环境
 
-主战场是**带本机 Ollama 的个人电脑**。操作系统重要，但**内存档位**和**Shell**同样决定第一天体验。
+本地 PC 部署 Ollama 为核心使用场景；操作系统是基础，而内存规格、Shell 交互环境，同样是影响初次使用体验的核心因素。
 
 | 优先级 | 环境 | 典型机器 | 说明 |
 | --- | --- | --- | --- |
@@ -50,13 +50,13 @@ la
 | **P2** | WSL2 | Windows 内 Linux | 按 Linux 路径用；不单独做安装器 |
 | **P2** | macOS Intel | 老款 Intel Mac | 能跑即可，不优先打磨 |
 | **P2** | Linux aarch64 | ARM 板 / 部分云主机 | 尽力兼容；轮子与 Ollama 因机而异 |
-| — | 移动端、以 Docker 为主路径、纯机房 GPU 集群 | — | 不在「本机个人助理」主路径内 |
+| — | 移动端、以 Docker 为首选部署、纯机房 GPU 集群 | — | 不在「本机个人助理」核心路径内 |
 
 **跨平台约定：**
 
-- **运行时：** Ollama 为一等公民；OpenAI 兼容本地服务仍可通过 YAML 高级配置接入。
+- **运行时：** Ollama 为默认首选；OpenAI 兼容本地服务仍可通过 YAML 高级配置接入。
 - **Shell：** bash/zsh 有 Tab 补全；PowerShell/cmd 可跑 `la` / `la setup` / 对话（补全暂跳过）。
-- **功能对齐：** P0 上 Chat、setup、记忆、RAG 必须可用。部分旁路可滞后（例如 Windows 上 `la news schedule` 暂不可用——请 `la news sync` 或用任务计划程序）。
+- **各平台功能保持一致：** P0 上 Chat、setup、记忆、RAG 必须可用。部分快捷功能可能晚一些上线（例如 Windows 上 `la news schedule` 暂不可用——请 `la news sync` 或用任务计划程序）。
 - **内存 → 模型：** 三端共用同一套档位——见 [Ollama 提示](#ollama-提示)。
 
 ## <img src="assets/icons/features.svg" alt="" width="28" valign="middle"> 特性
@@ -69,7 +69,7 @@ la
 | 改源码、跑测试 | [开发者安装](#开发者安装) |
 | 用自己的 API Key | [配置](#配置) · `la config` |
 | 跨会话被记住 | Hot / Warm / Cold + Mem0；ChatGPT 历史可 `LA ingest chatgpt` · [产品体验 §3–4](examples/product-tour.zh-CN.md) |
-| 文档进知识库并深度召回 | `LA ingest doc` / `rag search` · [产品体验 §5](examples/product-tour.zh-CN.md) |
+| 文档进知识库并检索原文 | `LA ingest doc` / `rag search` · [产品体验 §5](examples/product-tour.zh-CN.md) |
 | **OCR 取字**（截图/扫描件原文） | `la ocr <path>`；本地 RapidOCR，无 API；需 `pip install 'la-localagent[ocr]'` |
 | **一键总结**文档（默认进 `sum>` 深聊） | `la summarize <path>`；`.txt/.md/.pdf/.xlsx`（**不含图片**）；扫描 PDF 内嵌 OCR；`/keep` 或 `--keep` 入库；仅速读加 `--no-chat` |
 | **新闻嗅探** / 今日简报 | `la news sync` → `la news brief`（TTY ↑↓ / `o` 打开 / `r` 精读深聊）；`la news schedule on` |
@@ -83,17 +83,17 @@ la
 
 ### 产品设计
 
-1. **Local First** — 默认零账单路径：对话 / 记忆 / 检索 / 工具可纯本地跑通；主路径三命令（`la` · `la setup` · `la chat`）；可选云端与联网——身份、记忆与审计**档案**存本机、不上传；选用云端对话或联网搜索时，当轮内容会发往对应服务  
-2. **Memory Forever** — Hot / Warm / Cold + Mem0 跨会话持久；该记则记、不该记则跳过；本地 RAG + ChatGPT 导入；换模型不换身份  
-3. **Actions Automated** — Shell / 写文件 / 工作区；`la summarize` · `la news` · `la polish` · `la aware`；定时简报；执行前确认、危险硬拦、办完有回执；`la status` / `/status` 看今日信号与数据层  
+1. **Local First** — 默认零成本使用：对话 / 记忆 / 检索 / 工具可纯本地跑通；常用命令三件套（`la` · `la setup` · `la chat`）；可选云端与联网——身份、记忆与审计**本地数据**存本机、不上传；选用云端对话或联网搜索时，当轮内容会上传到对应服务  
+2. **Memory Forever** — Hot / Warm / Cold + Mem0 跨会话持久；该记的会记，不该记的不记；本地 RAG + ChatGPT 导入；换模型不换身份  
+3. **Actions Automated** — Shell / 写文件 / 工作区；`la summarize` · `la news` · `la polish` · `la aware`；定时简报；执行前确认、危险命令直接拦截、完成后有操作回执；`la status` / `/status` 看今日信号与数据层  
 
 | 普通本地 Chat | LocalAgent |
 | --- | --- |
 | 云端账单与账号门槛 | **Local First** — 默认零成本 Ollama，可选自有 API |
 | 聊完就忘，或只会死记 | **Memory Forever** — 会取舍的分层记忆 + 本地 RAG |
-| 只会聊天，事还得你自己办 | **Actions Automated** — 工具 · 旁路 · 定时；确认门 + 硬拦截 |
+| 只会聊天，事还得你自己办 | **Actions Automated** — 工具 · 快捷功能 · 定时；确认门 + 直接拦截 |
 
-可选 OpenRouter / Cursor / Tavily；**档案存本机**；选用云端或联网搜索时，当轮内容可能外发。需求见 [docs/PRD.md](docs/PRD.md)；约 30 分钟跑通见 [examples/product-tour.zh-CN.md](examples/product-tour.zh-CN.md)。
+可选 OpenRouter / Cursor / Tavily；**本地数据存本机**；选用云端或联网搜索时，当轮内容可能上传到外部服务。需求见 [docs/PRD.md](docs/PRD.md)；约 30 分钟跑通见 [examples/product-tour.zh-CN.md](examples/product-tour.zh-CN.md)。
 
 ### TODO · 敬请期待
 
@@ -104,7 +104,7 @@ la
 - LA 致力于提供高质量的 AI 实践反馈  
 - 「书读百遍其义自见」不会自己发生；真正懂，靠的是一遍遍实践  
 - LA 只摘**低垂、成熟**的果实，不引入失控、昂贵、难维护的重栈  
-- LA **只做一件事**：栖居在你电脑里的 AI。档案留本地，本地可完整跑通；欢迎联网与新技术，默认不设门槛  
+- LA **只做一件事**：栖居在你电脑里的 AI。本地数据留本机，本地可完整跑通；欢迎联网与新技术，默认不设门槛  
 - 尽量消除使用 AI 的门槛，而不是再添一道
 
 ## <img src="assets/icons/install.svg" alt="" width="28" valign="middle"> 安装与升级
@@ -136,7 +136,7 @@ la config --provider ollama --base_url "http://localhost:11434" --model qwen3.5:
 # 或：la config-example > my.json && la config my.json && la config list
 ```
 
-**Windows：** 用 PowerShell / cmd，并确保 [pipx](https://pipx.pypa.io/) 在 `PATH` 中。`la setup` 优先用 `winget` 安装 Ollama，否则打开 [ollama.com/download](https://ollama.com/download)。装完请重开终端，使 `ollama` 进入 `PATH`。（WSL 内可当 Linux 用；主路径为原生 Windows。）
+**Windows：** 用 PowerShell / cmd，并确保 [pipx](https://pipx.pypa.io/) 在 `PATH` 中。`la setup` 优先用 `winget` 安装 Ollama，否则打开 [ollama.com/download](https://ollama.com/download)。装完请重开终端，使 `ollama` 进入 `PATH`。（WSL 内可当 Linux 用；推荐原生 Windows 路径。）
 
 > PyPI 发布后：`pipx install la-localagent==0.6.0`
 
@@ -165,7 +165,7 @@ ollama rm qwen3.5:4b           # 可选：Ollama 独立，不会随 LA 自动卸
 
 ### <img src="assets/icons/local-first.svg" alt="" width="24" valign="middle"> 亮点：Local First
 
-LocalAgent 的核心链路——**对话、记忆写入、记忆召回、文档检索、工作区感知、Shell 执行、审计统计**——均可只依赖本地 Ollama，无需任何付费 API。身份、记忆与审计档案存本机；选用云端或联网搜索时，当轮内容会外发。
+LocalAgent 的核心链路——**对话、记忆写入、记忆召回、文档检索、工作区感知、Shell 执行、审计统计**——均可只依赖本地 Ollama，无需任何付费 API。身份、记忆与审计本地数据存本机；选用云端或联网搜索时，当轮内容会上传到外部服务。
 
 | 能力 | 是否需要联网 API | 说明 |
 | --- | --- | --- |
@@ -189,7 +189,7 @@ LA chat --provider ollama
 
 ### <img src="assets/icons/actions.svg" alt="" width="24" valign="middle"> 亮点：Actions Automated —— 本地 Shell 真正动手
 
-普通 Chat 只会告诉你「去终端运行 `find … | wc -l`」。LocalAgent 的 Agent 会**自己调用 `run_shell` 工具**，在工作区执行命令并把结果整理成回答——全程纯本地 `qwen3.5:4b`，无需云端 API。办完后附带 Action receipt；安全操作可会话内 approve-once。
+普通 Chat 只会告诉你「去终端运行 `find … | wc -l`」。LocalAgent 的 Agent 会**自己调用 `run_shell` 工具**，在工作区执行命令并把结果整理成回答——全程纯本地 `qwen3.5:4b`，无需云端 API。完成后会显示操作回执（Action receipt）；安全操作可会话内免重复确认（approve-once）。
 
 ```text
 > 统计一下当前项目的代码行数
@@ -211,7 +211,7 @@ LA chat --provider ollama
 
 ### 日常实用：一键总结 · 新闻嗅探 · 一键润色 · Aware
 
-这些旁路不走「漫长 Agent 工具循环」，专为**每天会用到**的场景设计：读文档、刷资讯、改文案、感知本机（需授权）。
+这些快捷命令不走「漫长 Agent 工具循环」，专为**每天会用到**的场景设计：读文档、刷资讯、改文案、感知本机（需授权）。
 
 #### <img src="assets/icons/summarize.svg" alt="" width="24" valign="middle"> 1. 一键总结 `la summarize` —— 3 分钟读懂 + 围绕文档深聊
 
@@ -297,7 +297,7 @@ la aware --detail --since 3h                 # 分源明细
 
 - **按源授权** — 默认关闭；`ungrant` 即停。已实现：`fs` · `git` · `terminal` · `browser` · `apps`（wechat / calendar / email 为占位）
 - **Suggestion ≠ 入库** — 可索引文件只进建议队列；`approve` 仅执行白名单命令（`la ingest doc|text`、`la summarize`）。洞察/健康类建议只 ack
-- **隐私** — 不录屏、不记按键内容；浏览器 **选中 ≠ 正在看**（仅前台浏览器累计 dwell）；apps 按应用估算输入活跃时长，不是键流
+- **隐私** — 不录屏、不记按键内容；浏览器 **选中 ≠ 正在看**（仅统计前台浏览器停留时长）；apps 按应用估算输入活跃时长，不记录按键内容
 - 可选：`la aware schedule on --interval 15` 定时 tick；数据在 `data/aware/`
 
 仓库提供 **产品体验教程**（用户故事驱动 · 完整输入输出 · 约 30 分钟）与更短的 walkthrough：
@@ -324,11 +324,11 @@ open examples/walkthrough.zh-CN.md
 open examples/walkthrough.md
 ```
 
-更完整的叙事与验收对照见 [docs/PRD.md](docs/PRD.md)。
+更完整的设计主线与验收对照见 [docs/PRD.md](docs/PRD.md)。
 
 ### <img src="assets/icons/memory-forever.svg" alt="" width="24" valign="middle"> 亮点：Memory Forever —— 全方位记住你
 
-记忆输入支持 **ChatGPT 历史对话与 LA 日常对话**；个人文档请用 `LA rag` 进知识库。Warm 层接入强大的 [Mem0](https://github.com/mem0ai/mem0) 引擎（`mem0ai` 已含主依赖），提供 **Retain → Recall → Reflect（search + LLM）** 完整记忆链路。仓库提供一条「架构决策演变」叙事演示，覆盖写入、语义召回、时间感知、标签浏览与跨记忆推理：
+记忆输入支持 **ChatGPT 历史对话与 LA 日常对话**；个人文档请用 `LA rag` 进知识库。Warm 层接入强大的 [Mem0](https://github.com/mem0ai/mem0) 引擎（`mem0ai` 已含主依赖），提供 **Retain → Recall → Reflect（search + LLM）** 完整记忆链路。仓库提供一条「架构决策演变」演示，覆盖写入、语义召回、时间感知、标签浏览与跨记忆推理：
 
 ```bash
 # 源码开发
@@ -459,7 +459,7 @@ usage: LA [-h] <command> ...
 
 LocalAgent — 本地个人 AI 助手
 
-主路径：
+主命令：
   la / la chat     对话
   la setup [-y]    安装/拉取本地 Ollama 模型
   la config …      纯本地或自有 API
@@ -497,7 +497,7 @@ data/
 ├── news/                      # 新闻嗅探：articles.sqlite · profile · sync_state · cache/
 ├── aware/                     # 本机感知：events · episodes · suggestions · profile
 ├── sync_index.json            # 已索引文件登记
-├── conversations/             # 对话档案
+├── conversations/             # 对话记录
 ├── chatGPTdata/               # ChatGPT 导出归档
 ├── chatgpt_import_index.json  # ChatGPT 导入去重登记
 ├── chat_ingest_index.json     # 对话记忆化进度登记
@@ -514,7 +514,7 @@ data/
 
 ## <img src="assets/icons/architecture.svg" alt="" width="28" valign="middle"> 架构
 
-叙事主线：**完全本地（零成本可玩）** → **真正易用** → **智能多层次记忆** → **外部工具** → **RAG**。
+设计主线：**完全本地（零成本可玩）** → **真正易用** → **智能多层次记忆** → **外部工具** → **RAG**。
 
 ### 系统总览
 
@@ -628,7 +628,7 @@ LA memory graph query "提到过几次 Caroline？"
 ChatGPT 导出 / LA 对话                查询
         │                                │
         ▼                                ▼
-提取 + 富化（enrich）                    查询分解（多跳拆分）
+提取 + 补充元数据                    查询分解（多跳拆分）
 （标题 / 标签 / 实体 /                   │
  事件时间 / 价值过滤）                    ▼
         │                             混合召回
@@ -655,11 +655,11 @@ Mem0 / JSON 存储                      Reflect（多跳检索 + LLM）
 | 联网 | `web_search`、`/deepsearch` | 默认 **ddgs**；可选 Tavily / SearXNG |
 | 本机 | `workspace_context`、`run_shell`、`write_file` | 限定工作区；Shell/写文件需确认 |
 
-有副作用的工具受门控（`always` / `dangerous` / `off`）。极端危险命令（如 `rm -rf /`）直接拦截。
+有副作用的工具需用户确认（`always` / `dangerous` / `off`）。极端危险命令（如 `rm -rf /`）直接拦截。
 
 ### 模型路由
 
-`ModelRouter` 统一 **Ollama**（默认本地）、**OpenAI**、**OpenRouter**、**Cursor**。`auto` 模式按 `LA_MODEL_PROVIDER_PRIORITY` 降级。算力默认本机（Ollama），可扩展到 OpenAI / OpenRouter / Cursor 等；模型与 LocalAgent 正交——小模型可跑通基本任务，更好的模型效果更好。会话、记忆与审计由 LocalAgent 落盘保管。
+`ModelRouter` 统一 **Ollama**（默认本地）、**OpenAI**、**OpenRouter**、**Cursor**。`auto` 模式按 `LA_MODEL_PROVIDER_PRIORITY` 降级。算力默认本机（Ollama），可扩展到 OpenAI / OpenRouter / Cursor 等；模型与 LocalAgent 相互独立——小模型可跑通基本任务，更好的模型效果更好。会话、记忆与审计由 LocalAgent 保存在本地。
 
 ### 源码模块一览
 
@@ -670,11 +670,11 @@ src/localagent/
 ├── models/          # ModelRouter（本地 → 云端降级）
 ├── memory/          # Hot 画像 · Warm 后端 · 召回/Reflect/Consolidate
 ├── knowledge/       # Cold Chroma + BM25 + RRF
-├── ingest/          # 统一 LA ingest 引擎（落盘→Cold→Warm→Hot）
+├── ingest/          # 统一 LA ingest 引擎（写入→Cold→Warm→Hot）
 ├── aware/           # 本机感知传感器 · tick · Episode · suggestion
 ├── tools/           # Agent 工具 + 执行确认
 ├── workspace/       # Git / 最近文件 / todos
-├── persist/         # 对话档案 · sessions · ChatGPT 归档
+├── persist/         # 对话记录 · sessions · ChatGPT 归档
 └── audit/           # 用量 · 安全扫描 · 报告
 ```
 
@@ -714,7 +714,7 @@ pytest tests/e2e -m e2e_live
 
 - **切勿提交** `.env` 或 `data/` 下的运行时数据；仓库已通过 `.gitignore` 排除
 - API Key 仅保存在本机 `.env` 中
-- 记忆、对话档案与审计日志默认仅存本地，LocalAgent 不会上传
+- 记忆、对话记录与审计日志默认仅存本地，LocalAgent 不会上传
 - **云端 / 联网搜索**：使用云端模型或 `web_search` 时，当轮对话（及 prompt 中召回的记忆）会发往对应服务；保持纯本地请用 `/provider ollama` 并避免联网搜索
 - **本地执行门禁**：Agent 的 `run_shell` / `write_file` 默认每次需你确认（`LA_TOOL_APPROVAL=always`）；危险命令会额外警告。极端破坏性命令（如 `rm -rf /`）直接禁止。非交互环境在未提供确认回调时拒绝执行
 - **Aware（本机感知）**：未 `grant` 前不采集；`ungrant` 即停。不录屏、不记按键内容。浏览器 **选中 ≠ 正在看**（后台标签不算「在读」）。可索引文件只进 **suggestion**，绝不自动写入 Cold / `kb/`；`approve` 仅执行白名单命令
