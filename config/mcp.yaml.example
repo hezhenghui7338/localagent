@@ -1,0 +1,31 @@
+# LocalAgent MCP server configuration
+# Copy to ~/.localagent/mcp.yaml or config/mcp.yaml
+
+defaults:
+  enabled: true
+  approval: dangerous   # always | dangerous | off
+  timeout_seconds: 30
+
+# Import Cursor ~/.cursor/mcp.json and project .cursor/mcp.json (first wins on name clash with LA yaml)
+import_cursor: true
+cursor_paths:
+  - ~/.cursor/mcp.json
+  - .cursor/mcp.json
+
+servers:
+  # Example: filesystem MCP (disabled by default — set enabled: true and fix path)
+  # filesystem:
+  #   transport: stdio
+  #   command: npx
+  #   args: ["-y", "@modelcontextprotocol/server-filesystem", "${userHome}/projects"]
+  #   enabled: false
+  #   approval: always
+
+  # Example: remote HTTP MCP (OAuth not supported in LA yet — use manual token in headers)
+  # linear:
+  #   transport: http
+  #   url: "https://mcp.linear.app/mcp"
+  #   headers:
+  #     Authorization: "Bearer ${env:LINEAR_API_KEY}"
+  #   enabled: false
+  #   approval: always

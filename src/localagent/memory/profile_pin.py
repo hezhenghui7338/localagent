@@ -13,7 +13,10 @@ from typing import Any
 from localagent import config
 from localagent.memory.core_profile import (
     CoreProfile,
+    EducationEntry,
     LifeAnchor,
+    ProjectEntry,
+    WorkEntry,
     load_core_profile,
     save_core_profile,
 )
@@ -165,6 +168,90 @@ def _confidence_ok(item: dict[str, Any]) -> bool:
     return conf >= config.PROFILE_PIN_MIN_CONFIDENCE
 
 
+def _split_skill_values(raw: str) -> list[str]:
+    return [part.strip() for part in re.split(r"[,，、/|]", raw) if part.strip()]
+
+
+def _upsert_work_entry(profile: CoreProfile, item: dict[str, Any]) -> bool:
+    company = str(item.get("company") or "").strip()
+    if not company:
+        return False
+    role = str(item.get("role") or "").strip()
+    start = str(item.get("start") or "").strip()
+    end_raw = item.get("end")
+    end = None if end_raw in (None, "", "null", "None") else str(end_raw).strip()
+    highlights = [
+        str(h).strip()
+        for h in (item.get("highlights") or [])
+        if str(h).strip()
+    ]
+    existing = next(
+        (
+            w
+            for w in profile.work_experience
+            if w.company == company and w.role == role and w.start == start
+        ),
+        None,
+    )
+    if existing:
+        changed = False
+        if end is not None and existing.end != end:
+            existing.end = end
+            changed = True
+        if highlights and existing.highlights != highlights:
+            existing.highlights = highlights
+            changed = True
+        return changed
+    profile.work_experience.append(
+        WorkEntry(company=company, role=role, start=start, end=end, highlights=highlights)
+    )
+    return True
+
+
+def _upsert_project(profile: CoreProfile, item: dict[str, Any]) -> bool:
+    name = str(item.get("name") or item.get("project") or "").strip()
+    if not name:
+        return False
+    description = str(item.get("description") or item.get("value") or "").strip()
+    role = str(item.get("role") or "").strip()
+    start = str(item.get("start") or "").strip()
+    end = str(item.get("end") or "").strip()
+    existing = next((p for p in profile.projects if p.name == name), None)
+    if existing:
+        changed = False
+        if description and existing.description != description:
+            existing.description = description
+            changed = True
+        if role and existing.role != role:
+            existing.role = role
+            changed = True
+        return changed
+    profile.projects.append(
+        ProjectEntry(name=name, description=description, role=role, start=start, end=end)
+    )
+    return True
+
+
+_STRUCTURED_FIELDS = frozenset(
+    {
+        "life_anchor",
+        "life_anchors",
+        "anchor",
+        "skill",
+        "skills",
+        "work_entry",
+        "work",
+        "work_experience",
+        "education",
+        "edu",
+        "project",
+        "projects",
+        "contact",
+        "source",
+    }
+)
+
+
 def apply_profile_updates(updates: list[dict[str, Any]], *, profile: CoreProfile | None = None) -> bool:
     """Apply structured pin updates to core_profile. Returns True if saved."""
     if not updates:
@@ -177,7 +264,7 @@ def apply_profile_updates(updates: list[dict[str, Any]], *, profile: CoreProfile
             continue
         field = str(item.get("field") or "").strip().lower()
         value = str(item.get("value") or "").strip()
-        if not value and field != "life_anchor":
+        if not value and field not in _STRUCTURED_FIELDS:
             continue
 
         if field == "name":
@@ -248,6 +335,73 @@ def apply_profile_updates(updates: list[dict[str, Any]], *, profile: CoreProfile
                 profile.life_anchors.append(
                     LifeAnchor(label=label, start=start, end=end, description=description)
                 )
+                changed = True
+            continue
+
+        if field in {"skill", "skills"}:
+            category = str(item.get("category") or item.get("key") or "通用").strip() or "通用"
+            values = _split_skill_values(str(item.get("value") or ""))
+            if not values:
+                continue
+            bucket = profile.skills.setdefault(category, [])
+            added = False
+            for val in values:
+                if val not in bucket:
+                    bucket.append(val)
+                    added = True
+            if added:
+                changed = True
+            continue
+
+        if field in {"work_entry", "work", "work_experience"}:
+            if _upsert_work_entry(profile, item):
+                changed = True
+            continue
+
+        if field in {"education", "edu"}:
+            school = str(item.get("school") or item.get("value") or "").strip()
+            if not school:
+                continue
+            entry = EducationEntry(
+                school=school,
+                degree=str(item.get("degree") or "").strip(),
+                major=str(item.get("major") or "").strip(),
+                start=str(item.get("start") or "").strip(),
+                end=str(item.get("end") or "").strip(),
+            )
+            existing = next((e for e in profile.education if e.school == school), None)
+            if existing:
+                if entry.degree and existing.degree != entry.degree:
+                    existing.degree = entry.degree
+                    changed = True
+            else:
+                profile.education.append(entry)
+                changed = True
+            continue
+
+        if field in {"project", "projects"}:
+            if _upsert_project(profile, item):
+                changed = True
+            continue
+
+        if field in {"goal", "goals"}:
+            goal = value.strip()
+            if goal and goal not in profile.goals:
+                profile.goals.append(goal)
+                changed = True
+            continue
+
+        if field == "contact":
+            key = str(item.get("key") or "info").strip() or "info"
+            if value and profile.contact.get(key) != value:
+                profile.contact[key] = value
+                changed = True
+            continue
+
+        if field == "source":
+            source = value.strip()
+            if source and source not in profile.sources:
+                profile.sources.append(source)
                 changed = True
             continue
 
@@ -342,6 +496,26 @@ def _pin_with_llm(facts: list[str]) -> bool:
     if not updates:
         return False
     return apply_profile_updates(updates, profile=profile)
+
+
+def pin_from_memory_slots(memories: list[Any]) -> bool:
+    """Pin Hot-layer facts from structured extraction slots (no LLM)."""
+    updates: list[dict[str, Any]] = []
+    for mem in memories:
+        slots = getattr(mem, "slots", None) or {}
+        if not isinstance(slots, dict):
+            continue
+        location = str(slots.get("location") or "").strip()
+        if location:
+            updates.append(
+                {"field": "preference", "key": "居住地", "value": location, "confidence": 0.9}
+            )
+        obj = str(slots.get("object") or "").strip()
+        if obj:
+            updates.append({"field": "preference", "key": "职业", "value": obj, "confidence": 0.9})
+    if not updates:
+        return False
+    return apply_profile_updates(updates)
 
 
 def pin_facts_to_profile(facts: list[str]) -> None:

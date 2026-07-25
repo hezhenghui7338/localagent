@@ -17,7 +17,7 @@ jobs:
       - name: Install (dev)
         run: uv sync --extra dev
       - name: Unit + integration (incl. STM)
-        run: uv run pytest -q
+        run: uv run pytest -q --cov=localagent --cov-report=xml --cov-report=term-missing:skip-covered
         env:
           LA_MEMORY_APPROVAL_AUTO: "1"
           LA_MEMORY_APPROVAL_REQUIRED: "0"
@@ -26,6 +26,12 @@ jobs:
           LA_NEO4J: "0"
           LA_MEMORY_GRAPH: "0"
           LA_MEMORY_RERANK: "0"
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: error
 
   e2e-offline:
     runs-on: ubuntu-latest

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from dataclasses import dataclass, field
@@ -9,6 +10,7 @@ from typing import Any, Literal
 
 from localagent import config
 from localagent.i18n import t
+from localagent.mcp.schema_adapter import is_mcp_tool_name, parse_mcp_la_tool_name
 from localagent.ui.console import prepare_for_input
 
 ApprovalPolicy = Literal["always", "dangerous", "off"]
@@ -110,7 +112,35 @@ def classify_shell_command(command: str) -> ToolRisk:
     return ToolRisk(level="safe", summary=cmd)
 
 
+def _mcp_server_approval(server_id: str) -> ApprovalPolicy:
+    from localagent.mcp.tool_registry import ToolRegistry
+
+    return ToolRegistry.get_server_approval(server_id)  # type: ignore[return-value]
+
+
+def _format_mcp_args(arguments: dict[str, Any]) -> str:
+    try:
+        text = json.dumps(arguments, ensure_ascii=False, sort_keys=True)
+    except TypeError:
+        text = str(arguments)
+    return text if len(text) <= 200 else f"{text[:200]}…"
+
+
 def classify_tool(name: str, arguments: dict[str, Any]) -> ToolRisk:
+    if is_mcp_tool_name(name):
+        parsed = parse_mcp_la_tool_name(name)
+        if parsed is None:
+            return ToolRisk(level="dangerous", summary=name)
+        server_id, tool_name = parsed
+        approval = _mcp_server_approval(server_id)
+        summary = f"MCP {server_id}/{tool_name}: {_format_mcp_args(arguments)}"
+        if approval == "off":
+            return ToolRisk(level="safe", summary=summary)
+        return ToolRisk(
+            level="dangerous",
+            reason=t("approval.mcp_reason", server=server_id, tool=tool_name),
+            summary=summary,
+        )
     if name == "run_shell":
         return classify_shell_command(str(arguments.get("command") or ""))
     if name == "write_file":
@@ -152,6 +182,22 @@ def classify_tool(name: str, arguments: dict[str, Any]) -> ToolRisk:
 
 def needs_approval(name: str, risk: ToolRisk, *, policy: ApprovalPolicy | None = None) -> bool:
     """Whether the tool call should pause for user confirmation."""
+    if is_mcp_tool_name(name):
+        parsed = parse_mcp_la_tool_name(name)
+        if parsed is None:
+            return False
+        server_id, _ = parsed
+        server_policy = _mcp_server_approval(server_id)
+        if server_policy == "off":
+            return False
+        if risk.level == "blocked":
+            return False
+        effective = policy if policy is not None else get_approval_policy()
+        if effective == "off":
+            return False
+        if effective == "always":
+            return True
+        return risk.level == "dangerous"
     if name not in APPROVAL_TOOLS:
         return False
     if risk.level == "blocked":
@@ -166,6 +212,18 @@ def needs_approval(name: str, risk: ToolRisk, *, policy: ApprovalPolicy | None =
 
 
 def format_approval_prompt(name: str, arguments: dict[str, Any], risk: ToolRisk) -> str:
+    if is_mcp_tool_name(name):
+        parsed = parse_mcp_la_tool_name(name)
+        if parsed:
+            server_id, tool_name = parsed
+            label = t("approval.label_mcp", server=server_id, tool=tool_name)
+        else:
+            label = name
+        lines = [t("approval.request", label=label)]
+        if risk.reason:
+            lines.append(t("approval.risk_line", reason=risk.reason))
+        lines.append(risk.summary)
+        return "\n".join(lines)
     if name == "run_shell":
         label = t("approval.label_shell")
     elif name == "edit_file":

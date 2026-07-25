@@ -70,33 +70,51 @@ def test_scoped_recall_matches_chinese_preference_query():
 
 def test_search_memory_falls_back_to_knowledge():
     with (
-        patch("localagent.tools.get_memory_backend") as backend_getter,
+        patch("localagent.context.retrieval.gateway.get_memory_backend") as backend_getter,
         patch(
-            "localagent.tools.search_knowledge",
-            return_value="- [0.500] 技术方案 (spec.md)\n  LocalAgent 使用 Hindsight",
-        ) as knowledge,
+            "localagent.context.retrieval.gateway.get_hybrid_retriever",
+        ) as get_retriever,
     ):
         backend = MagicMock()
         backend.recall.return_value = []
+        backend.backend_name.return_value = "json"
         backend_getter.return_value = backend
+        retriever = MagicMock()
+        retriever.retrieve.return_value = [
+            {
+                "text": "LocalAgent 使用 Hindsight",
+                "score_rrf": 0.5,
+                "metadata": {"heading": "技术方案", "source_file": "spec.md"},
+            }
+        ]
+        get_retriever.return_value = retriever
         result = search_memory("Hindsight")
     assert "记忆未命中" in result
     assert "Hindsight" in result
-    knowledge.assert_called_once_with("Hindsight", top_k=5, fallback=False)
+    retriever.retrieve.assert_called_once_with(
+        "Hindsight", top_k=5, since=None, until=None, conversation_only=False, source_file=None
+    )
 
 
 def test_search_memory_falls_back_to_documents():
     with (
-        patch("localagent.tools.get_memory_backend") as backend_getter,
-        patch("localagent.tools.search_knowledge", return_value="未找到相关知识片段。"),
+        patch("localagent.context.retrieval.gateway.get_memory_backend") as backend_getter,
         patch(
-            "localagent.tools.search_documents",
+            "localagent.context.retrieval.gateway.get_hybrid_retriever",
+        ) as get_retriever,
+        patch(
+            "localagent.context.retrieval.gateway.RetrievalGateway.search_documents",
             return_value="- [1] journal.md\n  我决定使用 Hindsight",
         ) as documents,
+        patch("localagent.config.DOC_KEYWORD_FALLBACK", True),
     ):
         backend = MagicMock()
         backend.recall.return_value = []
+        backend.backend_name.return_value = "json"
         backend_getter.return_value = backend
+        retriever = MagicMock()
+        retriever.retrieve.return_value = []
+        get_retriever.return_value = retriever
         result = search_memory("Hindsight")
     assert "记忆和 RAG 均未命中" in result
     assert "Hindsight" in result
