@@ -8,9 +8,9 @@
 |------|--------|----------|
 | **Local First** | 配置 / 模型路由 / 纯本地路径 | `cli.py` · `setup` · `config` · `models/router.py` |
 | **Memory Forever** | Hot / Warm / Cold + pending | `memory/*` · `knowledge/*` · `pending/*` · `ingest/*` |
-| **Actions Automated** | 工具循环 · 旁路 · 定时 · 回执 · 确认门 | `agent/runtime.py` · `tools/*` · `summarize/` · `news/` · `writing/` · `aware/` · `status/` · `audit/` |
+| **Actions Automated** | 工具循环 · 旁路 · 定时 · 回执 · 确认门 | `agent/runtime.py` · `tools/*` · `summarize/` · `ocr_cmd.py` · `ingest/ocr.py` · `news/` · `writing/` · `aware/` · `status/` · `audit/` |
 
-Actions 三档：旁路快捷（summarize / news / polish / aware）· Agent 工具循环（`run_shell` / `write_file` + Action receipt + session approve-once）· 定时（`news schedule` · `aware schedule`）+ Daily Actions / 数据层表面（`la status`·`/status` / 欢迎横幅）。
+Actions 三档：旁路快捷（summarize / **ocr** / news / polish / aware）· Agent 工具循环（`run_shell` / `write_file` + Action receipt + session approve-once）· 定时（`news schedule` · `aware schedule`）+ Daily Actions / 数据层表面（`la status`·`/status` / 欢迎横幅）。
 
 ## 1. 架构
 
@@ -36,7 +36,8 @@ LA CLI → chat REPL / ingest / pending / status
 
 ```
 src/localagent/
-├── cli.py                 # 全部 LA 命令
+├── cli.py                 # 全部 LA 命令（含 la ocr）
+├── ocr_cmd.py             # run_ocr / render_ocr_result；CLI 与 loader 共用
 ├── chat_repl.py           # REPL + slash 命令 (/…)
 ├── session_commands.py    # 会话内 / 命令分发（与外层 CLI 共享）
 ├── agent/
@@ -63,7 +64,9 @@ src/localagent/
 │   ├── hybrid.py
 │   └── indexer.py
 ├── ingest/                # unified LA ingest engine (persist→Cold→Warm→Hot) + doc pipeline
-├── summarize/             # la summarize：短路径卡片 + DocumentChatREPL（sum>）
+│   ├── ocr.py             # RapidOCR 封装：ocr_image / ocr_pdf（PyMuPDF 渲染）
+│   └── loader.py          # 扫描 PDF 文本层检测 → OCR 回退
+├── summarize/             # la summarize：短路径卡片 + DocumentChatREPL（sum>）；拒绝图片
 ├── news/                  # 新闻嗅探：RSS sync / brief TUI / read / schedule / notify
 ├── writing/               # la polish：场景润色 + 剪贴板
 ├── pending/               # 记忆写入确认门
@@ -103,13 +106,41 @@ data/
 | Warm 写入确认 | `LA_MEMORY_APPROVAL_REQUIRED`（默认开）：非交互提取入 `pending_queue.json`；`approve`/`reject`；`LA_MEMORY_APPROVAL_AUTO=1` 跳过（CI） |
 | 记忆引擎 | Mem0（主依赖）+ JSON fallback / 注册表 |
 | 知识检索 | Chroma + BM25 + RRF；文档与对话归档入 Cold |
-| 一键总结 | 短路径单次生成（1～最多 3 句 + 〔§/p.〕引用）；TTY 默认 `DocumentChatREPL`（`sum>`）；默认不入库 |
+| 一键总结 | 短路径单次生成（1～最多 3 句 + 〔§/p.〕引用）；TTY 默认 `DocumentChatREPL`（`sum>`）；默认不入库；`SUMMARIZE_SUFFIXES` 不含图片 |
+| 本地 OCR | `ingest/ocr.py` + `ocr_cmd.py`；RapidOCR（PP-OCRv6 / ONNX）；`la ocr` 旁路；扫描 PDF / ingest doc 内嵌 OCR；`pyproject.toml` `[ocr]` extra；`LA_OCR_*` 见 `env.example`；测试 `tests/test_ocr.py`（mock） |
 | 新闻嗅探 | BestBlogs RSS → SQLite；兴趣重排；`brief` TTY 用 prompt_toolkit 浏览器（↑↓ / o→webbrowser / r→精读+DocumentChatREPL）；launchd/cron 早 8 点 sync；chat 启动就绪通知 |
 | 一键润色 | `writing/polish.py` 旁路 Agent；场景/态度识别 → 主推+备选；默认 `clipboard.copy_text` |
 | Aware 本机感知 | 按源 opt-in（`fs`/`git`/`terminal`/`browser`/`apps`）；tick → Episode；可索引文件仅 suggestion；`approve` 白名单（`ingest doc\|text` / `summarize`）；**不自动写 Cold/`kb/`**；browser selected ≠ viewing；相关 chat 注入近时 Episode |
 | 编排 | LangGraph + SQLite Checkpointer |
 | 联网 | **ddgs 默认**（无需 Key）；可选 Tavily / SearXNG |
 | 模型 | Ollama 优先，OpenRouter/Cursor 降级 |
+
+### 4.1 本地 OCR 数据流
+
+```mermaid
+flowchart LR
+  subgraph ocrCmd [la_ocr]
+    Img[image_or_pdf] --> RapidOCR[RapidOCR_ONNX]
+    RapidOCR --> TextOut[stdout_or_file]
+  end
+  subgraph summarize [la_summarize]
+    Pdf[scanned_pdf] --> Detect{has_text_layer}
+    Detect -->|no| RapidOCR2[RapidOCR]
+    RapidOCR2 --> LLM[LLM_summary]
+    Detect -->|yes| LLM
+  end
+```
+
+| 模块 | 职责 |
+|------|------|
+| [`ingest/ocr.py`](../src/localagent/ingest/ocr.py) | `ocr_image` / `ocr_pdf`；RapidOCR + PyMuPDF |
+| [`ocr_cmd.py`](../src/localagent/ocr_cmd.py) | `run_ocr` / `render_ocr_result` |
+| [`cli.py`](../src/localagent/cli.py) | `la ocr`（`--out` / `--keep` / `--json`） |
+| [`config.py`](../src/localagent/config.py) | `SUMMARIZE_SUFFIXES` 不含图片；`LA_OCR_*` |
+| [`ingest/loader.py`](../src/localagent/ingest/loader.py) | PDF 文本层覆盖率低于 `LA_OCR_PDF_TEXT_RATIO` → OCR |
+| [`summarize/document.py`](../src/localagent/summarize/document.py) | 图片后缀拒绝，提示 `la ocr` |
+
+依赖：`pip install 'la-localagent[ocr]'`（`rapidocr` · `onnxruntime` · `pymupdf`）。配置见 [`env.example`](../src/localagent/resources/env.example)。
 
 ## 5. 时间召回
 

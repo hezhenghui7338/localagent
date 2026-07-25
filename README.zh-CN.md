@@ -27,7 +27,7 @@ la
 有 API → `la config set-key openrouter sk-...`（或改 `~/.localagent/.env`）  
 无 API → `la setup -y`（按需装 Ollama，并按本机内存拉取 Qwen3.5 系列；≥10GB 为 `qwen3.5:4b`，≥18GB 为 `qwen3.5:9b`）
 
-日常旁路：`la summarize <path>` · `la news brief` · `la polish` · `la aware`  
+日常旁路：`la ocr <path>` · `la summarize <path>` · `la news brief` · `la polish` · `la aware`  
 升级 / 开发 / 卸载 → [安装与升级](#安装与升级)
 
 ## 要求
@@ -70,7 +70,8 @@ la
 | 用自己的 API Key | [配置](#配置) · `la config` |
 | 跨会话被记住 | Hot / Warm / Cold + Mem0；ChatGPT 历史可 `LA ingest chatgpt` · [产品体验 §3–4](examples/product-tour.zh-CN.md) |
 | 文档进知识库并深度召回 | `LA ingest doc` / `rag search` · [产品体验 §5](examples/product-tour.zh-CN.md) |
-| **一键总结**文档（默认进 `sum>` 深聊） | `la summarize <path>`；`/keep` 或 `--keep` 入库；仅速读加 `--no-chat` |
+| **OCR 取字**（截图/扫描件原文） | `la ocr <path>`；本地 RapidOCR，无 API；需 `pip install 'la-localagent[ocr]'` |
+| **一键总结**文档（默认进 `sum>` 深聊） | `la summarize <path>`；`.txt/.md/.pdf/.xlsx`（**不含图片**）；扫描 PDF 内嵌 OCR；`/keep` 或 `--keep` 入库；仅速读加 `--no-chat` |
 | **新闻嗅探** / 今日简报 | `la news sync` → `la news brief`（TTY ↑↓ / `o` 打开 / `r` 精读深聊）；`la news schedule on` |
 | **Aware**（本机感知，需授权） | `la aware` · [Aware](#4-aware本机感知需授权) · grant → tick → suggestion → `aware>` · 相关时注入 `la chat` |
 | **一键润色**文案（默认复制主推） | `la polish` / `/polish` · `--scene` / `--tone` / `--no-copy` |
@@ -146,6 +147,7 @@ git clone git@github.com:hezhenghui7338/localagent.git
 cd LocalAgent
 python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
+# 需要本地 OCR：pip install -e ".[dev,ocr]"
 # 或：uv sync --extra dev
 ```
 
@@ -176,6 +178,7 @@ LocalAgent 的核心链路——**对话、记忆写入、记忆召回、文档�
 | 审计 `LA audit` | 否 | 读本地 usage.jsonl + events.jsonl |
 | 诊断日志 `LA logs` | 否 | 读本地 `data/logs/localagent.log` |
 | 联网搜索 | 否（默认 ddgs） | 开箱可用；可选 Tavily / 自托管 SearXNG 提升质量 |
+| OCR 取字 `la ocr` | 否 | 本地 RapidOCR（PP-OCRv6）；需 `pip install 'la-localagent[ocr]'` 与 `LA_OCR_ENABLED=1` |
 
 ```bash
 # 纯本地模式：本机 + Ollama，无需付费 API
@@ -218,11 +221,31 @@ la summarize notes.md --no-chat            # 只要卡片，不进对话（可�
 la summarize report.xlsx --keep            # 总结后同时入库（长期召回）
 ```
 
+- 支持：`.txt` / `.md` / `.pdf` / `.xlsx`（**不含图片**——图片请用 `la ocr`）
+- 扫描 PDF（无文本层）在 summarize/ingest 内**自动 OCR** 后再速读或入库
 - 输出：最多三句话总结 + 带 〔§章节 | p.页〕索引的结构化要点
 - **默认不入库**；在 `sum>` 里 `/keep` 或启动时加 `--keep`
 - 在 `sum>` 里直接提问即可围绕该文件深入讨论（`/summary` 重看卡片，`/exit` 结束）
 
-#### <img src="assets/icons/news.svg" alt="" width="24" valign="middle"> 2. 新闻嗅探 `la news` —— 从信任信源到今日简报
+#### 2. 本地 OCR `la ocr` —— 从截图/扫描件取原文
+
+适合菜单、表格、扫描件等需要**可复制原文**、而非 LLM 解读的场景：
+
+```bash
+pip install 'la-localagent[ocr]'   # rapidocr + onnxruntime + pymupdf
+# .env: LA_OCR_ENABLED=1（见 src/localagent/resources/env.example）
+
+la ocr screenshot.png              # 终端输出文字
+la ocr scan.pdf --out scan.txt     # 写入文件
+la ocr page.png --json             # JSON 输出（含置信度）
+```
+
+- 支持：`.png` / `.jpg` / `.jpeg` / `.webp` / `.bmp` / `.tiff`、PDF（逐页 OCR）
+- **与 summarize 分工**：图片不能 `la summarize`（会报错并提示 `la ocr`）；扫描 PDF 在 summarize/ingest 内自动 OCR
+- **与 VL 分工**：OCR = 精确文字；VL（`LA_VL_ENABLED`）= 场景/物体描述（Aware 等），二者独立
+- `la ingest doc` 仍可对图片/PDF 走 OCR 写入知识库
+
+#### <img src="assets/icons/news.svg" alt="" width="24" valign="middle"> 3. 新闻嗅探 `la news` —— 从信任信源到今日简报
 
 默认订阅 [BestBlogs](https://www.bestblogs.dev/) AI 精选 RSS（可改 `LA_NEWS_RSS_URL`）：
 
@@ -247,7 +270,7 @@ la news interests --add Agent # 兴趣加权
 
 进入 `la` / `la chat` 时，若早间已 sync，会提示「今日更新已准备好」。
 
-#### <img src="assets/icons/polish.svg" alt="" width="24" valign="middle"> 3. 一键润色 `la polish` —— 改完就能发
+#### <img src="assets/icons/polish.svg" alt="" width="24" valign="middle"> 4. 一键润色 `la polish` —— 改完就能发
 
 ```bash
 la polish "催一下进度的草稿"                    # 识别场景，主推进剪贴板
@@ -259,7 +282,7 @@ la polish --no-copy --file draft.txt           # 不写剪贴板（脚本友好�
 
 输出含【识别】【主推】【备选】【改动】；TTY 下可按 `2`/`3` 把备选拷到剪贴板。简历场景不会编造原文没有的数字。
 
-#### <img src="assets/icons/aware.svg" alt="" width="24" valign="middle"> 4. Aware——本机感知（需授权）
+#### <img src="assets/icons/aware.svg" alt="" width="24" valign="middle"> 5. Aware——本机感知（需授权）
 
 感知你在这台机器上做过什么（文件、git、终端、浏览器、前台应用）——**必须先 `grant` 授权对应源**。Episode 支撑 `aware>`，相关问题时可注入 `la chat`。**绝不自动写入 Cold / `kb/`。**
 
@@ -445,6 +468,7 @@ LocalAgent — 本地个人 AI 助手
   LA ingest text|chat|chatgpt|doc|kb|all   # 统一持久记忆化
   LA memory search|pending|approve|reject|forget
   LA rag search                            # Cold 检索
+  la ocr <path>                     # 本地 OCR 取字（图片/扫描 PDF）
   la summarize <path>               # 一键总结 → 文档对话（默认不入库）
   la news sync|brief|schedule       # 新闻嗅探 / 今日简报
   la aware [status|grant|ungrant|tick|schedule|suggestion|paths|events]

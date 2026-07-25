@@ -787,6 +787,7 @@ Map to [PRD §6](../docs/PRD.md) acceptance — you should be able to check:
 - [ ] **Stories 8–9**: Shell / write prompts for approval; dangerous ops warn or hard-block  
 - [ ] **Story 10**: `LA audit` shows tokens & cost; `--report out.html` exports HTML  
 - [ ] **Story 6b**: `la summarize` shows digest; TTY enters `sum>`; not kept by default  
+- [ ] **Story 10b (OCR)**: `pip install 'la-localagent[ocr]'` + `la ocr screenshot.png` prints text; `la summarize` on images errors and points to `la ocr`  
 - [ ] **Story 6c**: `la news sync` + `la news brief` (or `--no-ui`) shows items with source URLs  
 - [ ] **Story 6d**: `la polish --no-copy` shows Brief + primary/alternates; without `--no-copy`, primary is paste-ready  
 - [ ] **Story 6e**: `la aware grant` → `tick` → summary; suggestions do not auto-write Cold/`kb/`; `approve` whitelist-only  
