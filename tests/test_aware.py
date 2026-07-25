@@ -1051,15 +1051,20 @@ def test_episode_card_includes_local_time_range() -> None:
 def test_retrieve_aware_context_sensitive_episode_keeps_time(
     aware_home: Path,
 ) -> None:
+    from datetime import datetime, timedelta, timezone
+
     from localagent.aware.episode import AwareEpisode, append_episodes, retrieve_aware_context
 
+    now = datetime.now(timezone.utc)
+    end = now - timedelta(hours=1)
+    start = end - timedelta(minutes=30)
     append_episodes(
         [
             AwareEpisode(
                 id="sens1",
                 scene="sensitive_video",
-                start="2026-07-18T14:00:00+00:00",
-                end="2026-07-18T14:30:00+00:00",
+                start=start.isoformat(),
+                end=end.isoformat(),
                 duration_min=30,
                 source="browser",
                 title="敏感类浏览（仅时长信号）",

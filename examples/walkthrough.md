@@ -38,7 +38,8 @@ LocalAgent’s core path — **chat, memory write, memory recall, document retri
 | Workspace `LA workspace` | No | Reads local Git / files / TODOs |
 | Aware `la aware` | No (local model optional) | Default: current state + last 3h activity; `--detail` for per-source dump |
 | Audit `LA audit` | No | Reads local usage.jsonl |
-| Summarize `la summarize` | No (local model) | Digest card + `sum>` dialogue |
+| Summarize `la summarize` | No (local model) | `.txt/.md/.pdf/.xlsx` digest + `sum>`; **no images**; scanned PDFs OCR inline |
+| OCR `la ocr` | No | Local RapidOCR; images/scanned PDF text; needs `[ocr]` extra |
 | News sniff `la news` | Network only for sync | RSS → brief; deep-read can summarize locally |
 | Polish `la polish` | No (local model) | Scene rewrite + clipboard |
 | Web search | No (ddgs by default) | Works out of the box; optional Tavily / SearXNG |
@@ -251,9 +252,27 @@ Sample report: [audit-report-sample.md](audit-report-sample.md).
 
 ---
 
-## 7. Daily side-paths: summarize · news · polish · aware
+## 7. Daily side-paths: OCR · summarize · news · polish · aware
+
+### Local OCR `la ocr`
+
+Extract **copyable source text** from screenshots/scans (no LLM digest):
+
+```bash
+pip install 'la-localagent[ocr]'
+# .env: LA_OCR_ENABLED=1
+
+la ocr menu.png                  # print text
+la ocr invoice.pdf --out invoice.txt
+la summarize menu.png            # fails → use la ocr
+la summarize scanned.pdf         # inline OCR + digest + sum>
+```
+
+OCR = exact text; `la summarize` = doc digest + `sum>`; VL (`LA_VL_ENABLED`) = scene captions — three independent paths.
 
 ### Summarize
+
+Formats: `.txt` / `.md` / `.pdf` / `.xlsx` (**not images**). Scanned PDFs with no text layer are auto-OCR'd before digest.
 
 ```bash
 la summarize examples/sample-project-notes.md

@@ -36,7 +36,8 @@ LocalAgent 的核心链路——**对话、记忆写入、记忆召回、文档�
 | 工作区 `LA workspace` | 否 | 读本地 Git / 文件 / TODO |
 | 本机感知 `la aware` | 否（本地模型可选） | 默认：当前状态 + 近 3 小时动态；`--detail` 分源明细 |
 | 审计 `LA audit` | 否 | 读本地 usage.jsonl |
-| 一键总结 `la summarize` | 否（本地模型） | 速读卡 + `sum>` 文档对话 |
+| 一键总结 `la summarize` | 否（本地模型） | `.txt/.md/.pdf/.xlsx` 速读 + `sum>`；**不含图片**；扫描 PDF 内嵌 OCR |
+| OCR 取字 `la ocr` | 否 | 本地 RapidOCR；图片/扫描 PDF 原文；需 `[ocr]` extra |
 | 新闻嗅探 `la news` | 仅 sync 时需联网 | RSS → 简报；精读可本地总结 |
 | 一键润色 `la polish` | 否（本地模型） | 场景改写 + 剪贴板 |
 | 联网搜索 | 否（默认 ddgs） | 开箱可用；可选 Tavily / 自托管 SearXNG |
@@ -270,9 +271,27 @@ LA audit --since 7d --report examples/my-audit.md
 
 ---
 
-## 7. 日常旁路：总结 · 新闻 · 润色 · Aware
+## 7. 日常旁路：OCR · 总结 · 新闻 · 润色 · Aware
+
+### 本地 OCR `la ocr`
+
+从截图/扫描件取**可复制原文**（不走 LLM 速读）：
+
+```bash
+pip install 'la-localagent[ocr]'
+# .env: LA_OCR_ENABLED=1
+
+la ocr menu.png                  # 终端输出文字
+la ocr invoice.pdf --out invoice.txt
+la summarize menu.png            # 失败 → 请用 la ocr
+la summarize scanned.pdf         # 内嵌 OCR + 速读 + sum>
+```
+
+OCR = 精确取字；`la summarize` = 文档速读 + `sum>`；VL（`LA_VL_ENABLED`）= 图片语义描述，三者独立。
 
 ### 一键总结
+
+支持 `.txt` / `.md` / `.pdf` / `.xlsx`（**不含图片**）。扫描 PDF 无文本层时自动 OCR 后再速读。
 
 ```bash
 la summarize examples/sample-project-notes.md

@@ -27,7 +27,7 @@ la
 Have an API → `la config set-key openrouter sk-...` (or edit `~/.localagent/.env`)  
 No API → `la setup -y` (installs Ollama if needed and pulls a Qwen3.5 model matched to your RAM; ≥10GB → `qwen3.5:4b`, ≥18GB → `qwen3.5:9b`)
 
-Daily side-paths: `la summarize <path>` · `la news brief` · `la polish` · `la aware`  
+Daily side-paths: `la ocr <path>` · `la summarize <path>` · `la news brief` · `la polish` · `la aware`  
 Upgrade / dev / uninstall → [Install & upgrade](#install--upgrade)
 
 ## Requirements
@@ -70,7 +70,8 @@ Runs fully local by default; optional cloud and web. Details: [summarize · news
 | Use my own API keys | [Configuration](#configuration) · `la config` |
 | Be remembered across sessions | Hot / Warm / Cold + Mem0; import ChatGPT via `LA ingest chatgpt` · [Product tour §3–4](examples/product-tour.md) |
 | Put docs in a KB and recall deeply | `LA ingest doc` / `rag search` · [Product tour §5](examples/product-tour.md) |
-| **Summarize** a doc (`sum>` dialogue by default) | `la summarize <path>`; `/keep` or `--keep` to archive; `--no-chat` for digest-only |
+| **OCR text extraction** (screenshots/scans) | `la ocr <path>`; local RapidOCR, no API; needs `pip install 'la-localagent[ocr]'` |
+| **Summarize** a doc (`sum>` dialogue by default) | `la summarize <path>`; `.txt/.md/.pdf/.xlsx` (**no images**); scanned PDFs OCR inline; `/keep` or `--keep` to archive; `--no-chat` for digest-only |
 | **News sniff** / daily brief | `la news sync` → `la news brief` (TTY ↑↓ / `o` open / `r` deep-read); `la news schedule on` |
 | **Aware** (opt-in machine sensing) | `la aware` · [Aware](#4-aware--opt-in-machine-sensing) · grant → tick → suggestion → `aware>` · inject into `la chat` when relevant |
 | **Polish** copy (clipboard by default) | `la polish` / `/polish` · `--scene` / `--tone` / `--no-copy` |
@@ -146,6 +147,7 @@ git clone git@github.com:hezhenghui7338/localagent.git
 cd LocalAgent
 python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
+# For local OCR: pip install -e ".[dev,ocr]"
 # or: uv sync --extra dev
 ```
 
@@ -176,6 +178,7 @@ LocalAgent’s core path — **chat, memory write, memory recall, document retri
 | Audit `LA audit` | No | Reads local usage.jsonl + events.jsonl |
 | Diagnostic logs `LA logs` | No | Reads local `data/logs/localagent.log` |
 | Web search | No (ddgs by default) | Works out of the box; optional Tavily / self-hosted SearXNG |
+| OCR `la ocr` | No | Local RapidOCR (PP-OCRv6); needs `pip install 'la-localagent[ocr]'` and `LA_OCR_ENABLED=1` |
 
 ```bash
 # Fully local: your machine + Ollama, no paid API
@@ -218,11 +221,31 @@ la summarize notes.md --no-chat            # card only (multi-file ok)
 la summarize report.xlsx --keep            # also archive to KB
 ```
 
+- Formats: `.txt` / `.md` / `.pdf` / `.xlsx` (**not images** — use `la ocr`)
+- Scanned PDFs (no text layer) are **auto-OCR'd** inside summarize/ingest before digest/archive
 - Output: up to three sentences + key points with 〔§section | p.page〕 cites
 - **Not kept by default**; `/keep` in `sum>` or pass `--keep`
 - Ask follow-ups in `sum>` (`/summary` re-show card, `/exit` leave)
 
-#### <img src="assets/icons/news.svg" alt="" width="24" valign="middle"> 2. News sniff — trusted sources → today's brief
+#### 2. Local OCR `la ocr` — extract text from screenshots/scans
+
+For menus, tables, scans — when you need **copyable source text**, not an LLM interpretation:
+
+```bash
+pip install 'la-localagent[ocr]'   # rapidocr + onnxruntime + pymupdf
+# .env: LA_OCR_ENABLED=1 (see src/localagent/resources/env.example)
+
+la ocr screenshot.png              # print text to terminal
+la ocr scan.pdf --out scan.txt     # write to file
+la ocr page.png --json             # JSON with confidence scores
+```
+
+- Supports: `.png` / `.jpg` / `.jpeg` / `.webp` / `.bmp` / `.tiff`, PDF (page-by-page OCR)
+- **vs summarize**: images cannot `la summarize` (error points to `la ocr`); scanned PDFs OCR inline in summarize/ingest
+- **vs VL**: OCR = exact text; VL (`LA_VL_ENABLED`) = scene/object captions (Aware, etc.) — independent
+- `la ingest doc` can still OCR images/PDFs into the knowledge base
+
+#### <img src="assets/icons/news.svg" alt="" width="24" valign="middle"> 3. News sniff — trusted sources → today's brief
 
 Default feed: [BestBlogs](https://www.bestblogs.dev/) AI RSS (override with `LA_NEWS_RSS_URL`):
 
@@ -237,7 +260,7 @@ Keys in the interactive brief: ↑↓ navigate · `o` open in browser · `s` ski
 
 Chat startup notifies when today's sync is ready.
 
-#### <img src="assets/icons/polish.svg" alt="" width="24" valign="middle"> 3. One-click polish — rewrite ready to send
+#### <img src="assets/icons/polish.svg" alt="" width="24" valign="middle"> 4. One-click polish — rewrite ready to send
 
 ```bash
 la polish "nudge about the proposal"
@@ -247,7 +270,7 @@ la polish --no-copy --file draft.txt
 
 In-session: `/polish --scene email …`. Primary rewrite is copied to the clipboard by default; press `2`/`3` to copy an alternate. Resume mode never invents numbers not in the draft.
 
-#### <img src="assets/icons/aware.svg" alt="" width="24" valign="middle"> 4. Aware — opt-in machine sensing
+#### <img src="assets/icons/aware.svg" alt="" width="24" valign="middle"> 5. Aware — opt-in machine sensing
 
 Sense what you were doing on this machine (files, git, terminal, browser, foreground apps) — **only after you grant sources**. Episodes power `aware>` and can inject into `la chat` when relevant. **Nothing is auto-written to Cold / `kb/`.**
 
@@ -432,6 +455,7 @@ Everyday:
   LA ingest text|chat|chatgpt|doc|kb|all   # Unified persist → Cold → Warm → Hot
   LA memory search|pending|approve|reject|forget
   LA rag search                            # Cold retrieval
+  la ocr <path>                     # Local OCR text extraction (images/scanned PDF)
   la summarize <path>               # One-click summarize → doc dialogue
   la news sync|brief|schedule       # News sniff / daily brief
   la aware [status|grant|ungrant|tick|schedule|suggestion|paths|events]

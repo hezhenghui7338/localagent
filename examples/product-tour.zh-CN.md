@@ -796,8 +796,9 @@ la aware --no-chat
 - [ ] **故事 7**：小模型对话中自动 `web_search`（默认 ddgs），答案带来源感  
 - [ ] **故事 8–9**：Shell / 写文件弹出确认；危险命令有「风险」提示或硬拦截  
 - [ ] **故事 10**：`LA audit` 能看到 Token 与费用；`--report out.html` 可导出 HTML  
-- [ ] **故事 6b**：`la summarize` 出速读卡；TTY 进 `sum>`；默认不入库  
-- [ ] **故事 6c**：`la news sync` + `la news brief`（或 `--no-ui`）能看到带原文链接的简报  
+- [ ] **故事 6b**：`la summarize` 出速读卡；TTY 进 `sum>`；默认不入库
+- [ ] **故事 10b（OCR）**：`pip install 'la-localagent[ocr]'` + `la ocr screenshot.png` 能输出文字；`la summarize` 对图片报错并提示 `la ocr`
+- [ ] **故事 6c**：`la news sync` + `la news brief`（或 `--no-ui`）能看到带原文链接的简报
 - [ ] **故事 6d**：`la polish --no-copy` 输出识别 Brief + 主推/备选；不加 `--no-copy` 时主推可粘贴  
 - [ ] **故事 6e**：`la aware grant` → `tick` → 总结；suggestion 不自动写 Cold/`kb/`；`approve` 仅白名单  
 - [ ] **进阶**：明确路径写文件确认写入；「5 月 vs 7 月」时间查询 + `reflect` 讲清演变  

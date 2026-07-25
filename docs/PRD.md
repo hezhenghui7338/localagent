@@ -67,6 +67,7 @@ LocalAgent 不是「又一个 Chat 客户端」，而是跑在本机上的**个�
 | 8 | 用户 | 用本地工具改文件、跑命令 | Agent 真正动手 | `run_shell` / `write_file` / `LA workspace` | §6.3 |
 | 9 | 用户 | 危险命令被拦截 | 避免误伤本机 | 护栏 + 确认门 | §6.3 |
 | 10 | 用户 | 看清花了多少 token / 费用 | 可控成本 | `LA audit` / `--report` | §6.3 |
+| 10b | 用户 | 从截图/扫描件拿到可复制原文 | 不要 LLM 瞎编菜单/表格内容 | `la ocr <path>` | §6.3 |
 | 11 | 用户 | 一键总结本地文档 | 3 分钟读懂；默认文档对话；默认不入库 | `la summarize` / `sum>` | §6.3 |
 | 12 | 用户 | 嗅探今日资讯并浏览简报 | 替代每天手动刷 | `la news sync/brief`；`schedule on` | §6.3 |
 | 13 | 用户 | 一键润色文案 | 识别场合后改写；主推进剪贴板 | `la polish` / `/polish` | §6.3 |
@@ -172,12 +173,21 @@ LA audit --since 7d
 
 ### 4.7 一键总结 / 文档对话（Actions · 旁路快捷）
 
-- `la summarize <path>`：短文档优先；输出「最多三句话」+ 结构化要点（〔§章节 | p.页〕）；**TTY 下默认进入 `sum>` 文档对话**
+- `la summarize <path>`：支持 `.txt` / `.md` / `.pdf` / `.xlsx`（**不含图片**——图片请用 `la ocr`）；短文档优先；输出「最多三句话」+ 结构化要点（〔§章节 | p.页〕）；**TTY 下默认进入 `sum>` 文档对话**
+- **扫描 PDF**：loader 检测文本层覆盖率不足 → 调用 `ingest/ocr.py`（RapidOCR）→ 再走 summarize
 - `--no-chat`：仅速读（可多文件 / `--out`）；不进入对话
 - **默认不入库**；会话内 `/keep` 或 `--keep` 收藏到 Cold 知识库；**禁止**每次总结后追问是否入库
 - `--list` / `--resume` / `--id`：文档对话可离开再续
 - 与 `la chat` 区分：chat = 和助手聊；summarize = 针对已打开文件的速读/深聊
+- 与 `la ocr` / VL 区分：summarize = LLM 速读+深聊；OCR = 精确取字；VL = 图片语义描述（独立开关）
 - 对话内工具：`summarize_document`（原子速读）
+
+### 4.7a 本地 OCR（Actions · 旁路快捷）
+
+- `la ocr <path>`：图片（`.png` / `.jpg` / `.jpeg` / `.webp` / `.bmp` / `.tiff`）与 PDF 逐页 OCR → 纯文本（stdout 或 `--out`）
+- 依赖：`pip install 'la-localagent[ocr]'`；`LA_OCR_ENABLED=1`（见 `env.example` 中 `LA_OCR_*`）
+- 未安装 extra 或 OCR 关闭时：清晰报错，不静默失败
+- **边界**：`la summarize` 拒绝图片；`la ingest doc` 仍可对图片/扫描 PDF OCR 入库；与 VL（`LA_VL_ENABLED`）独立——OCR 取字，VL 描述场景
 
 ### 4.8 一键润色（Actions · 旁路快捷）
 
@@ -200,7 +210,7 @@ LA audit --since 7d
 
 | 档 | 能力 | 说明 |
 |----|------|------|
-| 旁路快捷 | summarize · news · polish · aware | 不走漫长 Agent 工具循环，直接出结果 |
+| 旁路快捷 | summarize · **ocr** · news · polish · aware | 不走漫长 Agent 工具循环，直接出结果；**OCR ≠ summarize ≠ VL** |
 | Agent 工具循环 | `run_shell` / `write_file` / workspace / web_search | 执行前确认；approve-once；办完回执 |
 | 定时 | `la news schedule` · `la aware schedule` | 本机定时准备，打开 LA 可见就绪信号 |
 
@@ -244,7 +254,8 @@ LA audit --since 7d
 | 审阅待写入记忆 | `LA memory pending` → `approve` / `reject` |
 | 导入 ChatGPT | `LA ingest chatgpt <path>` |
 | 把文档放进知识库 | `LA ingest doc <path>` → `LA rag search <query>` |
-| 一键总结文档（默认文档对话，不入库） | `la summarize <path>` → `sum>`；长期召回：`--keep` / `/keep`；仅速读：`--no-chat` |
+| OCR 取字（截图/扫描件原文） | `la ocr <path>`；`--out` / `--json`；需 `[ocr]` extra |
+| 一键总结文档（默认文档对话，不入库） | `la summarize <path>` → `sum>`（`.txt/.md/.pdf/.xlsx`，不含图片）；长期召回：`--keep` / `/keep`；仅速读：`--no-chat` |
 | 新闻嗅探 / 今日简报 | `la news sync` → `la news brief`（TTY 交互）；`r` 精读深聊；`la news schedule on` |
 | 一键润色文案（默认复制主推） | `la polish "草稿"` / `/polish`；`--scene` · `--tone` · `--no-copy` |
 | 授权后感知本机 | `la aware` · `grant` · `tick` · `suggestion`（不自动写 Cold/`kb/`） |
@@ -321,7 +332,8 @@ LA audit --since 7d
 - `run_shell` / `write_file` 按审批策略确认后执行；危险命令硬拦截
 - 模型声称已写入却未调用 `write_file` 时，重试或明确报错
 - `LA workspace`：最近文件、Git 摘要、托管待办生命周期可用；代码 TODO 扫描为诊断（未入队）
-- **一键总结**：`la summarize <path>` 输出 1～3 句 + 〔§/p.〕要点；TTY 默认进 `sum>`；默认不写 kb；`--keep` / `/keep` 后可检索；不追问入库
+- **本地 OCR（故事 10b）**：`la ocr <path>` 输出可复制原文；未装 `[ocr]` 或 `LA_OCR_ENABLED=0` 时有清晰错误；图片不走 summarize
+- **一键总结**：`la summarize <path>` 支持 `.txt/.md/.pdf/.xlsx`（不含图片）；扫描 PDF 内嵌 OCR；输出 1～3 句 + 〔§/p.〕要点；TTY 默认进 `sum>`；默认不写 kb；`--keep` / `/keep` 后可检索；不追问入库
 - **新闻嗅探**：`la news sync` 拉取 BestBlogs RSS；TTY 下 `la news brief` 可 ↑↓ 浏览、`o` 打开浏览器、`r` 精读深聊；`schedule on/off` 控制早 8 点自动 sync；入 chat 可提示就绪
 - **一键润色**：`la polish` / `/polish` 输出识别 Brief + 主推/备选；默认主推进剪贴板；`--no-copy` 可关；简历场景不编造原文没有的数字
 - **Aware（故事 13b）**：未 `grant` 前不采集；`grant` → `tick` 产生 Episode / suggestion；可索引文件**不**自动写 Cold/`kb/`；`approve` 仅白名单（`ingest doc|text` / `summarize`）；`la aware` 可出智能总结；相关 `la chat` 可注入近时 Episode；浏览器 selected ≠ viewing
