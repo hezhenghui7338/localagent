@@ -1,6 +1,6 @@
 """Tests for session-recall and Cold archive-recall query detection."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from localagent.agent.runtime import (
     _prefetch_archive_context,
@@ -72,86 +72,80 @@ def test_archive_time_window_june():
 
 
 def test_prefetch_archive_context_searches_cold():
-    with (
-        patch(
-            "localagent.tools.search_knowledge",
-            return_value="- [0.03] [chatgpt] 关羽北伐",
-        ) as cold,
-        patch(
-            "localagent.tools.search_memory",
-            return_value="未找到相关记忆。",
-        ) as warm,
-    ):
+    with patch(
+        "localagent.context.retrieval.get_retrieval_gateway",
+    ) as get_gw:
+        gw = MagicMock()
+        gw.search_cold.return_value = "- [0.03] [chatgpt] 关羽北伐"
+        gw.recall_warm.return_value = "未找到相关记忆。"
+        get_gw.return_value = gw
         ctx = _prefetch_archive_context("我问过关于关羽的什么问题吗?")
     assert ctx
     assert "对话归档" in ctx
     assert "关羽北伐" in ctx
-    cold.assert_called_once_with("关羽", top_k=5, fallback=False)
-    warm.assert_called_once_with("关羽", top_k=5, fallback=False)
+    gw.search_cold.assert_called_once()
+    assert gw.search_cold.call_args.args == ("关羽",)
+    assert gw.search_cold.call_args.kwargs["top_k"] == 5
+    assert gw.search_cold.call_args.kwargs["fallback"] is False
+    gw.recall_warm.assert_called_once()
+    assert gw.recall_warm.call_args.args == ("关羽",)
+    assert gw.recall_warm.call_args.kwargs["top_k"] == 5
+    assert gw.recall_warm.call_args.kwargs["fallback"] is False
 
 
 def test_prefetch_archive_temporal_lists_by_range():
-    with (
-        patch(
-            "localagent.tools.list_user_questions_in_range",
-            return_value="- [chatgpt/2025-06-10] June talk about rust",
-        ) as cold_list,
-        patch(
-            "localagent.tools.query_memories_tool",
-            return_value="未找到匹配记忆。",
-        ) as warm_query,
-        patch("localagent.tools.search_knowledge") as cold_search,
-        patch("localagent.tools.search_memory") as warm_search,
-    ):
+    with patch(
+        "localagent.context.retrieval.get_retrieval_gateway",
+    ) as get_gw:
+        gw = MagicMock()
+        gw.list_user_questions_in_range.return_value = (
+            "- [chatgpt/2025-06-10] June talk about rust"
+        )
+        gw.query_warm.return_value = "未找到匹配记忆。"
+        get_gw.return_value = gw
         ctx = _prefetch_archive_context("我在2025年6月问过哪些问题?")
     assert ctx
     assert "时间窗" in ctx
     assert "2025-06-01" in ctx
     assert "June talk" in ctx
-    cold_list.assert_called_once()
-    kwargs = cold_list.call_args.kwargs
+    gw.list_user_questions_in_range.assert_called_once()
+    kwargs = gw.list_user_questions_in_range.call_args.kwargs
     assert kwargs["since"] == "2025-06-01"
     assert kwargs["until"] == "2025-06-30"
-    warm_query.assert_called_once()
-    assert warm_query.call_args.kwargs["time_field"] == "recorded"
-    cold_search.assert_not_called()
-    warm_search.assert_not_called()
+    gw.query_warm.assert_called_once()
+    assert gw.query_warm.call_args.kwargs["time_field"] == "recorded"
+    gw.search_cold.assert_not_called()
+    gw.recall_warm.assert_not_called()
 
 
 def test_prefetch_recent_questions_lists_user_turns():
-    with (
-        patch(
-            "localagent.tools.list_user_questions_in_range",
-            return_value="- [chat/2026-07-16] 土星最近有什么动态吗",
-        ) as cold_list,
-        patch(
-            "localagent.tools.list_knowledge_in_range",
-        ) as cold_sessions,
-        patch(
-            "localagent.tools.query_memories_tool",
-            return_value="未找到匹配记忆。",
-        ),
-        patch("localagent.tools.search_knowledge") as cold_search,
-    ):
+    with patch(
+        "localagent.context.retrieval.get_retrieval_gateway",
+    ) as get_gw:
+        gw = MagicMock()
+        gw.list_user_questions_in_range.return_value = (
+            "- [chat/2026-07-16] 土星最近有什么动态吗"
+        )
+        gw.query_warm.return_value = "未找到匹配记忆。"
+        get_gw.return_value = gw
         ctx = _prefetch_archive_context("我最近问过什么?")
     assert "土星" in ctx
     assert "时间窗" in ctx
-    cold_list.assert_called_once()
-    cold_sessions.assert_not_called()
-    cold_search.assert_not_called()
+    gw.list_user_questions_in_range.assert_called_once()
+    gw.list_knowledge_in_range.assert_not_called()
+    gw.search_cold.assert_not_called()
 
 
 def test_prefetch_archive_temporal_empty_window():
-    with (
-        patch(
-            "localagent.tools.list_user_questions_in_range",
-            return_value="该时段无对话归档（自 2025-06-01 · 至 2025-06-30）。",
-        ),
-        patch(
-            "localagent.tools.query_memories_tool",
-            return_value="未找到匹配记忆。",
-        ),
-    ):
+    with patch(
+        "localagent.context.retrieval.get_retrieval_gateway",
+    ) as get_gw:
+        gw = MagicMock()
+        gw.list_user_questions_in_range.return_value = (
+            "该时段无对话归档（自 2025-06-01 · 至 2025-06-30）。"
+        )
+        gw.query_warm.return_value = "未找到匹配记忆。"
+        get_gw.return_value = gw
         ctx = _prefetch_archive_context("我在2025年6月问过哪些问题?")
     assert "该时段无对话归档" in ctx
     assert "禁止编造" in ctx

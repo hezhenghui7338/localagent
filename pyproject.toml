@@ -53,7 +53,9 @@ full = []
 dev = [
     "pytest>=8.0.0",
     "pytest-xdist>=3.5.0",
+    "pytest-cov>=5.0.0",
     "ruff>=0.3.0",
+    "mcp>=1.0,<2",
 ]
 # Optional cross-encoder rerank (LA_MEMORY_RERANK_BACKEND=cross_encoder|auto).
 rerank = [
@@ -62,6 +64,9 @@ rerank = [
 # Optional Neo4j for precise graph queries (counts / aggregations / multi-hop).
 neo4j = [
     "neo4j>=5.0.0",
+]
+mcp = [
+    "mcp>=1.0,<2",
 ]
 # Optional local OCR for scanned PDFs and screenshots (RapidOCR / PP-OCRv6).
 ocr = [
@@ -96,6 +101,7 @@ packages = ["src/localagent"]
 "src/localagent/resources/env.example" = "localagent/resources/env.example"
 "src/localagent/resources/model_servers.yaml.example" = "localagent/resources/model_servers.yaml.example"
 "src/localagent/resources/core_profile.example.json" = "localagent/resources/core_profile.example.json"
+"src/localagent/resources/mcp.yaml.example" = "localagent/resources/mcp.yaml.example"
 "src/localagent/resources/config.example.json" = "localagent/resources/config.example.json"
 
 [tool.hatch.build.targets.sdist]
@@ -121,6 +127,17 @@ markers = [
     "e2e: subprocess end-to-end tests against installed LA CLI",
     "e2e_live: requires live Ollama with a completion model",
     "serial: wall-clock budget / resource tests; grouped via xdist_group",
+]
+
+[tool.coverage.run]
+source = ["src/localagent"]
+omit = ["tests/*", "benchmarks/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
 ]
 
 [tool.ruff]

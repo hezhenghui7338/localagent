@@ -57,6 +57,12 @@ def _cmd_aware(args: argparse.Namespace) -> int:
     return cmd_aware(args)
 
 
+def cmd_mcp(args: argparse.Namespace) -> int:
+    from localagent.mcp_cmd import cmd_mcp as run_mcp_cmd
+
+    return run_mcp_cmd(args)
+
+
 def _print_ingest_result(result) -> None:
     if result.status.value == "failed":
         print(f"  ! {result.filename}: {result.error}")
@@ -2832,6 +2838,35 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_polish.set_defaults(func=cmd_polish)
 
+    p_mcp = sub.add_parser(
+        "mcp",
+        help=H("MCP 外部工具管理（list / test / tools / serve）", "MCP external tools (list / test / tools / serve)"),
+    )
+    mcp_sub = p_mcp.add_subparsers(dest="mcp_action", metavar="action")
+    mcp_sub.add_parser("list", help=H("列出 MCP server 与工具", "list MCP servers and tools")).set_defaults(
+        func=cmd_mcp
+    )
+    p_mcp_test = mcp_sub.add_parser("test", help=H("<server>  连接测试", "<server>  connection test"))
+    p_mcp_test.add_argument("server", help=H("server id", "server id"))
+    p_mcp_test.set_defaults(func=cmd_mcp, mcp_action="test")
+    p_mcp_tools = mcp_sub.add_parser("tools", help=H("[--server X]  查看工具 schema", "[--server X]  show tool schemas"))
+    p_mcp_tools.add_argument("--server", help=H("仅显示指定 server", "filter by server id"))
+    p_mcp_tools.set_defaults(func=cmd_mcp, mcp_action="tools")
+    p_mcp_serve = mcp_sub.add_parser(
+        "serve",
+        help=H("[--transport stdio|http]  暴露 LA 工具为 MCP Server", "[--transport stdio|http]  expose LA tools as MCP server"),
+    )
+    p_mcp_serve.add_argument(
+        "--transport",
+        choices=["stdio", "http"],
+        default="stdio",
+        help=H("传输方式（默认 stdio）", "transport (default stdio)"),
+    )
+    p_mcp_serve.add_argument("--host", default="127.0.0.1", help=H("HTTP 监听地址", "HTTP bind host"))
+    p_mcp_serve.add_argument("--port", type=int, default=8765, help=H("HTTP 端口", "HTTP port"))
+    p_mcp_serve.set_defaults(func=cmd_mcp, mcp_action="serve")
+    p_mcp.set_defaults(func=cmd_mcp, mcp_action="list")
+
     return parser
 
 
@@ -2916,7 +2951,9 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         from localagent.memory.backend import shutdown_memory_backend
         from localagent.models.router import shutdown_cursor_sdk
+        from localagent.mcp.tool_registry import ToolRegistry
 
+        ToolRegistry.shutdown()
         shutdown_memory_backend()
         shutdown_cursor_sdk()
 

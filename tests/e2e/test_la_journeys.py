@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from helpers import (
+    PROJECT_ROOT,
     minimal_chatgpt_export,
     run_la,
     seed_memory,
@@ -142,3 +146,56 @@ def test_journey_audit_report_html(la_env, tmp_path: Path):
     html = out.read_text(encoding="utf-8")
     assert "<html" in html.lower()
     assert "LocalAgent" in html or "Token" in html or "token" in html.lower()
+
+
+@pytest.mark.xdist_group("serial")
+def test_journey_ingest_resume_updates_hot_profile(la_env, la_data_dir: Path, tmp_path: Path):
+    """Ingest resume doc into kb/, compile profiles, verify Hot layer name."""
+    resume_md = tmp_path / "简历-e2e-test.md"
+    resume_md.write_text(
+        """陈测试
+
+现居杭州 · 可立即到岗
+
+## 求职意向
+AI 工程师
+
+## 技术栈
+Python, LLM
+
+## 工作经历
+### E2E公司 · 开发
+2022 - 至今：测试项目
+
+## 教育背景
+测试大学
+""",
+        encoding="utf-8",
+    )
+    ingest = run_la(["ingest", "doc", str(resume_md)], env=la_env, timeout=120)
+    assert ingest.returncode == 0, ingest.stdout + ingest.stderr
+
+    compile_script = """
+import json
+from localagent.memory.compile.engine import compile_kb_profiles
+from localagent.memory.core_profile import load_core_profile
+
+stats = compile_kb_profiles()
+profile = load_core_profile()
+print(json.dumps({"stats": stats, "name": profile.name}, ensure_ascii=False))
+"""
+    base = os.environ.copy()
+    base.update(la_env)
+    base["PYTHONPATH"] = str(PROJECT_ROOT / "src") + os.pathsep + base.get("PYTHONPATH", "")
+    proc = subprocess.run(
+        [sys.executable, "-c", compile_script],
+        text=True,
+        capture_output=True,
+        env=base,
+        cwd=PROJECT_ROOT,
+        timeout=60,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    payload = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert payload["stats"]["files"] >= 1
+    assert payload["name"] == "陈测试"

@@ -9,11 +9,7 @@ from typing import Any
 
 from collections.abc import Callable
 
-from localagent.knowledge.hybrid import get_hybrid_retriever
-from localagent.memory.display import format_memory_hits
 from localagent.memory.backend import get_memory_backend
-from localagent.memory.query import list_memory_tags, query_memories
-from localagent.memory.store import MemoryFact, get_memory_store
 from localagent.tools.web_search import (
     augment_web_query,
     derive_search_params,
@@ -23,78 +19,14 @@ from localagent.tools.web_search import (
 
 logger = logging.getLogger(__name__)
 
-_MEMORY_MISS = "未找到相关记忆。"
-_KNOWLEDGE_MISS = "未找到相关知识片段。"
-_ALL_MISS = "未在记忆、知识库索引或文档原文中找到相关信息。"
-
-
-def _format_memory_hits(
-    hits: list[dict[str, Any]],
-    *,
-    query: str = "",
-    show_ids: bool = False,
-    verbose: bool = False,
-) -> str:
-    return format_memory_hits(
-        hits,
-        query=query,
-        show_ids=show_ids,
-        verbose=verbose,
-    )
-
 
 def search_documents(query: str, *, top_k: int = 5, context_chars: int = 300) -> str:
     """Direct keyword search in kb/ files when RAG index misses."""
-    from localagent import config
-    from localagent.ingest.loader import load_file
-    from localagent.ingest.sync_file import list_kb_files
+    from localagent.context.retrieval import get_retrieval_gateway
 
-    terms = re.findall(r"[\u4e00-\u9fff]+|[A-Za-z0-9]{2,}", query.lower())
-    if not terms:
-        return ""
-
-    hits: list[tuple[int, str]] = []
-    for path in list_kb_files():
-        # Images are textified at ingest time into Cold RAG; do not re-run VL here.
-        if path.suffix.lower() in config.IMAGE_SUFFIXES:
-            continue
-        doc = load_file(path)
-        if not doc:
-            continue
-        text_lower = doc.text.lower()
-        score = sum(1 for term in terms if term in text_lower)
-        if score == 0:
-            continue
-
-        snippet = ""
-        for term in terms:
-            idx = text_lower.find(term)
-            if idx >= 0:
-                start = max(0, idx - context_chars // 2)
-                end = min(len(doc.text), idx + context_chars // 2)
-                snippet = doc.text[start:end].strip()
-                break
-        if not snippet:
-            snippet = doc.text[:context_chars].strip()
-
-        hits.append((score, f"- [{score}] {doc.filename}\n  {snippet}"))
-
-    if not hits:
-        return ""
-    hits.sort(key=lambda item: item[0], reverse=True)
-    return "\n".join(line for _, line in hits[:top_k])
-
-
-def _fact_to_hit(fact: MemoryFact, *, score: float = 1.0) -> dict[str, Any]:
-    return {
-        "id": fact.id,
-        "text": fact.text,
-        "score": score,
-        "source_file": fact.source_file,
-        "section_heading": fact.section_heading,
-        "created_at": fact.created_at,
-        "metadata": fact.metadata,
-    }
+    return get_retrieval_gateway().search_documents(
+        query, top_k=top_k, context_chars=context_chars
+    )
 
 
 def browse_memories(*, top_k: int = 8) -> str:
@@ -115,48 +47,19 @@ def query_memories_tool(
     time_field: str = "effective",
 ) -> str:
     """Query memories with tag/time filters, sorting, and optional semantic match."""
-    total = get_memory_backend().count()
-    if total == 0:
-        return "记忆库为空，尚未保存任何记忆。"
+    from localagent.context.retrieval import get_retrieval_gateway
 
-    sort_order = sort if sort in ("newest", "oldest", "relevance") else "newest"
-    field = time_field if time_field in ("effective", "recorded") else "effective"
-    hits = query_memories(
+    return get_retrieval_gateway().query_warm(
         query=query,
         tags=tags,
         since=since,
         until=until,
-        sort=sort_order,  # type: ignore[arg-type]
+        sort=sort,
         limit=limit,
-        time_field=field,  # type: ignore[arg-type]
-    )
-
-    filters: list[str] = []
-    if query:
-        filters.append(f"语义: {query}")
-    if tags:
-        filters.append("标签: " + ", ".join(tags))
-    if since:
-        filters.append(f"自 {since}")
-    if until:
-        filters.append(f"至 {until}")
-    filter_hint = f"（{' · '.join(filters)}）" if filters else ""
-
-    if not hits:
-        tag_summary = list_memory_tags(limit=10)
-        tag_hint = ""
-        if tag_summary:
-            tag_hint = "\n可用标签: " + ", ".join(f"{tag}({count})" for tag, count in tag_summary)
-        return f"未找到匹配记忆{filter_hint}。记忆库共 {total} 条。{tag_hint}"
-
-    header = f"记忆库共 {total} 条，返回 {len(hits)} 条{filter_hint}"
-    body = format_memory_hits(
-        hits,
-        query=query,
         show_ids=show_ids,
         verbose=verbose,
+        time_field=time_field,
     )
-    return f"{header}\n\n{body}"
 
 
 def retain_memory(content: str, *, source: str = "chat_explicit") -> str:
@@ -186,43 +89,15 @@ def search_memory(
     show_ids: bool = False,
     verbose: bool = False,
 ) -> str:
-    from localagent.logging_setup import truncate_for_log
+    from localagent.context.retrieval import get_retrieval_gateway
 
-    backend = get_memory_backend()
-    hits = backend.recall(query, max_results=top_k)
-    logger.info(
-        "search_memory backend=%s hits=%s fallback=%s",
-        backend.backend_name(),
-        len(hits),
-        fallback,
+    return get_retrieval_gateway().recall_warm(
+        query,
+        top_k=top_k,
+        fallback=fallback,
+        show_ids=show_ids,
+        verbose=verbose,
     )
-    logger.debug("search_memory query=%s", truncate_for_log(query))
-    if hits:
-        return _format_memory_hits(
-            hits,
-            query=query,
-            show_ids=show_ids,
-            verbose=verbose,
-        )
-
-    if not fallback:
-        return _MEMORY_MISS
-
-    knowledge = search_knowledge(query, top_k=top_k, fallback=False)
-    if knowledge != _KNOWLEDGE_MISS:
-        logger.info("search_memory miss→knowledge")
-        return f"（记忆未命中，以下为知识库检索结果）\n{knowledge}"
-
-    from localagent import config as la_config
-
-    if la_config.DOC_KEYWORD_FALLBACK:
-        documents = search_documents(query, top_k=top_k)
-        if documents:
-            logger.info("search_memory miss→documents")
-            return f"（记忆和 RAG 均未命中，以下为文档原文关键词补充检索）\n{documents}"
-
-    logger.info("search_memory miss (all)")
-    return _ALL_MISS
 
 
 def search_knowledge(
@@ -235,71 +110,17 @@ def search_knowledge(
     conversation_only: bool = False,
     source_file: str | None = None,
 ) -> str:
-    hits = get_hybrid_retriever().retrieve(
+    from localagent.context.retrieval import get_retrieval_gateway
+
+    return get_retrieval_gateway().search_cold(
         query,
         top_k=top_k,
+        fallback=fallback,
         since=since,
         until=until,
         conversation_only=conversation_only,
         source_file=source_file,
     )
-    if hits:
-        from localagent.knowledge.time_filter import format_recorded_label
-
-        lines = []
-        for h in hits:
-            meta = h.get("metadata", {}) or {}
-            heading = meta.get("heading", "")
-            source = meta.get("source_file", "")
-            origin = str(meta.get("origin") or "").strip()
-            kind = str(meta.get("chunk_kind") or "").strip()
-            title = str(meta.get("title") or "").strip()
-            date_label = format_recorded_label(meta)
-            label_parts: list[str] = []
-            if origin:
-                label_parts.append(origin)
-            if kind == "summary":
-                label_parts.append("摘要")
-            if date_label:
-                label_parts.append(date_label)
-            prefix = f"[{'/'.join(label_parts)}] " if label_parts else ""
-            display_source = title or source
-            if title and source and title not in source:
-                display_source = f"{title} ({source})"
-            lines.append(
-                f"- [{h['score_rrf']:.3f}] {prefix}{heading} ({display_source})\n"
-                f"  {h['text'][:300]}"
-            )
-        return "\n".join(lines)
-
-    if not fallback:
-        return _KNOWLEDGE_MISS
-
-    from localagent import config as la_config
-
-    if la_config.DOC_KEYWORD_FALLBACK and not (since or until or conversation_only):
-        documents = search_documents(query, top_k=top_k)
-        if documents:
-            return f"（知识库索引未命中，以下为文档原文关键词补充检索）\n{documents}"
-
-    return _KNOWLEDGE_MISS
-
-
-def _empty_archive_window_message(
-    *,
-    since: str | None,
-    until: str | None,
-) -> str:
-    window = " · ".join(
-        part
-        for part in (
-            f"自 {since}" if since else "",
-            f"至 {until}" if until else "",
-        )
-        if part
-    )
-    hint = f"（{window}）" if window else ""
-    return f"该时段无对话归档{hint}。"
 
 
 def list_knowledge_in_range(
@@ -309,27 +130,11 @@ def list_knowledge_in_range(
     limit: int = 40,
 ) -> str:
     """List Cold conversation archives in a recorded_at window (browse by time)."""
-    hits = get_hybrid_retriever().list_conversations_in_range(
-        since=since,
-        until=until,
-        limit=limit,
+    from localagent.context.retrieval import get_retrieval_gateway
+
+    return get_retrieval_gateway().list_knowledge_in_range(
+        since=since, until=until, limit=limit
     )
-    if not hits:
-        return _empty_archive_window_message(since=since, until=until)
-
-    from localagent.knowledge.time_filter import format_recorded_label
-
-    lines = []
-    for h in hits:
-        meta = h.get("metadata", {}) or {}
-        origin = str(meta.get("origin") or "").strip()
-        kind = str(meta.get("chunk_kind") or "").strip()
-        title = str(meta.get("title") or meta.get("source_file") or "").strip()
-        date_label = format_recorded_label(meta)
-        label_parts = [p for p in (origin, "摘要" if kind == "summary" else "", date_label) if p]
-        prefix = f"[{'/'.join(label_parts)}] " if label_parts else ""
-        lines.append(f"- {prefix}{title}\n  {h['text'][:400]}")
-    return "\n".join(lines)
 
 
 def list_user_questions_in_range(
@@ -339,26 +144,11 @@ def list_user_questions_in_range(
     limit: int = 40,
 ) -> str:
     """List user questions from Cold conversation body chunks in a date window."""
-    hits = get_hybrid_retriever().list_user_questions_in_range(
-        since=since,
-        until=until,
-        limit=limit,
+    from localagent.context.retrieval import get_retrieval_gateway
+
+    return get_retrieval_gateway().list_user_questions_in_range(
+        since=since, until=until, limit=limit
     )
-    if not hits:
-        return _empty_archive_window_message(since=since, until=until)
-
-    from localagent.knowledge.time_filter import format_recorded_label
-
-    lines = []
-    for h in hits:
-        meta = h.get("metadata", {}) or {}
-        origin = str(meta.get("origin") or "").strip()
-        date_label = format_recorded_label(meta)
-        label_parts = [p for p in (origin, date_label) if p]
-        prefix = f"[{'/'.join(label_parts)}] " if label_parts else ""
-        question = " ".join(str(h.get("text") or "").split())
-        lines.append(f"- {prefix}{question[:240]}")
-    return "\n".join(lines)
 
 
 def deep_search(
@@ -813,7 +603,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 ]
 
 
-def execute_tool(name: str, arguments: dict[str, Any]) -> str:
+def execute_builtin_tool(name: str, arguments: dict[str, Any]) -> str:
     if name == "retain_memory":
         content = str(
             arguments.get("content")
@@ -1031,3 +821,10 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> str:
         _art, msg = mark_article(target, action)
         return msg if _art else f"错误: {msg}"
     return f"未知工具: {name}"
+
+
+def execute_tool(name: str, arguments: dict[str, Any]) -> str:
+    """Execute a built-in or MCP tool."""
+    from localagent.mcp.tool_registry import ToolRegistry
+
+    return ToolRegistry.execute(name, arguments)

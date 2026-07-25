@@ -69,6 +69,7 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
 
     monkeypatch.setattr("localagent.config.MEMORY_BACKEND", "json")
     monkeypatch.setattr("localagent.config.TOOL_APPROVAL", "off")
+    monkeypatch.setattr("localagent.config.VALIDATION_LLM", False)
     # Tests expect immediate Warm retain unless they exercise the pending gate.
     monkeypatch.setattr("localagent.config.MEMORY_APPROVAL_AUTO", True)
     monkeypatch.setattr("localagent.config.MEMORY_APPROVAL_REQUIRED", False)
@@ -79,6 +80,13 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
     # Unit tests use regex pin by default; LLM pin tests enable + mock explicitly.
     monkeypatch.setattr("localagent.config.PROFILE_PIN_LLM", False)
     monkeypatch.setattr("localagent.config.PROFILE_PIN_REGEX_FALLBACK", True)
+    monkeypatch.setenv("LA_MCP_ENABLED", "0")
+    monkeypatch.setenv("LA_MCP_IMPORT_CURSOR", "0")
+    monkeypatch.setattr("localagent.config.MCP_ENABLED", False)
+    monkeypatch.setattr("localagent.config.MCP_IMPORT_CURSOR", False)
+    from localagent.mcp.tool_registry import ToolRegistry
+
+    ToolRegistry.shutdown()
     # Router is mocked below; keep LLM ingest path enabled so extract_memories mocks apply.
     monkeypatch.setattr("localagent.config.INGEST_USE_LLM", True)
     monkeypatch.setattr("localagent.config.INGEST_WHOLE_SECTION_WARM", True)
@@ -143,6 +151,8 @@ def isolated_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pyte
     )
 
     yield {"router": mock_router, "data_dir": data_dir, "kb_dir": kb_dir}
+
+    ToolRegistry.shutdown()
 
 
 def write_doc(path: Path, content: str) -> Path:

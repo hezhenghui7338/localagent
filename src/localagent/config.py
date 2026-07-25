@@ -95,6 +95,7 @@ MEMORY_GRAPH_FILE = DATA_DIR / "memory_graph.db"
 KNOWLEDGE_STORE_FILE = DATA_DIR / "knowledge_store.json"
 CORE_PROFILE_FILE = DATA_DIR / "core_profile.json"
 CONVERSATIONS_DIR = DATA_DIR / "conversations"
+SESSIONS_WORK_DIR = DATA_DIR / "sessions"
 CHATGPT_DATA_DIR = DATA_DIR / "chatGPTdata"
 CHATGPT_IMPORT_INDEX_FILE = DATA_DIR / "chatgpt_import_index.json"
 CHAT_INGEST_INDEX_FILE = DATA_DIR / "chat_ingest_index.json"
@@ -285,9 +286,36 @@ TOOL_APPROVAL = _env("LA_TOOL_APPROVAL", "always").lower()
 OBSERVE_BUDGET_CHARS = _env_int("LA_OBSERVE_BUDGET_CHARS", "1200")
 PREFETCH_BUDGET_CHARS = _env_int("LA_PREFETCH_BUDGET_CHARS", "1500")
 OBSERVE_KEEP_HITS = _env_int("LA_OBSERVE_KEEP_HITS", "6")
+# Full tool-observation rounds kept before stubbing (local vs cloud tier).
+OBSERVE_KEEP_FULL_ROUNDS = _env_int("LA_OBSERVE_KEEP_FULL_ROUNDS", "1")
+OBSERVE_KEEP_FULL_ROUNDS_CLOUD = _env_int("LA_OBSERVE_KEEP_FULL_ROUNDS_CLOUD", "2")
+PREFETCH_ROUTER = _env("LA_PREFETCH_ROUTER", "regex").lower()  # regex | hybrid
+
+# --- Action planner (lazy milestone mode) ---
+PLANNER_ENABLED = _env_bool("LA_PLANNER_ENABLED", "1")
+PLANNER_MODE = _env("LA_PLANNER_MODE", "lazy").lower()
+AGENT_MAX_TOOL_ITERATIONS = _env_int("LA_AGENT_MAX_TOOL_ITERATIONS", "5")
+PLANNER_MAX_MILESTONES = _env_int("LA_PLANNER_MAX_MILESTONES", "4")
+PLANNER_STEPS_PER_MILESTONE = _env_int("LA_PLANNER_STEPS_PER_MILESTONE", "3")
+PLANNER_MAX_REPLAN = _env_int("LA_PLANNER_MAX_REPLAN", "1")
+PLANNER_TOOL_TOP_K = _env_int("LA_PLANNER_TOOL_TOP_K", "7")
+PLANNER_COMPLEXITY_THRESHOLD = _env_int("LA_PLANNER_COMPLEXITY_THRESHOLD", "2")
+PLANNER_TOOL_SUBSET = _env_bool("LA_PLANNER_TOOL_SUBSET", "0")
+
+# --- Tool result validation ---
+VALIDATE_READBACK = _env_bool("LA_VALIDATE_READBACK", "1")
+VALIDATION_LLM = _env_bool("LA_VALIDATION_LLM", "0")
+VALIDATION_LLM_MAX = _env_int("LA_VALIDATION_LLM_MAX", "1")
+VALIDATION_AUTO_RETRY = _env_bool("LA_VALIDATION_AUTO_RETRY", "0")
+
 # STM rolling window (hours). Session-recall loads conversations in this window.
 _STM_WINDOW_RAW = _env_float("LA_STM_WINDOW_HOURS", "24")
 STM_WINDOW_HOURS = _STM_WINDOW_RAW if _STM_WINDOW_RAW > 0 else 24.0
+
+# --- MCP (optional client/server) ---
+MCP_ENABLED = _env_bool("LA_MCP_ENABLED", "1")
+MCP_MAX_TOOLS = _env_int("LA_MCP_MAX_TOOLS", "40")
+MCP_IMPORT_CURSOR = _env_bool("LA_MCP_IMPORT_CURSOR", "1")
 
 # --- Model routing (LA_MODEL_SERVERS_FILE YAML or legacy env) ---
 DEFAULT_MODEL_PROVIDER = "auto"
@@ -491,6 +519,15 @@ MEMORY_RERANK_MODEL = _env(
     "cross-encoder/ms-marco-MiniLM-L-6-v2",
 )
 MEMORY_RERANK_CANDIDATES = _env_int("LA_MEMORY_RERANK_CANDIDATES", "24")
+# Post-RRF rerank for Cold knowledge retrieval (cross-encoder / embed / llm).
+COLD_RERANK = _env_bool("LA_COLD_RERANK", "0")
+COLD_RERANK_BACKEND = _env("LA_COLD_RERANK_BACKEND", "auto").lower() or "auto"
+COLD_RERANK_MODEL = _env(
+    "LA_COLD_RERANK_MODEL",
+    "cross-encoder/ms-marco-MiniLM-L-6-v2",
+)
+COLD_RERANK_CANDIDATES = _env_int("LA_COLD_RERANK_CANDIDATES", "24")
+COLD_FETCH_MULTIPLIER = _env_int("LA_COLD_FETCH_MULTIPLIER", "2")
 # Soft scope: days outside [scope_start, scope_end] still get a medium boost.
 MEMORY_SCOPE_NEAR_DAYS = _env_float("LA_MEMORY_SCOPE_NEAR_DAYS", "30")
 # Keyword scan of kb/ files — last-resort only after embedding+BM25 miss.
@@ -555,6 +592,7 @@ def ensure_data_dirs() -> None:
         DATA_DIR,
         KB_DIR,
         CONVERSATIONS_DIR,
+        SESSIONS_WORK_DIR,
         CHATGPT_DATA_DIR,
         CHROMA_DIR,
         mem0_dir(),

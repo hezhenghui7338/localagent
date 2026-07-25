@@ -248,8 +248,10 @@ def test_search_documents_reads_kb_files(tmp_path: Path):
     )
     main(["ingest", "doc", str(tmp_path / "notes.md")])
 
-    with patch("localagent.tools.get_memory_backend") as backend_getter, patch(
-        "localagent.tools.get_hybrid_retriever"
+    with patch(
+        "localagent.context.retrieval.gateway.get_memory_backend"
+    ) as backend_getter, patch(
+        "localagent.context.retrieval.gateway.get_hybrid_retriever"
     ) as retriever:
         backend = MagicMock()
         backend.recall.return_value = []

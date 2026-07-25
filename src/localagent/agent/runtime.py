@@ -7,21 +7,24 @@ import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, TypedDict
+from typing import Any
 
+from localagent.context.router import (
+    AWARE_QUERY as _AWARE_QUERY,
+    PrefetchRoute,
+    archive_search_query,
+    archive_time_window,
+    is_archive_recall_query,
+    is_last_session_recall_query,
+    is_session_recall_query,
+    is_weak_archive_topic,
+)
 from localagent.i18n import resolve_lang, t
-from localagent.memory.core_profile import load_core_profile
 from localagent.models.router import ChatMessage, get_model_router
 from localagent.tools import TOOL_DEFINITIONS, execute_tool
 from localagent.audit.events import log_event
-from localagent.agent.observe import (
-    apply_context_budget,
-    budget_prefetch_blocks,
-    compact_prior_observations,
-    compress_observation,
-    truncate_head_tail,
-)
-from localagent.tools.action_receipt import append_action_receipt, record_side_effect
+from localagent.agent.observe import truncate_head_tail
+from localagent.tools.action_receipt import append_action_receipt, format_milestone_progress, record_side_effect
 from localagent.tools.approval import (
     SessionApprovalGate,
     ToolRisk,
@@ -32,12 +35,6 @@ from localagent.tools.approval import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class AgentState(TypedDict):
-    messages: list[dict[str, str]]
-    tool_calls: list[dict[str, Any]]
-    final_response: str
 
 
 SYSTEM_PROMPT_ZH = """你是 LocalAgent，用户的本机个人 AI 助手。你可访问本地记忆库（长期记忆）和知识库。
@@ -128,155 +125,10 @@ def _system_prompt_template() -> str:
     return SYSTEM_PROMPT_EN if resolve_lang() == "en" else SYSTEM_PROMPT_ZH
 
 
-_PERSONAL_QUERY = re.compile(
-    r"我是谁|我叫什么|我的名字|你知道我|关于我|我的身份|我的职业|我是做什么|"
-    r"我喜欢什么|我喜欢喝|我喜欢吃|我爱喝|我爱吃|我的偏好|我的喜好|我的口味|我的经历|"
-    r"我的家庭|家庭成员|家人|父母|孩子|儿子|女儿|妻子|老公|老婆|亲属|"
-    r"住在哪|住哪|居住|住址|家在哪|位于哪|在哪里住|我住哪|"
-    r"\bwho am i\b|\bwhat(?:'s| is) my name\b|\bmy name\b|\babout me\b|"
-    r"\bwhat do i (?:like|prefer)\b|\bwhere do i live\b|\bmy (?:job|occupation|family)\b",
-    re.IGNORECASE,
-)
-
-_MEMORY_BROWSE_QUERY = re.compile(
-    r"记忆库|记忆里|我的记忆|记住了什么|记得什么|存了什么|"
-    r"有什么有趣|有什么东西|你还记得|你记得我|"
-    r"你对我(的)?了解|知道我什么|有什么记忆|"
-    r"深入搜索|深度搜索|深度检索|仔细搜索|全面搜索|搜索记忆|"
-    r"\bmemory bank\b|\bmy memories\b|\bwhat do you remember\b|"
-    r"\bwhat have you (?:stored|saved|remembered)\b|\bsearch (?:my )?memory\b|"
-    r"\bdeep(?:er)? search\b",
-    re.IGNORECASE,
-)
-
-_FAMILY_QUERY = re.compile(
-    r"家庭|家人|父母|父亲|母亲|爸爸|妈妈|孩子|儿子|女儿|妻子|老公|老婆|配偶|亲属|结婚|已婚|"
-    r"\bfamily\b|\bparents?\b|\bmother\b|\bfather\b|\bspouse\b|\bwife\b|\bhusband\b|"
-    r"\bchildren\b|\bson\b|\bdaughter\b|\bmarried\b",
-    re.IGNORECASE,
-)
-
-_SESSION_RECALL_QUERY = re.compile(
-    r"(?:"
-    r"(?:今[天日]|刚才|上面|本次|这场|当前|我们|咱俩)"
-    r".{0,15}?"
-    r"(?:问|说|聊|讨论|提到)"
-    r".{0,8}?"
-    r"(?:啥|什么|哪些|内容)"
-    r"|"
-    # Previous LA chat session (STM; not Cold semantic search)
-    r"(?:上次|上一场|上一回|上一次)"
-    r".{0,16}?"
-    r"(?:对话|聊天|会话)"
-    r".{0,16}?"
-    r"(?:问|说|聊|讨论|提到)?"
-    r".{0,8}?"
-    r"(?:啥|什么|哪些|内容)?"
-    r"|"
-    r"(?:上次|上一场|上一回|上一次)"
-    r".{0,12}?"
-    r"(?:问|说|聊|讨论)(?:了|过)?"
-    r".{0,8}?"
-    r"(?:啥|什么|哪些|内容)"
-    r"|"
-    r"(?:对话|聊天|会话)"
-    r".{0,12}?"
-    r"(?:回顾|总结|历史|记录)"
-    r"|"
-    r"(?:回顾|总结)"
-    r".{0,12}?"
-    r"(?:对话|聊天|今天|本次)"
-    r"|"
-    # English same-day / in-progress session review
-    r"what did (?:we|i) (?:talk|chat|discuss|say|ask).{0,40}?\btoday\b"
-    r"|"
-    r"\btoday'?s?\b.{0,20}?(?:chat|conversation|talk|discussion)"
-    r"|"
-    r"(?:what (?:did|was)|remind me).{0,40}?\b(?:last|previous)\b.{0,20}?"
-    r"(?:conversation|chat|session|time)\b"
-    r"|"
-    r"\b(?:last|previous)\b.{0,12}?(?:conversation|chat|session)\b"
-    r")",
-    re.IGNORECASE,
-)
-
-_LAST_SESSION_RECALL_QUERY = re.compile(
-    r"(?:"
-    r"(?:上次|上一场|上一回|上一次)"
-    r"|"
-    r"\b(?:last|previous)\b.{0,12}?(?:conversation|chat|session|time)\b"
-    r")",
-    re.IGNORECASE,
-)
-
-# Cross-session / imported archive questions → Cold (search_knowledge), not only Warm.
-_ARCHIVE_RECALL_QUERY = re.compile(
-    r"(?:"
-    r"我(?:有没有|是否)?(?:问过|聊过|提过|讨论过)|"
-    r"我.{0,40}?(?:问过|聊过|提过|讨论过|问了).{0,12}?(?:什么|哪些|问题|啥)?"
-    r"|"
-    r"(?:以前|之前|曾经|过去).{0,8}?(?:问过|聊过|提过|讨论过)|"
-    r"(?:问过|聊过|提过)关于|"
-    r"关于.+?(?:问过|聊过|提过).{0,12}?(?:什么|哪些|问题)|"
-    r"(?:ChatGPT|chatgpt|历史对话|导入(?:的)?对话|对话归档).{0,24}?(?:什么|哪些|有没有|问过|聊过)|"
-    r"(?:有没有|是否).{0,12}?(?:问过|聊过|提过)|"
-    r"(?:20\d{2}\s*年(?:\s*\d{1,2}\s*月)?|(?:上|这|本)?个?月).{0,30}?"
-    r"(?:问过|聊过|提过|讨论过|问了).{0,12}?(?:什么|哪些|问题|啥)?"
-    r"|"
-    r"\bhave i (?:asked|talked|mentioned|discussed)\b|"
-    r"\bdid i (?:ask|talk|mention|discuss)\b|"
-    r"\b(?:before|previously|ever).{0,20}?(?:ask|talk|mention|discuss)\b|"
-    r"\b(?:conversation|chat) archive\b"
-    r")",
-    re.IGNORECASE,
-)
-
-_ARCHIVE_TOPIC = re.compile(
-    r"(?:关于|about)\s*([^的？?，,。！!\s]{1,40})",
-    re.IGNORECASE,
-)
-
-_TEMPORAL_PHRASE = re.compile(
-    r"20\d{2}\s*年(?:\s*\d{1,2}\s*月(?:\s*\d{1,2}\s*日)?)?"
-    r"|\d{1,2}\s*月(?:\s*\d{1,2}\s*日)?"
-    r"|(?:January|February|March|April|May|June|July|August|September|October|November|December|"
-    r"Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?\s+\d{1,2}(?:st|nd|rd|th)?\s*,?\s*20\d{2}"
-    r"|(?:上周|上个星期|这周|这个星期|本周|上个月|上月|这个月|本月|去年|今年|"
-    r"最近|近期|近日|今天|今日|昨天|昨日|前天|这两天|这几天|"
-    r"recently|lately|today|yesterday)",
-    re.IGNORECASE,
-)
-
-_LOCATION_QUERY = re.compile(
-    r"住在哪|住哪|居住|住址|家在哪|位于哪|在哪里住|我住哪|住在哪里|"
-    r"\bwhere do i live\b|\bmy (?:address|home)\b|\bwhere am i (?:based|located)\b",
-    re.IGNORECASE,
-)
-
 _EXPLICIT_REMEMBER = re.compile(
     r"^(?:请)?(?:帮我)?(?:记录一下|记住一下|记住|记下|记一下)[:：\s]*(.+)$"
     r"|^(?:please\s+)?(?:remember|note|record)(?:\s+that)?[:：\s]+(.+)$",
     re.DOTALL | re.IGNORECASE,
-)
-
-_WEB_QUERY = re.compile(
-    r"新闻|时事|头条|热点|快讯|发生什么|"
-    r"最近|最新|今日|今天|昨天|明天|明日|本周|近期|当下|现在|"
-    r"几点(?:了|钟)?|当前时间|现在时间|今天几号|今天日期|今天是几号|"
-    r"股价|汇率|天气|"
-    r"联网搜索|网上搜|搜索一下|web\s*search|"
-    r"news|latest|recent|today|tomorrow|breaking|"
-    r"what\s*time|current\s*time",
-    re.IGNORECASE,
-)
-
-_WORKSPACE_QUERY = re.compile(
-    r"我最近|最近干|改了什么|文件变|工作区|工作目录|"
-    r"git|提交|commit|分支|未提交|待办|todo|TODO|"
-    r"做了什么|进度怎样|项目状态|"
-    r"\bworkspace\b|\brecent (?:changes|files)\b|\bwhat did i (?:change|do)\b|"
-    r"\bproject status\b|\buncommitted\b",
-    re.IGNORECASE,
 )
 
 _FILE_ACTION_QUERY = re.compile(
@@ -310,80 +162,12 @@ _CLAIMS_FILE_DONE = re.compile(
 _FILE_MUTATION_TOOLS = frozenset({"run_shell", "write_file", "edit_file"})
 
 
-def archive_search_query(user_message: str) -> str:
-    """Extract a topical search string from an archive-recall question."""
-    text = user_message.strip()
-    match = _ARCHIVE_TOPIC.search(text)
-    if match:
-        topic = match.group(1).strip(" 《》「」\"'")
-        if topic:
-            return _strip_temporal_phrases(topic)
-    cleaned = re.sub(
-        r"我(?:有没有|是否)?(?:问过|聊过|提过|讨论过)|"
-        r"(?:以前|之前|曾经|过去)|"
-        r"(?:有没有|是否)|"
-        r"关于|什么问题|哪些问题|什么|哪些|吗|呢|[？?！!。．]",
-        " ",
-        text,
-    )
-    cleaned = _strip_temporal_phrases(cleaned)
-    cleaned = " ".join(cleaned.split())
-    return cleaned or text
-
-
-def _strip_temporal_phrases(text: str) -> str:
-    return " ".join(_TEMPORAL_PHRASE.sub(" ", text).split())
-
-
-def is_weak_archive_topic(topic: str) -> bool:
-    """True when topic is empty/filler after stripping dates and archive boilerplate."""
-    cleaned = _strip_temporal_phrases(topic or "")
-    cleaned = re.sub(
-        r"我|在|的|了|吗|呢|啊|吧|过|问|聊|提|讨论|问题|哪些|什么|啥|"
-        r"最近|近期|近日|今天|今日|昨天|昨日|前天|"
-        r"上次|上一场|上一回|上一次|对话|聊天|会话",
-        " ",
-        cleaned,
-    )
-    cleaned = " ".join(cleaned.split())
-    return len(cleaned) < 2
-
-
-def archive_time_window(user_message: str) -> tuple[str | None, str | None]:
-    """Return (since, until) YYYY-MM-DD when the query has an explicit range intent."""
-    from localagent.memory.temporal_intent import parse_temporal_intent
-
-    intent = parse_temporal_intent(user_message)
-    if intent.intent_kind == "range" and intent.has_time_scope:
-        return intent.scope_start, intent.scope_end
-    return None, None
-
-
-def is_session_recall_query(user_message: str) -> bool:
-    """True when the user wants to review STM chat history (window / last session)."""
-    return bool(_SESSION_RECALL_QUERY.search(user_message.strip()))
-
-
-def is_last_session_recall_query(user_message: str) -> bool:
-    """True when the user asks specifically about the previous LA chat session."""
-    text = user_message.strip()
-    if not is_session_recall_query(text):
-        return False
-    return bool(_LAST_SESSION_RECALL_QUERY.search(text))
-
-
-def is_archive_recall_query(user_message: str) -> bool:
-    """True when the user asks about past/imported conversation topics (Cold)."""
-    text = user_message.strip()
-    if is_session_recall_query(text):
-        return False
-    return bool(_ARCHIVE_RECALL_QUERY.search(text))
-
-
 @dataclass
 class AgentResult:
     response: str
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    action_plan: Any | None = None
+    partial: bool = False
 
 
 _TOOL_LABELS = {
@@ -630,18 +414,16 @@ def _needs_file_tool_retry(
 
 def _rewrite_personal_memory_query(user_message: str) -> str:
     """Optionally expand personal questions; keep original text for embedding recall."""
-    if _LOCATION_QUERY.search(user_message):
-        # Append lexical hints without replacing the semantic query.
-        return f"{user_message} 居住 住在 住址 位于"
-    return user_message
+    from localagent.context.fetchers.personal import rewrite_personal_memory_query
+
+    return rewrite_personal_memory_query(user_message)
 
 
 def _try_explicit_remember(user_message: str) -> AgentResult | None:
     """Handle '记住/记录一下' / 'remember that' immediately without waiting for exit extraction."""
-    match = _EXPLICIT_REMEMBER.match(user_message.strip())
-    if not match:
-        return None
-    content = (match.group(1) or match.group(2) or "").strip()
+    from localagent.agent.intent_route import explicit_remember_content
+
+    content = explicit_remember_content(user_message)
     if not content:
         return None
     from localagent.tools import retain_memory
@@ -655,489 +437,94 @@ def _try_explicit_remember(user_message: str) -> AgentResult | None:
 
 def _browse_cold_query(user_message: str) -> str:
     """Strip memory-browse boilerplate so Cold RAG gets a topical query."""
-    q = user_message.strip()
-    q = re.sub(
-        r"(?:请)?(?:帮我)?(?:深入|深度|仔细|全面)?(?:搜索|检索|查看|浏览)"
-        r"(?:一下)?(?:我的)?(?:记忆库|记忆)[，,、。！!\s]*",
-        "",
-        q,
-        count=1,
-    )
-    q = re.sub(
-        r"(?:我的)?记忆库(?:里|中)?[，,、。！!\s]*",
-        "",
-        q,
-        count=1,
-    )
-    cleaned = q.strip(" ，,、。！!?？")
-    return cleaned or user_message.strip()
+    from localagent.context.fetchers.personal import browse_cold_query
+
+    return browse_cold_query(user_message)
 
 
-def _prefetch_personal_context(user_message: str) -> str:
-    """Load profile + Warm + Cold upfront for identity/browse/topic questions.
+def _prefetch_personal_context(
+    user_message: str,
+    *,
+    path: str | None = None,
+    route: PrefetchRoute | None = None,
+) -> str:
+    """Load profile + Warm + Cold upfront for identity/browse/topic questions."""
+    from localagent.context.fetchers.personal import prefetch_personal_context
 
-    LTM path always joints Cold with Warm (STM session/archive gates stay separate).
-    Personal/family Cold uses conversation_only to avoid kb/ doc noise; browse
-    still searches the full Cold index (docs + conversation archives).
-    """
-    browse = bool(_MEMORY_BROWSE_QUERY.search(user_message))
-    personal = bool(_PERSONAL_QUERY.search(user_message))
-    family = bool(_FAMILY_QUERY.search(user_message))
-    if not browse and not personal and not family:
-        return ""
-    from localagent import config as _cfg
-    from localagent.logging_setup import truncate_for_log
-    from localagent.tools import query_memories_tool, search_knowledge, search_memory
-
-    path = "family" if family else ("browse" if browse else "personal")
-    logger.info("prefetch personal context path=%s", path)
-    logger.debug("prefetch personal query=%s", truncate_for_log(user_message))
-
-    profile = load_core_profile().format_for_prompt()
-    memory_parts: list[str] = []
-    cold = ""
-    cold_conversation_only = False
-    keep = max(1, int(_cfg.OBSERVE_KEEP_HITS))
-
-    if family:
-        memory_parts.append(
-            query_memories_tool(
-                query="家庭 家人 父母 孩子 妻子",
-                tags=["家庭"],
-                sort="relevance",
-                limit=min(8, keep + 2),
-            )
-        )
-        memory_parts.append(
-            search_memory(
-                "家庭 家人 父母 孩子 妻子 老公 老婆",
-                top_k=keep,
-                fallback=False,
-            )
-        )
-        cold_conversation_only = True
-        cold = search_knowledge(
-            "家庭 家人 父母 孩子 妻子 老公 老婆",
-            top_k=min(5, keep),
-            fallback=False,
-            conversation_only=True,
-        )
-    elif browse:
-        memory_parts.append(
-            query_memories_tool(
-                query=user_message,
-                sort="relevance" if len(user_message.strip()) > 4 else "newest",
-                limit=min(8, keep + 2),
-            )
-        )
-        cold_query = _browse_cold_query(user_message)
-        logger.info(
-            "prefetch browse cold query=%s",
-            truncate_for_log(cold_query),
-        )
-        cold = search_knowledge(cold_query, top_k=min(5, keep), fallback=False)
-        # If the topical strip left a very short query, also try the full message.
-        if (
-            cold.startswith("未找到")
-            and cold_query != user_message.strip()
-            and len(cold_query) < 8
-        ):
-            cold = search_knowledge(user_message, top_k=min(5, keep), fallback=False)
-    else:
-        recall_query = _rewrite_personal_memory_query(user_message)
-        rewritten = recall_query != user_message
-        logger.info("prefetch personal rewrite=%s", rewritten)
-        if rewritten:
-            logger.debug("prefetch rewrite→ %s", truncate_for_log(recall_query))
-        memory_parts.append(search_memory(recall_query, top_k=min(8, keep + 2)))
-        if rewritten:
-            memory_parts.append(
-                search_memory(user_message, top_k=min(5, keep), fallback=False)
-            )
-        cold_conversation_only = True
-        cold_query = recall_query if rewritten else user_message
-        cold = search_knowledge(
-            cold_query,
-            top_k=min(5, keep),
-            fallback=False,
-            conversation_only=True,
-        )
-        if cold.startswith("未找到") and rewritten:
-            cold = search_knowledge(
-                user_message,
-                top_k=min(5, keep),
-                fallback=False,
-                conversation_only=True,
-            )
-
-    memory = compress_observation(
-        "query_memories",
-        "\n\n".join(part for part in memory_parts if part),
-        user_query=user_message,
-    )
-    if cold:
-        cold = compress_observation(
-            "search_knowledge",
-            cold,
-            user_query=user_message,
-        )
-    forbid = "search_memory / query_memories / search_knowledge"
-    lines = [
-        f"[个人上下文（已预加载，请直接据此回答，勿再调用 {forbid}）]",
-        profile,
-        f"记忆检索 (Warm):\n{memory}",
-    ]
-    if cold_conversation_only:
-        lines.append(
-            "说明：Cold 为跨会话对话原文/摘要（ChatGPT 导入与 LA 历史）；"
-            "请综合 Warm 事实与 Cold 内容回答，勿只复述短事实句。"
-        )
-        lines.append(f"对话归档 (Cold):\n{cold or '（Cold 未命中）'}")
-    else:
-        lines.append(
-            "说明：Cold 含知识库文档与跨会话对话原文/摘要（ChatGPT 导入与 LA 历史）；"
-            "请综合 Warm 事实与 Cold 内容回答，勿只复述短事实句。"
-        )
-        lines.append(f"知识库/对话归档 (Cold):\n{cold or '（Cold 未命中）'}")
-    return "\n".join(lines)
+    return prefetch_personal_context(user_message, path=path, route=route)
 
 
-def _prefetch_archive_context(user_message: str) -> str:
+def _prefetch_archive_context(
+    user_message: str,
+    *,
+    route: PrefetchRoute | None = None,
+) -> str:
     """Prefetch Cold conversation archives (+ Warm topic hits) for past-question recalls."""
     if not is_archive_recall_query(user_message):
         return ""
-    from localagent import config as _cfg
-    from localagent.logging_setup import truncate_for_log
-    from localagent.tools import (
-        list_knowledge_in_range,
-        list_user_questions_in_range,
-        query_memories_tool,
-        search_knowledge,
-    )
+    from localagent.context.fetchers.archive import prefetch_archive_context
 
-    topic = archive_search_query(user_message)
-    since, until = archive_time_window(user_message)
-    weak_topic = is_weak_archive_topic(topic)
-    keep = max(1, int(_cfg.OBSERVE_KEEP_HITS))
-    logger.info(
-        "prefetch archive context topic=%s since=%s until=%s weak=%s",
-        truncate_for_log(topic),
-        since,
-        until,
-        weak_topic,
-    )
-
-    if since or until:
-        if weak_topic:
-            # Session summaries often truncate mid-conversation; list user turns instead.
-            cold = list_user_questions_in_range(
-                since=since,
-                until=until,
-                limit=min(30, keep * 5),
-            )
-        else:
-            cold = search_knowledge(
-                topic,
-                top_k=min(6, keep),
-                fallback=False,
-                since=since,
-                until=until,
-                conversation_only=True,
-            )
-        warm = query_memories_tool(
-            query="" if weak_topic else topic,
-            since=since,
-            until=until,
-            sort="newest",
-            limit=min(8, keep + 2),
-            show_ids=False,
-            time_field="recorded",
-        )
-        if weak_topic:
-            # Short user-question bullets: keep the full browse list (budgeted later).
-            cold = cold or ""
-        else:
-            cold = compress_observation("search_knowledge", cold or "", user_query=user_message)
-        warm = compress_observation("query_memories", warm or "", user_query=user_message)
-        window = f"{since or '…'} ~ {until or '…'}"
-        parts: list[str] = [
-            "[对话归档检索（已预加载，请直接据此回答，勿再调用 search_knowledge / search_memory / query_memories）]",
-            f"时间窗（对话发生时间 recorded_at）: {window}",
-            "说明：下列 Cold 命中已按对话发生时间硬过滤；只可根据标注日期在窗内的证据作答。"
-            "若 Cold 显示该时段无归档，必须如实说明，禁止编造问题清单。"
-            "Warm 事实仅作补充（亦按 recorded_at 过滤）。",
-            f"检索主题: {topic or '（按时间浏览，无主题）'}",
-            f"Cold 对话归档:\n{cold or '（Cold 未命中）'}",
-        ]
-        if warm and not warm.startswith("未找到") and not warm.startswith("记忆库为空"):
-            parts.append(f"Warm 相关事实:\n{warm}")
-        return "\n".join(parts)
-
-    from localagent.tools import search_memory
-
-    cold = compress_observation(
-        "search_knowledge",
-        search_knowledge(topic, top_k=min(5, keep), fallback=False),
-        user_query=user_message,
-    )
-    warm = compress_observation(
-        "search_memory",
-        search_memory(topic, top_k=min(5, keep), fallback=False),
-        user_query=user_message,
-    )
-    parts = [
-        "[对话归档检索（已预加载，请直接据此回答，勿再调用 search_knowledge / search_memory）]",
-        "说明：下列 Cold 命中来自 ChatGPT/LA 历史对话原文或摘要；据此回答用户「问过/聊过什么」。"
-        "Warm 事实仅作补充，不得因 Warm 未命中而否认 Cold 中的对话记录。",
-        f"检索主题: {topic}",
-        f"Cold 对话归档:\n{cold or '（Cold 未命中）'}",
-    ]
-    if warm and not warm.startswith("未找到"):
-        parts.append(f"Warm 相关事实:\n{warm}")
-    return "\n".join(parts)
+    return prefetch_archive_context(user_message, route=route)
 
 
-def _prefetch_web_context(user_message: str) -> str:
-    """Run web search upfront for time-sensitive questions (avoids relying on small models)."""
-    if is_session_recall_query(user_message):
-        return ""
-    if is_archive_recall_query(user_message):
-        return ""
-    # Personal memory / profile questions: do not interrupt with web noise.
-    if re.search(
-        r"(我喜欢|我讨厌|我的偏好|我叫什么|记得我|你还记得|我说过|我住在|我的目标)",
-        user_message,
-    ) and not re.search(r"新闻|时事|头条|热点|天气|股价|今天.*(赛|比分)", user_message):
-        return ""
-    if not _WEB_QUERY.search(user_message):
-        return ""
-    if _WORKSPACE_QUERY.search(user_message) and not re.search(
-        r"新闻|时事|头条|热点|天气|股价", user_message
-    ):
-        return ""
-    from localagent.tools import web_search
-    from localagent.tools.web_search import (
-        extract_searchable_query,
-        inject_home_location_for_weather,
-        is_weather_query,
-        search_output_has_freshness_warning,
-    )
-
-    searchable = extract_searchable_query(user_message)
-    if is_weather_query(searchable):
-        search_query = inject_home_location_for_weather(searchable)
-    else:
-        search_query = searchable
-
-    result = compress_observation(
-        "web_search",
-        web_search(search_query),
-        user_query=user_message,
-    )
-    if result.startswith(("联网搜索未配置", "联网搜索失败")):
-        return ""
-    if search_output_has_freshness_warning(result):
-        header = (
-            "[联网搜索结果（已预加载，但时效核对未通过）]"
-            "请勿把过期/未核实/非气象结果当作当前事实；"
-            "必须再调用 web_search 换查询重试（天气用「城市 今天 天气预报」），"
-            "禁止把歌词/教案/PDF 当天气证据；仅重试后仍失败才可说明证据不足。"
-            "若仍作答，必须标注来源标题与完整链接。"
-        )
-    else:
-        header = (
-            "[联网搜索结果（已预加载，直接回答，勿再调用 web_search）]"
-            "回答末尾必须列出所依据条目的标题与完整链接，便于用户核实。"
-        )
-    return f"{header}\n{result}"
-
-
-def _format_session_messages(
-    messages: list[dict],
+def _prefetch_web_context(
+    user_message: str,
     *,
-    include_ts: bool = True,
-) -> list[str]:
-    lines: list[str] = []
-    for msg in messages:
-        role = "用户" if msg.get("role") == "user" else "助手"
-        content = (msg.get("content") or "").strip()
-        if not content:
-            continue
-        ts = msg.get("ts", "") if include_ts else ""
-        prefix = f"[{ts}] " if ts else ""
-        lines.append(f"{prefix}{role}: {content}")
-    return lines
-
-
-def _pack_session_blocks(
-    blocks: list[str],
-    *,
-    header: str,
-    budget: int,
+    route: PrefetchRoute | None = None,
 ) -> str:
-    """Join blocks newest-first already ordered; stop when over budget."""
-    if not blocks:
-        return f"{header}\n近期暂无已保存的聊天记录。"
-    kept: list[str] = []
-    used = len(header) + 1
-    for block in blocks:
-        # Each "block" here is one line; group by session headers in caller.
-        add = len(block) + (1 if kept else 0)
-        if kept and used + add > budget:
-            break
-        kept.append(block)
-        used += add
-    if not kept:
-        # Always keep at least the first line of signal.
-        kept = [blocks[0][: max(40, budget - len(header) - 20)]]
-    return f"{header}\n" + "\n".join(kept)
+    from localagent.context.fetchers.web import prefetch_web_context
+    from localagent.context.router import route_prefetch_modules
+
+    resolved = route or route_prefetch_modules(user_message)
+    if not resolved.should_prefetch("web"):
+        return ""
+    return prefetch_web_context(user_message, route=resolved)
 
 
 def _prefetch_session_context(
     user_message: str,
     history: list[dict[str, str]] | None,
     session_id: str | None,
+    *,
+    route: PrefetchRoute | None = None,
 ) -> str:
-    """Load STM chat transcripts (rolling window or previous session)."""
-    if not is_session_recall_query(user_message):
+    from localagent.context.fetchers.session import prefetch_session_context
+    from localagent.context.router import route_prefetch_modules
+
+    resolved = route or route_prefetch_modules(user_message)
+    if not resolved.should_prefetch("session"):
         return ""
-
-    from localagent import config as _cfg
-    from localagent.persist.conversations import (
-        list_sessions_in_stm_window,
-        load_conversation,
-        message_create_time,
-        previous_session_id,
-        stm_window_start_unix,
-    )
-
-    budget = max(200, int(getattr(_cfg, "PREFETCH_BUDGET_CHARS", 1500)))
-
-    if is_last_session_recall_query(user_message):
-        header = "[上一场对话（已预加载，请直接据此回答，勿再调用工具）]"
-        prev = previous_session_id(session_id)
-        if not prev:
-            return f"{header}\n暂无上一场已保存的对话。"
-        messages = load_conversation(prev)
-        if not messages:
-            return f"{header}\n上一场会话 {prev} 无消息。"
-        lines = [f"## 会话 {prev}（上一场）"]
-        lines.extend(_format_session_messages(messages))
-        return _pack_session_blocks(lines, header=header, budget=budget)
-
-    header = "[对话记录（已预加载，请直接据此回答，勿再调用工具）]"
-    since = stm_window_start_unix()
-    hours = float(getattr(_cfg, "STM_WINDOW_HOURS", 24) or 24)
-    blocks: list[str] = [
-        f"说明：以下为近 {hours:g} 小时内的短期对话（STM），按时间新→旧排列。"
-    ]
-
-    # Pack newest-first: current history, then other window sessions by update_time.
-    session_chunks: list[list[str]] = []
-
-    if history:
-        chunk = ["## 当前会话（进行中）"]
-        chunk.extend(_format_session_messages(history, include_ts=False))
-        if len(chunk) > 1:
-            session_chunks.append(chunk)
-
-    for sid in list_sessions_in_stm_window(descending=True):
-        if sid == session_id and history:
-            # Current session already covered by in-memory history.
-            continue
-        messages = load_conversation(sid)
-        window_messages = [
-            m
-            for m in messages
-            if (ct := message_create_time(m)) is not None and ct >= since
-        ]
-        if not window_messages:
-            continue
-        label = f"{sid}（当前）" if sid == session_id else sid
-        chunk = [f"## 会话 {label}"]
-        chunk.extend(_format_session_messages(window_messages))
-        session_chunks.append(chunk)
-
-    # Flatten chunks in order, stopping at budget (prefer whole recent sessions).
-    flat: list[str] = [blocks[0]]
-    used = len(header) + 1 + len(blocks[0])
-    for chunk in session_chunks:
-        chunk_text_len = sum(len(line) + 1 for line in chunk)
-        if flat and used + chunk_text_len > budget:
-            # Try to fit a truncated newest chunk if nothing session-like kept yet.
-            if len(flat) <= 1:
-                for line in chunk:
-                    add = len(line) + 1
-                    if used + add > budget:
-                        break
-                    flat.append(line)
-                    used += add
-            break
-        flat.extend(chunk)
-        used += chunk_text_len
-
-    if len(flat) <= 1:
-        return f"{header}\n近 {hours:g} 小时内暂无已保存的聊天记录。"
-    return f"{header}\n" + "\n".join(flat)
-
-
-def _prefetch_workspace_context(user_message: str) -> str:
-    if not _WORKSPACE_QUERY.search(user_message):
-        return ""
-    from localagent.tools import workspace_context_tool
-
-    result = compress_observation("workspace_context", workspace_context_tool(days=7))
-    if not result:
-        return ""
-    return "\n".join(
-        [
-            "[工作区上下文（已预加载，直接回答，勿再调用 workspace_context）]",
-            result,
-        ]
+    return prefetch_session_context(
+        user_message, history, session_id, route=resolved
     )
 
 
-_AWARE_QUERY = re.compile(
-    r"(?:"
-    r"(?:最近|今天|今天下午|今天上午|昨晚|这周|这几天)"
-    r".{0,20}?"
-    r"(?:听|看|改|写|忙|干了|做了什么|在忙|活动)"
-    r"|"
-    r"(?:听了什么|看了什么|改了哪些|改了什么|在听什么|在忙什么)"
-    r"|"
-    r"(?:本机感知|aware|电脑上|屏幕前)"
-    r".{0,12}?"
-    r"(?:做|干|忙|听|看|写)?"
-    r"|"
-    r"(?:what (?:did|have) i (?:do|listen|watch|work)|been (?:listening|watching|coding))"
-    r")",
-    re.I,
-)
+def _prefetch_workspace_context(
+    user_message: str,
+    *,
+    route: PrefetchRoute | None = None,
+) -> str:
+    from localagent.context.fetchers.workspace import prefetch_workspace_context
+    from localagent.context.router import route_prefetch_modules
+
+    resolved = route or route_prefetch_modules(user_message)
+    if not resolved.should_prefetch("workspace"):
+        return ""
+    return prefetch_workspace_context(user_message, route=resolved)
 
 
-def _prefetch_aware_context(user_message: str) -> str:
-    """Inject recent Aware episodes when the user asks about local activity."""
-    if not _AWARE_QUERY.search(user_message or ""):
+def _prefetch_aware_context(
+    user_message: str,
+    *,
+    route: PrefetchRoute | None = None,
+) -> str:
+    from localagent.context.fetchers.aware import prefetch_aware_context
+    from localagent.context.router import route_prefetch_modules
+
+    resolved = route or route_prefetch_modules(user_message)
+    if not resolved.should_prefetch("aware"):
         return ""
-    try:
-        from localagent.aware.episode import retrieve_aware_context
-    except Exception:
-        return ""
-    try:
-        # Window inferred from query (recent → hot/episodes; week+ → rollup).
-        card = retrieve_aware_context(user_message, limit=10)
-    except Exception:
-        return ""
-    if not (card or "").strip():
-        return ""
-    # Cap for chat budget; historical rollup cards may be slightly longer.
-    cap = 1600 if "日摘要" in card else 1200
-    clipped = card if len(card) <= cap else card[:cap] + "\n…"
-    return (
-        "[本机感知上下文（已预加载；敏感类仅聚合时长/时段；"
-        "用户追问本人行为时据证据回答；无证据勿编造）]\n"
-        + clipped
-    )
+    return prefetch_aware_context(user_message, route=resolved)
 
 
 def _build_system_prompt(
@@ -1149,69 +536,35 @@ def _build_system_prompt(
     archive_context: str = "",
     document_context: str = "",
     aware_context: str = "",
+    work_context: str = "",
+    milestone_context: str = "",
+    turn_evidence: str = "",
 ) -> str:
-    from datetime import date
+    from localagent.context.assemble import build_system_prompt
 
-    from localagent.tools.web_search import today_label
-
-    tools_desc = json.dumps(TOOL_DEFINITIONS, ensure_ascii=False, indent=2)
-    today = date.today()
-    today_text = f"{today_label(today)}（{today.isoformat()}）"
-    profile = load_core_profile().format_for_prompt()
-    prompt = (
-        f"{_system_prompt_template().format(tools=tools_desc, today=today_text)}\n\n{profile}"
+    return build_system_prompt(
+        personal_context=personal_context,
+        web_context=web_context,
+        workspace_context=workspace_context,
+        session_context=session_context,
+        archive_context=archive_context,
+        document_context=document_context,
+        aware_context=aware_context,
+        work_context=work_context,
+        milestone_context=milestone_context,
+        turn_evidence=turn_evidence,
     )
-    if personal_context:
-        prompt = f"{prompt}\n\n{personal_context}"
-    if archive_context:
-        prompt = f"{prompt}\n\n{archive_context}"
-    if session_context:
-        prompt = f"{prompt}\n\n{session_context}"
-    if web_context:
-        prompt = f"{prompt}\n\n{web_context}"
-    if workspace_context:
-        prompt = f"{prompt}\n\n{workspace_context}"
-    if aware_context:
-        prompt = f"{prompt}\n\n{aware_context}"
-    if document_context:
-        prompt = f"{prompt}\n\n{document_context}"
-    from localagent.tone import evening_postscript_block
-
-    evening = evening_postscript_block(surface="chat")
-    if evening:
-        prompt = f"{prompt}\n\n{evening}"
-    return prompt
 
 
-def _tool_followup_instruction(tool_name: str, result: str) -> str:
-    """Build the post-tool user message; allow one more search when freshness fails."""
-    from localagent.tools.web_search import search_output_has_freshness_warning, today_label
+def _tool_followup_instruction(
+    tool_name: str,
+    result: str,
+    validation=None,
+) -> str:
+    """Build the post-tool user message; delegates to validation follow-up builder."""
+    from localagent.agent.validation.followup import build_tool_followup
 
-    if tool_name == "web_search" and search_output_has_freshness_warning(result):
-        return (
-            f"工具结果:\n{result}\n"
-            f"今天是 {today_label()}。"
-            "请先核对结果中的时间与地点是否与用户问题一致。"
-            "若全部过期、不符或明显是歌词/教案/无关页面：必须再调用一次 web_search "
-            "（天气 query 用「城市 今天 天气预报」，不要写完整年份；"
-            "其他查询可含完整目标日期与地点）；"
-            "禁止在未重试的情况下直接告诉用户去看手机或放弃。"
-            "若重试后仍无可用证据，才可明确告知无法确认当前情况。"
-            "若依据部分可用结果作答，末尾必须列出标题与完整链接。"
-        )
-    cite = ""
-    if tool_name == "web_search":
-        cite = (
-            "回答末尾必须列出所依据条目的标题与完整链接（便于用户核实），"
-            "禁止只写「根据联网信息」而不给来源。"
-        )
-    return (
-        f"工具结果:\n{result}\n"
-        "请先快速核对结果中的时间/地点等基础信息是否与用户问题一致；"
-        "一致则给出完整简洁的最终回答，不要再次调用工具。"
-        "若明显不符，说明证据不可用，不要编造或硬套过期信息。"
-        f"{cite}"
-    )
+    return build_tool_followup(tool_name, result, validation)
 
 
 
@@ -1233,9 +586,16 @@ def run_agent_turn(
             on_status(message)
 
     executed_actions: list[dict[str, Any]] = []
+    milestone_progress: str | None = None
+    action_plan: Any | None = None
+    partial = False
 
     def _with_receipt(response: str) -> str:
-        return append_action_receipt(response, executed_actions)
+        return append_action_receipt(
+            response,
+            executed_actions,
+            milestone_progress=milestone_progress,
+        )
 
     def _log_tool_decision(
         tool_name: str,
@@ -1321,229 +681,124 @@ def run_agent_turn(
     )
 
     _status(t("chat.status_connecting", hint=router.format_provider_hint(provider)))
-    personal_context = _prefetch_personal_context(user_message)
-    if personal_context:
-        _status(t("chat.status_prefetch_personal"))
-        logger.info("agent prefetch personal=yes")
-    archive_context = _prefetch_archive_context(user_message)
-    if archive_context:
-        _status(t("chat.status_prefetch_archive"))
-        logger.info("agent prefetch archive=yes")
-    session_context = _prefetch_session_context(user_message, history, session_id)
-    if session_context:
-        if is_last_session_recall_query(user_message):
-            _status(t("chat.status_prefetch_last_session"))
-        else:
-            _status(t("chat.status_prefetch_session"))
-        logger.info("agent prefetch session=yes")
-    web_context = _prefetch_web_context(user_message)
-    if web_context:
-        _status(t("chat.status_prefetch_web"))
-        logger.info("agent prefetch web=yes")
-    workspace_ctx = _prefetch_workspace_context(user_message)
-    if workspace_ctx:
-        _status(t("chat.status_prefetch_workspace"))
-        logger.info("agent prefetch workspace=yes")
-    aware_ctx = _prefetch_aware_context(user_message)
-    if aware_ctx:
-        _status(t("chat.status_prefetch_aware"))
-        logger.info("agent prefetch aware=yes")
 
-    # Heuristic total budget across JIT blocks (small local models).
-    # STM recall: keep session ahead of personal/archive so recent chats survive.
-    budgeted = budget_prefetch_blocks(
-        {
-            "personal": personal_context,
-            "archive": archive_context,
-            "session": session_context,
-            "web": web_context,
-            "workspace": workspace_ctx,
-            "aware": aware_ctx,
-        },
-        session_first=is_session_recall_query(user_message),
+    from localagent import config as _cfg
+    from localagent.agent.intent_route import classify_turn_intent
+    from localagent.agent.planner.executor import execute_milestone_plan
+    from localagent.agent.planner.milestone import plan_milestones, verify_plan
+    from localagent.agent.react_loop import run_react_loop
+    from localagent.context.engine import ContextEngine
+    from localagent.persist.session_work import sync_session_work
+
+    turn_ctx = ContextEngine().build_turn_context(
+        user_message,
+        history,
+        session_id=session_id,
+        document_context=document_context,
+        on_status=_status,
     )
-    personal_context = budgeted.get("personal", "")
-    archive_context = budgeted.get("archive", "")
-    session_context = budgeted.get("session", "")
-    web_context = budgeted.get("web", "")
-    workspace_ctx = budgeted.get("workspace", "")
-    aware_ctx = budgeted.get("aware", "")
+    messages = list(turn_ctx.messages)
 
-    messages = [
-        ChatMessage(
-            role="system",
-            content=_build_system_prompt(
-                personal_context=personal_context,
-                archive_context=archive_context,
-                session_context=session_context,
-                web_context=web_context,
-                workspace_context=workspace_ctx,
-                aware_context=aware_ctx,
-                document_context=(document_context or "").strip(),
-            ),
+    def _rebuild_system(**kwargs) -> str:
+        return turn_ctx.rebuild_system(**kwargs)
+
+    def _finish(result: AgentResult) -> AgentResult:
+        sync_session_work(
+            session_id,
+            user_message=user_message,
+            action_plan=result.action_plan,
+            partial=result.partial,
+            tool_calls=result.tool_calls,
         )
-    ]
-    if history:
-        for msg in history[-10:]:
-            messages.append(ChatMessage(role=msg["role"], content=msg["content"]))
-    messages.append(ChatMessage(role="user", content=user_message))
+        return result
 
-    tool_calls: list[dict[str, Any]] = []
-    reply = ""
-    for iteration in range(3):
-        if iteration == 0:
-            if router.should_hint_ollama_cold_start(prefer):
-                _status(t("chat.status_generate_cold"))
-            else:
-                _status(t("chat.status_generate"))
-        else:
-            _status(t("chat.status_synthesize", n=iteration + 1))
+    turn_intent = classify_turn_intent(user_message, session_id)
+    logger.info("agent turn intent kind=%s", turn_intent.kind)
 
-        # Stream answers; mute tool-call payloads via the gate.
-        reply = router.chat(
-            messages,
-            temperature=0.3,
-            prefer=prefer,
-            on_token=_make_answer_stream_gate(on_token),
-            usage_command="chat",
-            session_id=session_id,
-        )
-        if not isinstance(reply, str):
-            reply = "" if reply is None else str(reply)
-
-        if not reply.strip() and iteration < 2:
-            logger.info("agent empty reply retry iteration=%s", iteration)
-            messages.append(ChatMessage(role="assistant", content=reply or "(空)"))
-            messages.append(ChatMessage(role="user", content=_empty_reply_retry()))
-            continue
-
-        call = _parse_tool_call(reply)
-        if not call:
-            clean = _strip_tool_blocks(reply)
-            # Truncated/malformed ```tool JSON strips to ""; retry instead of blank.
-            if not clean and _looks_like_tool_attempt(reply) and iteration < 2:
-                logger.info("agent tool-format retry iteration=%s", iteration)
-                messages.append(ChatMessage(role="assistant", content=reply))
-                messages.append(ChatMessage(role="user", content=_TOOL_FORMAT_RETRY))
-                continue
-            if (
-                _looks_incomplete_reply(clean, had_tools=bool(tool_calls))
-                and iteration < 2
-            ):
-                logger.info("agent incomplete-reply retry iteration=%s", iteration)
-                messages.append(ChatMessage(role="assistant", content=reply))
-                messages.append(ChatMessage(role="user", content=_incomplete_reply_retry()))
-                continue
-            needs_retry = _needs_file_tool_retry(user_message, clean, tool_calls)
-            if needs_retry and iteration < 2:
-                logger.info("agent file-tool retry iteration=%s", iteration)
-                messages.append(ChatMessage(role="assistant", content=reply))
-                append_mode = bool(re.search(r"追加", user_message, re.IGNORECASE))
-                mode_hint = (
-                    'mode 设为 "append"。'
-                    if append_mode
-                    else '覆盖写入用 mode "overwrite"，追加用 mode "append"。'
+    if turn_intent.use_milestone_planner and _cfg.PLANNER_ENABLED:
+        plan = turn_intent.resume_plan
+        if plan is None:
+            _status(t("chat.status_generate"))
+            plan = plan_milestones(user_message)
+        if plan is not None:
+            ok, reason = verify_plan(plan, user_message)
+            if ok:
+                if turn_intent.kind == "continue":
+                    log_event(
+                        "planner.resume",
+                        session_id=session_id,
+                        goal=plan.goal,
+                        pending=len(plan.pending),
+                    )
+                else:
+                    log_event(
+                        "planner.milestone",
+                        session_id=session_id,
+                        goal=plan.goal,
+                        milestones=len(plan.milestones),
+                    )
+                outcome = execute_milestone_plan(
+                    plan,
+                    user_message=user_message,
+                    base_messages=messages,
+                    router=router,
+                    prefer=prefer,
+                    session_id=session_id,
+                    on_status=on_status,
+                    on_token=on_token,
+                    gated_execute=_gated_execute,
+                    rebuild_system=_rebuild_system,
                 )
-                messages.append(
-                    ChatMessage(
-                        role="user",
-                        content=(
-                            "你尚未调用 edit_file / write_file 或 run_shell 就声称已完成文件操作。"
-                            "局部修改请先调用 edit_file；新建或整文件覆盖用 write_file；"
-                            f"{mode_hint}"
-                            "再根据工具返回结果回答用户，不要编造文件内容。"
-                        ),
+                action_plan = outcome.plan
+                partial = outcome.partial
+                if outcome.plan is not None:
+                    milestone_progress = format_milestone_progress(
+                        completed=[m.objective for m in outcome.plan.completed],
+                        pending=[m.objective for m in outcome.plan.pending],
+                        partial=outcome.partial,
+                    )
+                logger.info(
+                    "agent turn end provider=%s model=%s tools=%s milestone=%s partial=%s",
+                    router.last_provider or "-",
+                    router.last_model or "-",
+                    len(outcome.tool_calls),
+                    True,
+                    outcome.partial,
+                )
+                return _finish(
+                    AgentResult(
+                        response=_with_receipt(outcome.response),
+                        tool_calls=outcome.tool_calls,
+                        action_plan=action_plan,
+                        partial=partial,
                     )
                 )
-                continue
-            if needs_retry:
-                clean = (
-                    "未能实际写入文件：模型未调用 edit_file / write_file 或 run_shell。"
-                    "请重试，或使用 /provider openrouter 等更强模型。"
-                )
-            if not clean.strip():
-                clean = _EMPTY_RESPONSE_FALLBACK
-            elif _looks_incomplete_reply(clean, had_tools=bool(tool_calls)):
-                clean = (
-                    f"{clean.rstrip()}…\n\n"
-                    "（回答被截断。请再试一次，或提高 Ollama 的 num_predict / 换用更强模型。）"
-                )
-            logger.info(
-                "agent turn end provider=%s model=%s tools=%s",
-                router.last_provider or "-",
-                router.last_model or "-",
-                len(tool_calls),
-            )
-            return AgentResult(response=_with_receipt(clean), tool_calls=tool_calls)
+            log_event("planner.degraded", session_id=session_id, reason=reason)
 
-        tool_name = call.get("name", "")
-        tool_label = _TOOL_LABELS.get(tool_name, tool_name or t("chat.tool_fallback"))
-        if resolve_lang() == "en":
-            tool_label = tool_name or t("chat.tool_fallback")
-        arguments = call.get("arguments", {}) or {}
-        logger.info("agent tool call name=%s iteration=%s", tool_name or "-", iteration)
-        query = arguments.get("query", "") or arguments.get("command", "")
-        if query:
-            preview = query if len(query) <= 40 else f"{query[:40]}…"
-            _status(t("chat.status_tool_call", label=tool_label, preview=preview))
-        else:
-            _status(t("chat.status_tool_call_plain", label=tool_label))
-
-        tool_calls.append(call)
-        raw = _gated_execute(tool_name, arguments)
-        result = compress_observation(
-            tool_name,
-            raw,
-            user_query=user_message,
-        )
-        messages.append(ChatMessage(role="assistant", content=reply))
-        messages.append(
-            ChatMessage(
-                role="user",
-                content=_tool_followup_instruction(tool_name, result),
-            )
-        )
-        # Older tool rounds → short digests; keep only the latest observation full.
-        compact_prior_observations(messages)
-
-    final = _strip_tool_blocks(reply)
-    if not final.strip():
-        final = _EMPTY_RESPONSE_FALLBACK
-    elif _looks_incomplete_reply(final, had_tools=bool(tool_calls)):
-        final = (
-            f"{final.rstrip()}…\n\n"
-            "（回答被截断。请再试一次，或提高 Ollama 的 num_predict / 换用更强模型。）"
-        )
+    loop_result = run_react_loop(
+        messages=messages,
+        user_message=user_message,
+        router=router,
+        prefer=prefer,
+        session_id=session_id,
+        max_iterations=_cfg.AGENT_MAX_TOOL_ITERATIONS,
+        on_status=on_status,
+        on_token=on_token,
+        gated_execute=_gated_execute,
+        rebuild_system=_rebuild_system,
+        goal=user_message,
+    )
     logger.info(
-        "agent turn end provider=%s model=%s tools=%s (max iterations)",
+        "agent turn end provider=%s model=%s tools=%s",
         router.last_provider or "-",
         router.last_model or "-",
-        len(tool_calls),
+        len(loop_result.tool_calls),
     )
-    return AgentResult(response=_with_receipt(final), tool_calls=tool_calls)
-
-
-def build_agent_graph():
-    """Build LangGraph for session persistence (requires [full] extras)."""
-    try:
-        from langgraph.graph import END, StateGraph
-    except ImportError as exc:
-        raise ImportError("缺少 LangGraph 依赖，请重新安装: pip install la-localagent") from exc
-
-    def call_model(state: AgentState) -> AgentState:
-        last_user = ""
-        for msg in reversed(state["messages"]):
-            if msg["role"] == "user":
-                last_user = msg["content"]
-                break
-        result = run_agent_turn(last_user, state["messages"][:-1])
-        state["final_response"] = result.response
-        state["tool_calls"] = result.tool_calls
-        state["messages"].append({"role": "assistant", "content": result.response})
-        return state
-
-    graph = StateGraph(AgentState)
-    graph.add_node("call_model", call_model)
-    graph.set_entry_point("call_model")
-    graph.add_edge("call_model", END)
-    return graph
+    return _finish(
+        AgentResult(
+            response=_with_receipt(loop_result.response),
+            tool_calls=loop_result.tool_calls,
+            action_plan=action_plan,
+            partial=partial,
+        )
+    )

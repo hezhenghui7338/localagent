@@ -113,7 +113,7 @@ def test_e2e_safety_denies_without_approval_callback(la_env):
 
 
 def test_e2e_safety_write_hallucination_retries(la_env):
-    env = {**la_env, "LA_TOOL_APPROVAL": "off"}
+    env = {**la_env, "LA_TOOL_APPROVAL": "off", "LA_PLANNER_ENABLED": "0"}
     script = textwrap.dedent(
         """
         from unittest.mock import MagicMock, patch

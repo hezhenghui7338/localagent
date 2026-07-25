@@ -60,15 +60,22 @@ class HybridRetriever:
         conversation_only: bool = False,
         source_file: str | None = None,
     ) -> list[dict[str, Any]]:
+        from localagent import config
+
         since_dt, until_dt = parse_range_bounds(since, until)
         origins = _CONVERSATION_ORIGINS if conversation_only else None
         source_key = (source_file or "").strip() or None
-        # Over-fetch dense hits then hard-filter so in-window docs are not crowded out.
-        fetch_k = (
-            top_k * 5
-            if (since_dt or until_dt or origins or source_key)
-            else top_k
-        )
+        filtered = bool(since_dt or until_dt or origins or source_key)
+        # Over-fetch dense/sparse hits for time/source filters or Cold rerank pool.
+        if filtered:
+            fetch_k = top_k * 5
+        elif config.COLD_RERANK:
+            fetch_k = max(
+                top_k * max(1, config.COLD_FETCH_MULTIPLIER),
+                config.COLD_RERANK_CANDIDATES,
+            )
+        else:
+            fetch_k = top_k
         dense = self.chroma.query(query, top_k=fetch_k, source_file=source_key)
         if since_dt or until_dt or origins is not None:
             dense = [
@@ -92,7 +99,12 @@ class HybridRetriever:
             origins=origins,
             source_file=source_key,
         )
-        return reciprocal_rank_fusion([dense, sparse], top_k=top_k)
+        fused = reciprocal_rank_fusion([dense, sparse], top_k=fetch_k)
+        if not config.COLD_RERANK:
+            return fused[:top_k]
+        from localagent.knowledge.rerank import rerank_cold_hits
+
+        return rerank_cold_hits(query, fused, max_results=top_k)
 
     def list_conversations_in_range(
         self,

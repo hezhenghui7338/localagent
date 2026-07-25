@@ -14,6 +14,7 @@ from localagent.status.layers import (
     format_data_layer_detail_lines,
     format_recall_priority_lines,
 )
+from localagent.mcp_cmd import format_mcp_status_lines
 
 
 def format_status_report(
@@ -33,6 +34,9 @@ def format_status_report(
         "",
         t("status.section_layers"),
         *format_data_layer_detail_lines(layers),
+        "",
+        "── MCP ──",
+        *format_mcp_status_lines(),
         "",
         t("status.section_recall"),
         *format_recall_priority_lines(),

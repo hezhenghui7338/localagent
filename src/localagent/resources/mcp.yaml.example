@@ -1,0 +1,12 @@
+# LocalAgent MCP server configuration (example)
+defaults:
+  enabled: true
+  approval: dangerous
+  timeout_seconds: 30
+
+import_cursor: true
+cursor_paths:
+  - ~/.cursor/mcp.json
+  - .cursor/mcp.json
+
+servers: {}

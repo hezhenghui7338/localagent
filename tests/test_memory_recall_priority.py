@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from localagent.agent.runtime import (
     _prefetch_personal_context,
@@ -77,24 +77,21 @@ def test_rewrite_location_query():
 
 
 def test_prefetch_personal_context_for_location_question():
-    with (
-        patch(
-            "localagent.tools.search_memory",
-            return_value="- 用户居住在深圳",
-        ) as search,
-        patch(
-            "localagent.tools.search_knowledge",
-            return_value="- [chat] 聊到住在深圳",
-        ) as cold,
-    ):
+    with patch(
+        "localagent.context.retrieval.get_retrieval_gateway",
+    ) as get_gw:
+        gw = MagicMock()
+        gw.recall_warm.return_value = "- 用户居住在深圳"
+        gw.search_cold.return_value = "- [chat] 聊到住在深圳"
+        get_gw.return_value = gw
         ctx = _prefetch_personal_context("你知道我住在哪里吗?")
     assert ctx
     assert "已预加载" in ctx
     assert "Cold" in ctx
-    assert search.call_count >= 1
-    assert any("居住" in str(call) for call in search.call_args_list)
-    cold.assert_called()
-    assert cold.call_args.kwargs.get("conversation_only") is True
+    assert gw.recall_warm.call_count >= 1
+    assert any("居住" in str(call) for call in gw.recall_warm.call_args_list)
+    gw.search_cold.assert_called()
+    assert gw.search_cold.call_args.kwargs.get("conversation_only") is True
 
 
 def test_explicit_remember_writes_memory_and_pins_profile(isolated_data):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from localagent.agent.runtime import (
     _build_system_prompt,
@@ -20,6 +20,11 @@ from localagent.agent.runtime import (
     _truncate_for_llm,
     run_agent_turn,
 )
+from localagent.context.types import ContextBlocks
+
+
+def _no_prefetch():
+    return ContextBlocks(), {}
 
 
 def test_answer_stream_gate_emits_prose():
@@ -184,7 +189,8 @@ def test_run_agent_turn_retries_truncated_tool_call(isolated_data):
     assert isolated_data["router"].chat.call_count == 3
 
 
-def test_run_agent_turn_empty_reply_gets_fallback(isolated_data):
+def test_run_agent_turn_empty_reply_gets_fallback(isolated_data, monkeypatch):
+    monkeypatch.setattr("localagent.config.AGENT_MAX_TOOL_ITERATIONS", 3)
     isolated_data["router"].chat.side_effect = ["", "", ""]
 
     result = run_agent_turn("你好", provider="ollama")
@@ -256,10 +262,16 @@ def test_run_agent_turn_executes_xml_tool_call(isolated_data):
     )
     isolated_data["router"].chat.side_effect = [tool_reply, "你去年研究了 Hindsight 和 Mem0。"]
 
-    with patch(
-        "localagent.tools.search_memory",
-        return_value="[1] Hindsight 记忆系统\n[2] Mem0",
-    ) as search:
+    with (
+        patch(
+            "localagent.tools.search_memory",
+            return_value="[1] Hindsight 记忆系统\n[2] Mem0",
+        ) as search,
+        patch(
+            "localagent.context.engine.fetch_prefetch_blocks",
+            side_effect=lambda *a, **k: _no_prefetch(),
+        ),
+    ):
         result = run_agent_turn("我去年研究过哪些 Memory System？", provider="openrouter")
 
     assert result.response == "你去年研究了 Hindsight 和 Mem0。"
@@ -312,8 +324,7 @@ def test_run_agent_turn_compacts_prior_tool_observations(isolated_data):
             "localagent.tools.web_search",
             return_value="摘要: ok\n- [匹配] t: c\n  链接: https://ex.com",
         ),
-        patch("localagent.agent.runtime._prefetch_web_context", return_value=""),
-        patch("localagent.agent.runtime._prefetch_personal_context", return_value=""),
+        patch("localagent.context.engine.fetch_prefetch_blocks", side_effect=lambda *a, **k: _no_prefetch()),
     ):
         result = run_agent_turn("随便问", provider="ollama")
 
@@ -324,7 +335,7 @@ def test_run_agent_turn_compacts_prior_tool_observations(isolated_data):
     compacted = [
         m.content
         for m in third_msgs
-        if getattr(m, "role", None) == "user" and "已压缩" in str(getattr(m, "content", ""))
+        if getattr(m, "role", None) == "user" and "system evidence" in str(getattr(m, "content", ""))
     ]
     latest = [
         m.content
@@ -336,6 +347,9 @@ def test_run_agent_turn_compacts_prior_tool_observations(isolated_data):
     assert "search_memory" in compacted[0]
     assert latest
     assert "https://ex.com" in latest[-1] or "摘要" in latest[-1]
+    system = next(m for m in third_msgs if getattr(m, "role", None) == "system")
+    assert "【当前目标】" in system.content
+    assert "【已收集证据】" in system.content
 
 
 def test_run_agent_turn_executes_json_fenced_tool_call(isolated_data):
@@ -344,10 +358,16 @@ def test_run_agent_turn_executes_json_fenced_tool_call(isolated_data):
     )
     isolated_data["router"].chat.side_effect = [tool_reply, "你几年前关注 AI 视频工具。"]
 
-    with patch(
-        "localagent.tools.search_knowledge",
-        return_value="[1] 用户关注 AI 视频工具",
-    ) as search:
+    with (
+        patch(
+            "localagent.tools.search_knowledge",
+            return_value="[1] 用户关注 AI 视频工具",
+        ) as search,
+        patch(
+            "localagent.context.engine.fetch_prefetch_blocks",
+            side_effect=lambda *a, **k: _no_prefetch(),
+        ),
+    ):
         result = run_agent_turn("几年前我关心什么?", provider="ollama")
 
     assert result.response == "你几年前关注 AI 视频工具。"
@@ -359,34 +379,33 @@ def test_run_agent_turn_executes_json_fenced_tool_call(isolated_data):
 
 
 def test_prefetch_personal_context_for_identity_question():
-    with (
-        patch("localagent.tools.search_memory", return_value="未找到相关记忆。") as search,
-        patch(
-            "localagent.tools.search_knowledge",
-            return_value="未找到相关知识。",
-        ) as cold,
-    ):
+    with patch(
+        "localagent.context.retrieval.get_retrieval_gateway",
+    ) as get_gw:
+        gw = MagicMock()
+        gw.recall_warm.return_value = "未找到相关记忆。"
+        gw.search_cold.return_value = "未找到相关知识。"
+        get_gw.return_value = gw
         ctx = _prefetch_personal_context("我是谁?")
     assert ctx
     assert "已预加载" in ctx
     assert "未找到相关记忆" in ctx
     assert "Cold" in ctx
-    search.assert_called_once_with("我是谁?", top_k=8)
-    cold.assert_called_once()
-    assert cold.call_args.kwargs.get("conversation_only") is True
+    gw.recall_warm.assert_called_once()
+    assert gw.recall_warm.call_args.args == ("我是谁?",)
+    assert gw.recall_warm.call_args.kwargs["top_k"] == 8
+    gw.search_cold.assert_called_once()
+    assert gw.search_cold.call_args.kwargs.get("conversation_only") is True
 
 
 def test_prefetch_memory_browse_question():
-    with (
-        patch(
-            "localagent.tools.query_memories_tool",
-            return_value="记忆库共 3 条，返回 3 条",
-        ) as browse,
-        patch(
-            "localagent.tools.search_knowledge",
-            return_value="- [0.02] [chatgpt] 用户讨论 Rust 与葡萄酒品鉴",
-        ) as cold,
-    ):
+    with patch(
+        "localagent.context.retrieval.get_retrieval_gateway",
+    ) as get_gw:
+        gw = MagicMock()
+        gw.query_warm.return_value = "记忆库共 3 条，返回 3 条"
+        gw.search_cold.return_value = "- [0.02] [chatgpt] 用户讨论 Rust 与葡萄酒品鉴"
+        get_gw.return_value = gw
         ctx = _prefetch_personal_context("我的记忆库里有什么有趣的东西吗?")
     assert ctx
     assert "已预加载" in ctx
@@ -394,15 +413,14 @@ def test_prefetch_memory_browse_question():
     assert "Warm" in ctx
     assert "Cold" in ctx
     assert "葡萄酒品鉴" in ctx
-    browse.assert_called_once_with(
-        query="我的记忆库里有什么有趣的东西吗?",
-        sort="relevance",
-        limit=8,
-    )
-    cold.assert_called_once()
-    assert cold.call_args.kwargs.get("top_k") == 5
-    assert cold.call_args.kwargs.get("fallback") is False
-    assert cold.call_args.kwargs.get("conversation_only") is not True
+    gw.query_warm.assert_called_once()
+    assert gw.query_warm.call_args.kwargs["query"] == "我的记忆库里有什么有趣的东西吗?"
+    assert gw.query_warm.call_args.kwargs["sort"] == "relevance"
+    assert gw.query_warm.call_args.kwargs["limit"] == 8
+    gw.search_cold.assert_called_once()
+    assert gw.search_cold.call_args.kwargs.get("top_k") == 5
+    assert gw.search_cold.call_args.kwargs.get("fallback") is False
+    assert gw.search_cold.call_args.kwargs.get("conversation_only") is not True
 
 
 def test_browse_cold_query_strips_boilerplate():
@@ -418,32 +436,30 @@ def test_browse_cold_query_strips_boilerplate():
 
 
 def test_prefetch_family_question_uses_tag_search():
-    with (
-        patch(
-            "localagent.tools.query_memories_tool",
-            return_value="找到 2 条相关记忆",
-        ) as query,
-        patch(
-            "localagent.tools.search_memory",
-            return_value="妻子相关记忆",
-        ) as search,
-        patch(
-            "localagent.tools.search_knowledge",
-            return_value="- [chatgpt] 家庭相关对话",
-        ) as cold,
-    ):
+    with patch(
+        "localagent.context.retrieval.get_retrieval_gateway",
+    ) as get_gw:
+        gw = MagicMock()
+        gw.query_warm.return_value = "找到 2 条相关记忆"
+        gw.recall_warm.return_value = "妻子相关记忆"
+        gw.search_cold.return_value = "- [chatgpt] 家庭相关对话"
+        get_gw.return_value = gw
         ctx = _prefetch_personal_context("关于我的家庭,你都知道些什么?深入搜索我的记忆库.")
     assert ctx
     assert "已预加载" in ctx
     assert "Cold" in ctx
-    query.assert_called_once()
-    assert query.call_args.kwargs.get("tags") == ["家庭"]
-    search.assert_called_once()
-    cold.assert_called_once()
-    assert cold.call_args.kwargs.get("conversation_only") is True
+    gw.query_warm.assert_called_once()
+    assert gw.query_warm.call_args.kwargs.get("tags") == ["家庭"]
+    gw.recall_warm.assert_called_once()
+    gw.search_cold.assert_called_once()
+    assert gw.search_cold.call_args.kwargs.get("conversation_only") is True
 
 
 def test_prefetch_skips_generic_question():
+    from localagent.agent.prefetch_route import route_prefetch_modules
+
+    route = route_prefetch_modules("今天天气怎么样?")
+    assert "personal" not in route.modules
     assert _prefetch_personal_context("今天天气怎么样?") == ""
 
 
@@ -474,13 +490,18 @@ def test_prefetch_web_context_for_几点了():
 
 
 def test_prefetch_web_skips_non_time_sensitive_question():
-    assert _prefetch_web_context("Python 怎么写装饰器?") == ""
+    from localagent.agent.prefetch_route import route_prefetch_modules
+
+    route = route_prefetch_modules("Python 怎么写装饰器?")
+    assert "web" not in route.modules
 
 
 def test_prefetch_web_skips_session_recall_question():
-    with patch("localagent.tools.web_search") as search:
-        assert _prefetch_web_context("今天的聊天记录") == ""
-    search.assert_not_called()
+    from localagent.agent.prefetch_route import route_prefetch_modules
+
+    route = route_prefetch_modules("今天的聊天记录")
+    assert route.modules == ["session"]
+    assert "web" not in route.modules
 
 
 def test_prefetch_web_stale_results_allow_research():
@@ -664,7 +685,11 @@ def test_prefetch_last_session_loads_previous_not_archive(isolated_data):
     assert "上一场" in ctx or "借问酒家" in ctx
     assert "借问酒家何处有" in ctx
     assert "卧室" not in ctx
-    assert _prefetch_archive_context("我上次对话问了啥?") == ""
+    from localagent.agent.prefetch_route import route_prefetch_modules
+
+    route = route_prefetch_modules("我上次对话问了啥?")
+    assert route.modules == ["session"]
+    assert "archive" not in route.modules
 
 
 def test_run_agent_turn_prefetches_session_recall_without_web(isolated_data):
@@ -673,7 +698,7 @@ def test_run_agent_turn_prefetches_session_recall_without_web(isolated_data):
     with (
         patch("localagent.tools.web_search") as search,
         patch(
-            "localagent.agent.runtime._prefetch_session_context",
+            "localagent.context.fetchers.session.prefetch_session_context",
             return_value="[对话记录（已预加载）]\n用户: 介绍一下我的军事策略",
         ),
     ):
@@ -704,12 +729,18 @@ def test_build_system_prompt_includes_prefetched_context(monkeypatch):
 def test_run_agent_turn_prefetches_without_tool_round(isolated_data, monkeypatch):
     isolated_data["router"].chat.return_value = "你是 LocalAgent 用户。"
 
-    with patch("localagent.tools.search_memory", return_value="未找到相关记忆。") as search:
+    with patch(
+        "localagent.context.retrieval.get_retrieval_gateway",
+    ) as get_gw:
+        gw = MagicMock()
+        gw.recall_warm.return_value = "未找到相关记忆。"
+        gw.search_cold.return_value = "未找到相关知识。"
+        get_gw.return_value = gw
         result = run_agent_turn("我是谁?", provider="ollama")
 
     assert result.response == "你是 LocalAgent 用户。"
     assert result.tool_calls == []
-    search.assert_called_once()
+    gw.recall_warm.assert_called_once()
     system_prompt = isolated_data["router"].chat.call_args.args[0][0].content
     assert "已预加载" in system_prompt
 
@@ -717,26 +748,22 @@ def test_run_agent_turn_prefetches_without_tool_round(isolated_data, monkeypatch
 def test_run_agent_turn_prefetches_memory_browse(isolated_data):
     isolated_data["router"].chat.return_value = "你的记忆库里有不少有趣的内容。"
 
-    with (
-        patch(
-            "localagent.tools.query_memories_tool",
-            return_value="记忆库共 5 条，返回 5 条",
-        ) as browse,
-        patch(
-            "localagent.tools.search_knowledge",
-            return_value="- [0.01] [chat] 讨论过项目架构",
-        ) as cold,
-    ):
+    with patch(
+        "localagent.context.retrieval.get_retrieval_gateway",
+    ) as get_gw:
+        gw = MagicMock()
+        gw.query_warm.return_value = "记忆库共 5 条，返回 5 条"
+        gw.search_cold.return_value = "- [0.01] [chat] 讨论过项目架构"
+        get_gw.return_value = gw
         result = run_agent_turn("我的记忆库里有什么有趣的东西吗?", provider="ollama")
 
     assert "有趣" in result.response
     assert result.tool_calls == []
-    browse.assert_called_once_with(
-        query="我的记忆库里有什么有趣的东西吗?",
-        sort="relevance",
-        limit=8,
-    )
-    cold.assert_called_once()
+    gw.query_warm.assert_called_once()
+    assert gw.query_warm.call_args.kwargs["query"] == "我的记忆库里有什么有趣的东西吗?"
+    assert gw.query_warm.call_args.kwargs["sort"] == "relevance"
+    assert gw.query_warm.call_args.kwargs["limit"] == 8
+    gw.search_cold.assert_called_once()
     system_prompt = isolated_data["router"].chat.call_args.args[0][0].content
     assert "已预加载" in system_prompt
     assert "记忆库共 5 条" in system_prompt
@@ -865,7 +892,8 @@ def test_run_agent_turn_retries_append_hallucination(isolated_data):
     )
 
 
-def test_run_agent_turn_fails_gracefully_after_retry_exhausted(isolated_data):
+def test_run_agent_turn_fails_gracefully_after_retry_exhausted(isolated_data, monkeypatch):
+    monkeypatch.setattr("localagent.config.AGENT_MAX_TOOL_ITERATIONS", 3)
     hallucinated = (
         '已成功将"第二行"追加到 `test.txt` 文件中。当前文件完整内容为：\n\n'
     )
