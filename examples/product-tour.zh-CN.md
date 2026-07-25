@@ -2,22 +2,22 @@
 
 > **一句话**：栖居在你电脑里的 AI。  
 > **特性拆分**：**本地优先，真记得你，把事办完。**  
-> **目标**：用一条连贯的「虚构用户」故事，在约 **30 分钟**内亲手跑通三幕核心体验（对照 [PRD §2](../docs/PRD.md)）。  
+> **目标**：用一条连贯的「虚构用户」故事，在约 **30 分钟**内亲手跑通三个阶段核心体验（对照 [PRD §2](../docs/PRD.md)）。  
 > 每一步都给出**完整输入**与**预期输出**（示例数据均为虚构，可安全复现）。  
 > 命令入口：`la` / `LA`（等价）。更短的上手见 [walkthrough.zh-CN.md](walkthrough.zh-CN.md)。  
 > [English](product-tour.md)
 
 ---
 
-## 你将体会到什么（三幕）
+## 你将体会到什么（三个阶段）
 
-| 幕 | 支柱 | 你会体验到 | 本节 |
+| 阶段 | 核心理念 | 你会体验到 | 本节 |
 |----|------|------------|------|
 | **I** | **Local First** | 一键装好、纯本地或自有 API | [§1](#1-一键安装与-hello用户--开发者) · [§2](#2-纯本地与自有-api-双路径) |
-| **II** | **Memory Forever** | 跨会话记住、ChatGPT 导入、RAG 深召回 | [§3](#3-跨会话记忆--hot--warm--cold) · [§4](#4-chatgpt-导入加速认识你) · [§5](#5-本地文档-rag-深度召回) |
-| **III** | **Actions Automated** | 联网、动手改文件、日常旁路（含 Aware）、审计与今日信号 | [§6](#6-联网搜索--小模型也能用好网络)–[§13](#13-aware本机感知故事-6e)；另试 `la status` |
+| **II** | **Memory Forever** | 跨会话记住、ChatGPT 导入、RAG 深召回 | [§3](#3-跨会话记忆--hot--warm--cold) · [§4](#4-导入-chatgpt-历史更快了解你) · [§5](#5-本地文档-rag-深度召回) |
+| **III** | **Actions Automated** | 联网、动手改文件、日常快捷功能（含 Aware）、审计与今日信号 | [§6](#6-联网搜索--本地小模型也能联网查资料)–[§13](#13-aware本机感知故事-6e)；另试 `la status` |
 
-**叙事设定（虚构）**：你是「林晓」，在本机上用 LocalAgent 做个人 AI；偏好美式咖啡；2026-05 在深圳开会定了产品路线；2026-07 决定用 Mem0 做记忆引擎。
+**故事背景（虚构）**：你是「林晓」，在本机上用 LocalAgent 做个人 AI；偏好美式咖啡；2026-05 在深圳开会定了产品路线；2026-07 决定用 Mem0 做记忆引擎。
 
 **建议**：用隔离数据目录，不污染日常数据：
 
@@ -63,7 +63,7 @@ la --version
 
 ## 2. 纯本地与自有 API 双路径
 
-纯本地（零账单）只需 Ollama；要用自己注册的 OpenRouter / Cursor / Tavily Key，写入配置即可——**身份、记忆与审计档案仍存本机**（选用云端对话或联网搜索时，当轮内容仍会发往对应服务）。
+纯本地（零成本）只需 Ollama；要用自己注册的 OpenRouter / Cursor / Tavily Key，写入配置即可——**身份、记忆与审计本地数据仍存本机**（选用云端对话或联网搜索时，当轮内容仍会上传到对应服务）。
 
 ### 2.1 按 example 配置
 
@@ -142,7 +142,7 @@ LocalAgent v0.6.0 …
 [via ollama/qwen3.5:4b]
 ```
 
-输入 `/q` 退出。若能看到欢迎屏与回复，**安装链路已跑通**。
+输入 `/q` 退出。若能看到欢迎屏与回复，**说明安装成功**。
 
 ---
 
@@ -261,13 +261,13 @@ la chat --provider ollama --session-id tour-b
 [via ollama/qwen3.5:4b]
 ```
 
-> **对比点**：普通 Chat 客户端换会话就「失忆」；LocalAgent 从 Warm/Hot 召回，**不依赖当前会话上下文**。
+> **要点**：普通 Chat 客户端换会话就「失忆」；LocalAgent 从 Warm/Hot 召回，**不依赖当前会话上下文**。
 
 ### 3.5 一眼看清三层
 
 ```bash
 # Hot
-cat "${LA_DATA_DIR:-data}/core_profile.json" 2>/dev/null || echo "(画像随对话/导入逐步 enrich)"
+cat "${LA_DATA_DIR:-data}/core_profile.json" 2>/dev/null || echo "(画像随对话/导入逐步完善)"
 
 # Warm
 LA memory search "林晓" --top-k 3
@@ -278,7 +278,7 @@ LA rag search "qwen3.5:4b" --top-k 2
 
 ---
 
-## 4. ChatGPT 导入加速认识你
+## 4. 导入 ChatGPT 历史，更快了解你
 
 从 ChatGPT **Settings → Data Controls → Export** 拿到 `conversations.json` 后导入，Cold 归档 + Warm 事实提取并行，让 LA 更快认识你。
 
@@ -368,7 +368,7 @@ LA memory search "长期目标"
 
 ## 5. 本地文档 RAG 深度召回
 
-个人文档进 Cold 知识库（**不**提取 Warm 事实）；对话时用 `rag search` / `search_knowledge` 深度召回。
+个人文档进 Cold 知识库（**不**提取 Warm 事实）；对话时用 `rag search` / `search_knowledge` 检索知识库。
 
 ### 5.1 文档知识库索引
 
@@ -392,7 +392,7 @@ LA rag ingest
 
 ---
 
-## 6. 联网搜索 → 小模型也能用好网络
+## 6. 联网搜索 → 本地小模型也能联网查资料
 
 默认 **无需 API Key**（`ddgs`）；小模型负责「决定何时搜、如何归纳」，网络提供事实。
 
@@ -427,7 +427,7 @@ la chat --provider ollama
 
 可选增强（非必须）：在 config 中填入 `TAVILY_API_KEY`，`auto` 模式会优先用 Tavily。
 
-> **对比点**：即使用 `qwen3.5:4b` 这种小模型，也能通过工具调用链接网络，而不是胡编实时信息。
+> **要点**：即使用 `qwen3.5:4b` 这种小模型，也能通过工具调用链接网络，而不是胡编实时信息。
 
 ---
 
@@ -482,7 +482,7 @@ la chat --cwd . --provider ollama
 ⚠ 这是潜在危险操作，确定要执行吗？ [y/N]
 ```
 
-### 7.3 硬拦截（不会执行、也不该确认通过）
+### 7.3 直接拦截（不会执行、也不该确认通过）
 
 例如尝试删除根目录类命令时，策略会 **blocked**，直接拒绝：
 
@@ -560,7 +560,7 @@ LA audit --since 7d --report /tmp/la-tour-audit.md
 facts=12 · knowledge_chunks=38 · bm25=ready · chroma=ready
 ```
 
-> **对比点**：Ollama 本地调用费用恒为 **$0**；敏感路径/误索引风险会出现在「文件安全」段，可导出 Markdown 留存。
+> **要点**：Ollama 本地调用费用恒为 **$0**；敏感路径/误索引风险会出现在「文件安全」段，可导出 Markdown 留存。
 
 ---
 
@@ -610,7 +610,7 @@ la chat --provider ollama
 
 ### 9.2 时间优先召回 → 综合推理
 
-记忆带有**发生时间**；提问若带时间域（「2023 年 5 月」「上周」「现在」），召回会**提高时间权重**，优先匹配该时间窗，再交由大模型综合作答。
+记忆带有**发生时间**；提问若带时间范围（「2023 年 5 月」「上周」「现在」），召回会**提高时间权重**，优先匹配该时间窗，再交由大模型综合作答。
 
 ### 9.2.1 准备同一主题、不同时间的记忆
 
@@ -619,7 +619,7 @@ LA memory add "2026年5月，架构评审后先试用轻量方案，尚未最终
 LA memory add "2026年7月，最终决定采用 Mem0：更轻、更快，reflect 由 search + 本地 LLM 完成"
 ```
 
-### 9.2.2 按时间域检索（Warm）
+### 9.2.2 按时间范围检索（Warm）
 
 **输入：**
 
@@ -638,7 +638,7 @@ LA memory search "2026年7月 记忆引擎选型" --verbose
 ```text
 [search] 检索记忆: 2026年5月 记忆引擎选型
 ### 1. …
-相关度 0.91 · 时间衰减/对齐 0.95 · 2026-05-…
+相关度 0.91 · 时间匹配度 0.95 · 2026-05-…
 2026年5月，架构评审后先试用轻量方案，尚未最终选定 Mem0
 ```
 
@@ -678,7 +678,7 @@ la chat --provider ollama
 5 月时还在试用轻量方案，尚未最终选定。
 ```
 
-> **对比点**：不是「语义最像就排前面」，而是**问题要求的时间域 × 记忆发生时间**对齐后再推理——这正是长期助手答对「当时 vs 现在」的关键。
+> **要点**：不是「语义最像就排前面」，而是**问题里的时间 × 记忆发生时间**匹配后再推理——这正是长期助手答对「当时 vs 现在」的关键。
 
 ---
 
@@ -794,7 +794,7 @@ la aware --no-chat
 - [ ] **故事 5–6**：ChatGPT 导入成功；`memory search` 与 `rag search` 分别体现 Warm / Cold  
 - [ ] **记忆确认门**：后台提取后 `LA memory pending` 可见候选；`approve` / `reject` 可控写入（或设 `LA_MEMORY_APPROVAL_AUTO=1`）  
 - [ ] **故事 7**：小模型对话中自动 `web_search`（默认 ddgs），答案带来源感  
-- [ ] **故事 8–9**：Shell / 写文件弹出确认；危险命令有「风险」提示或硬拦截  
+- [ ] **故事 8–9**：Shell / 写文件弹出确认；危险命令有「风险」提示或直接拦截  
 - [ ] **故事 10**：`LA audit` 能看到 Token 与费用；`--report out.html` 可导出 HTML  
 - [ ] **故事 6b**：`la summarize` 出速读卡；TTY 进 `sum>`；默认不入库
 - [ ] **故事 10b（OCR）**：`pip install 'la-localagent[ocr]'` + `la ocr screenshot.png` 能输出文字；`la summarize` 对图片报错并提示 `la ocr`

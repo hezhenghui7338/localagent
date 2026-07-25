@@ -24,18 +24,18 @@
       "features.eyebrow": "产品设计",
       "features.title": "本地优先，真记得你，把事办完。",
       "features.lead":
-        "装上就能聊、能记住、能动手办事——默认本机跑通，云端可选。身份、记忆与审计档案存本机、不上传；选用云端模型或联网搜索时，当轮内容会发往对应服务。",
+        "装上就能聊、能记住、能动手办事——默认本机跑通，云端可选。身份、记忆与审计本地数据存本机、不上传；选用云端模型或联网搜索时，当轮内容会上传到对应服务。",
       "features.f1.title": "Local First",
       "features.f1.body":
-        "默认零账单路径：对话、记忆、检索、工具可纯本地跑通。主路径 <code>la</code> · <code>la setup</code> · <code>la chat</code>。可选云端——档案留本机；当轮 prompt 可能外发。",
+        "默认零成本使用：对话、记忆、检索、工具可纯本地跑通。常用命令 <code>la</code> · <code>la setup</code> · <code>la chat</code>。可选云端——本地数据留本机；当轮对话内容可能上传。",
       "features.f1.link": "看「零成本上手」演示 →",
       "features.f2.title": "Memory Forever",
       "features.f2.body":
-        "Hot / Warm / Cold + Mem0 跨会话持久。记住你，也懂得该记什么、别记什么、何时介入。文档进本地知识库，深度召回原文。",
+        "Hot / Warm / Cold + Mem0 跨会话持久。记住你，也懂得该记什么、别记什么、何时介入。文档进本地知识库，可检索原文。",
       "features.f2.link": "看「真记住你」演示 →",
       "features.f3.title": "Actions Automated",
       "features.f3.body":
-        "Shell、写文件、工作区；summarize · news · polish · <strong>aware</strong>（需授权、不自动入库）；定时简报。执行前确认，危险硬拦，办完有回执。",
+        "Shell、写文件、工作区；summarize · news · polish · <strong>aware</strong>（需授权、不自动入库）；定时简报。执行前确认，危险命令直接拦截，完成后有回执。",
       "features.f3.link": "看「本机感知」演示 →",
       "demo.eyebrow": "演示",
       "demo.title": "几件事，马上感受到",
@@ -55,14 +55,14 @@
       "demo.moreInstall": "去安装 →",
       "demo.setup.title": "本机一键，默认可零成本",
       "demo.setup.body":
-        "不绑账号也能聊；默认算力在本机，记忆与审计档案不上传。",
+        "不绑账号也能聊；默认算力在本机，记忆与审计本地数据不上传。",
       "demo.setup.note":
         "默认 Ollama 本地路径；账单可为 $0。",
       "demo.memory.title": "关掉窗口，它还记得你",
       "demo.memory.body":
         "新会话照样叫得出名字、偏好和关键决策——记忆在本机，不在聊天记录里。",
       "demo.memory.note":
-        "对比：典型聊天客户端换会话就忘；LocalAgent 从 Warm / Hot 召回。",
+        "和一般 Chat 的区别：典型聊天客户端换会话就忘；LocalAgent 从 Warm / Hot 召回。",
       "demo.deepread.title": "一篇文章，聊到懂",
       "demo.deepread.body":
         "先速读，再围着原文追问；今日资讯精读也是同一套深聊。",
@@ -80,10 +80,10 @@
       "install.copied": "已复制",
       "install.hint":
         "有 API → 写入 Key；无 API → <code>la setup -y</code> 装 Ollama。",
-      "install.trust1": "默认本机 Ollama——零账单、无需账号。",
+      "install.trust1": "默认本机 Ollama——零成本、无需账号。",
       "install.trust2": "副作用（Shell / 写文件）执行前会确认。",
       "install.trust3":
-        "云端模型或联网搜索会外发当轮内容；可用 <code>/provider ollama</code> 切回本地。",
+        "云端模型或联网搜索会上传当轮内容；可用 <code>/provider ollama</code> 切回本地。",
       "install.docs": "完整文档与升级说明 →",
       "contact.eyebrow": "联系",
       "contact.title": "打招呼",
@@ -219,7 +219,7 @@
             { kind: "out", text: "## Tokens & service cost" },
             { kind: "out", text: "provider: ollama" },
             { kind: "accent", text: "estimated cost: $0.00" },
-            { kind: "dim", text: "装上就能聊 · 默认可零账单" },
+            { kind: "dim", text: "装上就能聊 · 默认可零成本" },
           ],
         },
       ],
@@ -268,7 +268,7 @@
             { kind: "dim", text: "[via ollama/qwen3.5:4b]" },
             {
               kind: "accent",
-              text: "不是当前 transcript —— 从本机 Warm / Hot 召回。",
+              text: "不是当前对话记录，而是从本机 Warm / Hot 召回。",
             },
           ],
         },

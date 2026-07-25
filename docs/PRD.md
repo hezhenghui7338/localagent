@@ -5,23 +5,23 @@
 **中文一句话**：栖居在你电脑里的 AI。  
 **定位三板斧**：**本地优先，真记得你，把事办完。**（Local First. Memory Forever. Actions Automated.；特性专业化拆分，次于一句话）
 
-**定位**：本地个人 AI——默认本机可完整跑通；跨会话持久记住你；能动手把事办完（工具循环 · 日常旁路 · 定时），副作用可控。
+**定位**：本地个人 AI——默认本机可完整跑通；跨会话持久记住你；能动手把事办完（工具循环 · 日常快捷功能 · 定时），副作用可控。
 
-对外主叙事见 [README.md](../README.md)（英文默认 · [中文](../README.zh-CN.md)）；可跑通故事见 [examples/product-tour.zh-CN.md](../examples/product-tour.zh-CN.md)。
+对外设计主线见 [README.md](../README.md)（英文默认 · [中文](../README.zh-CN.md)）；可跑通故事见 [examples/product-tour.zh-CN.md](../examples/product-tour.zh-CN.md)。
 
 ---
 
 ## 0. 核心定位
 
-LocalAgent 不是「又一个 Chat 客户端」，而是跑在本机上的**个人 AI**：算力默认本机，也可选用外部模型服务；模型与 LocalAgent 正交——越好的模型效果越好，小模型也能跑通基本任务。身份、记忆与审计**档案**存本机、不上传；选用云端推理或联网搜索时，当轮内容会发往对应服务。
+LocalAgent 不是「又一个 Chat 客户端」，而是跑在本机上的**个人 AI**：算力默认本机，也可选用外部模型服务；模型与 LocalAgent 相互独立——越好的模型效果越好，小模型也能跑通基本任务。身份、记忆与审计**本地数据**存本机、不上传；选用云端推理或联网搜索时，当轮内容会上传到对应服务。
 
 **三词精确定义**
 
 | 词 | 含义 | 不是 |
 |----|------|------|
-| **Local First** | 默认本机可完整跑通；云/网可选增强；身份、记忆、审计**档案**存本机（存储不上传；推理/搜索内容可外发） | 拒绝一切联网；声称零外传 |
+| **Local First** | 默认本机可完整跑通；云/网可选增强；身份、记忆、审计**本地数据**存本机（存储不上传；推理/搜索内容会上传到对应服务） | 拒绝一切联网；声称零外传 |
 | **Memory Forever** | 跨会话 / 换模型身份仍在；Hot·Warm·Cold 持久栈；取舍与 forget 保证质量 | 死记一切、永不删除 |
-| **Actions Automated** | 代劳执行到结果（工具循环、日常旁路、定时）；确认门 + 危险硬拦 | 无人值守乱改本机 |
+| **Actions Automated** | 代劳执行到结果（工具循环、日常快捷功能、定时）；确认门 + 危险命令直接拦截 | 无人值守乱改本机 |
 
 **本周期明确不做**：外部任务源、完全无人值守的定时 Shell、屏幕/音频录制式全量感知。
 
@@ -29,15 +29,15 @@ LocalAgent 不是「又一个 Chat 客户端」，而是跑在本机上的**个�
 
 ---
 
-## 1. 产品设计（三支柱）
+## 1. 产品设计（三大核心理念）
 
-| # | 支柱 | 产品承诺 | 原则 | 现状 |
+| # | 核心理念 | 产品承诺 | 原则 | 现状 |
 |---|------|----------|------|------|
-| 1 | **Local First** | 默认 Ollama 零账单路径；对话、记忆、检索、工作区、Shell 均可离线跑通；一键安装、三命令主路径；可选云端 / 联网，**档案存本机**；云端/搜索会外发当轮内容 | 始终保留纯本地选项；联网是增强不是前提；少即是多；文案区分「存储」与「推理」 | ✅ 纯本地路径 + Ollama / OpenRouter / Cursor；`la` / `la setup` / `la chat` |
+| 1 | **Local First** | 默认 Ollama 零成本使用；对话、记忆、检索、工作区、Shell 均可离线跑通；一键安装、三命令常用路径；可选云端 / 联网，**本地数据存本机**；云端/搜索会上传当轮内容 | 始终保留纯本地选项；联网是增强不是前提；少即是多；文案区分「存储」与「推理」 | ✅ 纯本地路径 + Ollama / OpenRouter / Cursor；`la` / `la setup` / `la chat` |
 | 2 | **Memory Forever** | Hot / Warm / Cold + Mem0；跨会话 JIT 召回；本地文档进 Cold；ChatGPT 可导入；可选 cross-encoder rerank 提升召回排序 | 懂你 = 记住 + 取舍；换模型不换身份；Cold 先于 Warm；写入可审计可撤销 | ✅ 分层栈 + Mem0 + `LA rag` + pending 确认门 + Rerank（`[rerank]` extra） |
-| 3 | **Actions Automated** | 本机 Shell / 写文件 / 工作区；日常旁路；新闻定时；多步里程碑规划 + 跨 turn 续跑；工具结果校验；可选 MCP 扩展；办完回执；审计护栏 | 不向用户做意图预检追问；内部自动路由执行路径；副作用可控；失败重试优先于交卷；危险硬拦不可记忆化放行 | ✅ Context Engine JIT + milestone planner + validation + session work + 工具确认门 + 硬拦截 + 幻觉检测 + 日常旁路（含 Aware）+ Action receipt + approve-once + 可选 MCP + `la status` |
+| 3 | **Actions Automated** | 本机 Shell / 写文件 / 工作区；日常快捷功能；新闻定时；多步里程碑规划 + 跨 turn 续跑；工具结果校验；可选 MCP 扩展；办完回执；审计护栏 | 不向用户做意图预检追问；内部自动路由执行路径；副作用可控；失败重试优先于交卷；危险命令直接拦截不可记忆化放行 | ✅ Context Engine JIT + milestone planner + validation + session work + 工具确认门 + 直接拦截 + 幻觉检测 + 日常快捷功能（含 Aware）+ 操作回执 + 会话内免重复确认 + 可选 MCP + `la status` |
 
-**支撑能力**（不与三核并列占对外主位）：易用三命令、日常旁路、RAG、审计——分别挂在对应支柱下证明承诺。
+**支撑能力**（不与三核并列占对外主位）：易用三命令、日常快捷功能、RAG、审计——分别挂在对应核心理念下证明承诺。
 
 ---
 
@@ -57,13 +57,13 @@ LocalAgent 不是「又一个 Chat 客户端」，而是跑在本机上的**个�
 |---|--------|--------|--------|--------|----------|
 | 4 | 用户 | 被 profile、跨会话记住偏好与事实 | 真正懂我 | Hot pin · Warm Mem0 · `LA chat` | §6.2 |
 | 5 | 用户 | 导入 ChatGPT 历史 | 更快认识我 | `LA ingest chatgpt` | §6.2 |
-| 6 | 用户 | 把本地文档放进知识库并深度召回 | 对话时用上我的材料 | `LA ingest doc` / `rag search` | §6.2 |
+| 6 | 用户 | 把本地文档放进知识库并检索原文 | 对话时用上我的材料 | `LA ingest doc` / `rag search` | §6.2 |
 
 ### Actions Automated
 
 | # | 作为… | 我想… | 以便… | 主入口 | 验收锚点 |
 |---|--------|--------|--------|--------|----------|
-| 7 | 用户 | 联网搜索实时信息 | 小模型也能用好网络 | `web_search` / `/deepsearch`（默认 ddgs） | §6.3 |
+| 7 | 用户 | 联网搜索实时信息 | 本地小模型也能联网查资料 | `web_search` / `/deepsearch`（默认 ddgs） | §6.3 |
 | 8 | 用户 | 用本地工具改文件、跑命令 | Agent 真正动手 | `run_shell` / `write_file` / `LA workspace` | §6.3 |
 | 9 | 用户 | 危险命令被拦截 | 避免误伤本机 | 护栏 + 确认门 | §6.3 |
 | 10 | 用户 | 看清花了多少 token / 费用 | 可控成本 | `LA audit` / `--report` | §6.3 |
@@ -72,17 +72,17 @@ LocalAgent 不是「又一个 Chat 客户端」，而是跑在本机上的**个�
 | 12 | 用户 | 嗅探今日资讯并浏览简报 | 替代每天手动刷 | `la news sync/brief`；`schedule on` | §6.3 |
 | 13 | 用户 | 一键润色文案 | 识别场合后改写；主推进剪贴板 | `la polish` / `/polish` | §6.3 |
 | 13b | 用户 | 授权后感知本机工作上下文 | opt-in 采集；不自动入库；相关时注入 chat | `la aware` / `grant` / `tick` / `suggestion` | §6.3 |
-| 14 | 用户 | 工具办完后看到回执 | 确认「办完了什么」 | Agent 回合末 Action receipt | §6.3 |
-| 15 | 用户 | 同会话对同类安全操作少确认 | 连续改文件不打断 | Session approve-once | §6.3 |
+| 14 | 用户 | 工具办完后看到回执 | 确认「办完了什么」 | Agent 回合末操作回执（Action receipt） | §6.3 |
+| 15 | 用户 | 同会话对同类安全操作少确认 | 连续改文件不打断 | 会话内免重复确认（approve-once） | §6.3 |
 | 16 | 用户 | 打开 LA 看到今日待办信号与数据层摘要 | 知道有什么可办 / 库里有什么 | Daily Actions + 数据层（横幅高层次 / `la status`·`/status` 明细） | §6.3 |
-| 17 | 用户 | 聊天时看到 LA 在做什么（预加载、调工具、等确认） | 知道「搜了什么、调了什么、为什么停」而不被技术细节刷屏 | Turn 内 `[chat] …` status 行 + Action receipt | §6.3 · TDD §8 |
+| 17 | 用户 | 聊天时看到 LA 在做什么（预加载、调工具、等确认） | 知道「搜了什么、调了什么、为什么停」而不被技术细节刷屏 | Turn 内 `[chat] …` status 行 + 操作回执 | §6.3 · TDD §8 |
 | 18 | 用户 | 需要时可展开本轮执行细节 | 排查 prefetch 命中、里程碑进度、校验失败原因 | `LA_TRACE=1` / `/trace on`（设计目标）· `/last-turn` · `la audit` | §6.3 · TDD §8 |
-| 19 | 用户 | 复杂多步任务被自动拆步执行 | 不用自己拆 todo；回合末 receipt 看 ✓/○ 进度 | `LA chat`（复杂度门控 → milestone planner） | §4.11 · §6.3 |
+| 19 | 用户 | 复杂多步任务被自动拆步执行 | 不用自己拆 todo；回合末回执看 ✓/○ 进度 | `LA chat`（复杂度判断 → milestone planner） | §4.11 · §6.3 |
 | 20 | 用户 | 说「继续/下一步」接着上次未完成任务 | 多 turn 行动不必重述上下文 | `LA chat`（session work 续跑） | §4.11 · §6.3 |
 | 21 | 用户 | 连接 MCP server 扩展 Agent 工具 | 用 GitHub/DB 等外部能力而不改 LA 源码 | `la mcp list` · `config/mcp.yaml` | §4.12 · §6.3 |
 | 22 | 用户 | 在 chat 里说「记住 xxx」快速写入 | 不必切到 `LA ingest text` | `LA chat`（显式 remember 短路） | §4.11 · §6.3 |
 
-**可观测性分层（故事 17–18）**：L0 默认只看阶段与关键动作（prefetch 命中、工具调用、审批、生成）；L1 verbose 展开路由模块、里程碑 i/N、validation 摘要；L2 用 `la audit` / `la logs` 复盘全链。`/status` 仍是数据层库存，**不是** turn trace；执行 trace 用 `/trace`（与 `/status` 正交，见 TDD §8.1）。
+**可观测性分层（故事 17–18）**：L0 默认只看阶段与关键动作（prefetch 命中、工具调用、审批、生成）；L1 verbose 展开路由模块、里程碑 i/N、validation 摘要；L2 用 `la audit` / `la logs` 复盘全链。`/status` 仍是数据层库存，**不是** turn trace；执行 trace 用 `/trace`（与 `/status` 相互独立，见 TDD §8.1）。
 
 ## 3. 章程（Constitution）
 
@@ -102,7 +102,7 @@ LocalAgent 不是「又一个 Chat 客户端」，而是跑在本机上的**个�
 - `LA chat` / `/provider` 在 `auto | ollama | openrouter | cursor` 间切换
 - `/model` 为当前路径选择模型并写入 `config/model_servers.yaml`，下次默认使用
 - 模型不可用时按优先级自动降级，并在 REPL 中提示当前实际路径
-- **原则**：算力默认本机，可扩展外部模型服务；模型与 LocalAgent 正交——小模型可跑通基本任务，更好的模型效果更好；会话、记忆与审计由 LocalAgent 本机持有
+- **原则**：算力默认本机，可扩展外部模型服务；模型与 LocalAgent 相互独立——小模型可跑通基本任务，更好的模型效果更好；会话、记忆与审计由 LocalAgent 本机持有
 
 ### 4.2 记忆模块（Memory Forever）
 
@@ -116,7 +116,7 @@ LocalAgent 不是「又一个 Chat 客户端」，而是跑在本机上的**个�
 - **Rerank（可选增强）**：Warm/Cold 混合召回后可经 cross-encoder 重排（`LA_MEMORY_RERANK=1`；`LA_MEMORY_RERANK_BACKEND=cross_encoder` 需 `pip install 'la-localagent[rerank]'`）；提升「personal / archive」类问题的 top-k 质量；默认 `auto` 有 extra 则启用
 - **检索统一路径**：Agent 工具（`search_memory` / `search_knowledge`）与 JIT 预取共用 `RetrievalGateway`，避免双 pass 不一致（见 TDD §6-§7）
 - **Profile Compile（下一周期）**：引擎可从 KB 简历等批量编译 Hot 画像（`memory/compile/`）；**本周期未暴露 CLI / ingest 自动触发**，待 `LA ingest compile` 或 ingest 联动产品化后再验收
-- **原则**：换模型不换身份；该记则记、不该记则跳过（如 `is_do_not_remember`）；写入可审计、可撤销
+- **原则**：换模型不换身份；该记的会记，不该记的不记（如 `is_do_not_remember`）；写入可审计、可撤销
 
 ### 4.3 联网（Actions · 可选增强）
 
@@ -135,26 +135,26 @@ LocalAgent 不是「又一个 Chat 客户端」，而是跑在本机上的**个�
 | Git 记录是怎样的 | `git log`、`git status`、分支与未提交变更的自然语言摘要 |
 | 有什么待办 | 托管待办队列（用户指定 / Agent 重大问题，须 rationale）；代码 TODO/checkbox 仅诊断不入队；并列 memory pending |
 
-**已实现**：工作区根目录（`LA_WORKSPACE` / `LA chat --cwd`）、最近文件、Git 摘要（只读）、托管待办（`la workspace tasks/add/done/dismiss/snooze`，TTL/清理）、诊断扫描（`--todos-only` / `scan`，未入队）、`LA workspace`；`run_shell` / `write_file` 确认门；写文件幻觉检测；危险命令硬拦截。
+**已实现**：工作区根目录（`LA_WORKSPACE` / `LA chat --cwd`）、最近文件、Git 摘要（只读）、托管待办（`la workspace tasks/add/done/dismiss/snooze`，TTL/清理）、诊断扫描（`--todos-only` / `scan`，未入队）、`LA workspace`；`run_shell` / `write_file` 确认门；写文件幻觉检测；危险命令直接拦截。
 
 **本周期补强**：
 
-1. **Action receipt**：本轮若调用了副作用工具（`run_shell` / `write_file` 等），回合末给出结构化回执（做了什么、改了哪些路径、是否已确认）。复用 audit 事件轨迹。  
-2. **Session approve-once**：用户对某次确认可选择「本会话相同模式不再问」；危险命令分类仍硬拦，不可放行记忆化。  
+1. **操作回执（Action receipt）**：本轮若调用了副作用工具（`run_shell` / `write_file` 等），回合末给出结构化回执（做了什么、改了哪些路径、是否已确认）。复用 audit 事件轨迹。  
+2. **会话内免重复确认（approve-once）**：用户对某次确认可选择「本会话相同模式不再问」；危险命令分类仍直接拦截，不可放行记忆化。  
 3. **Daily Actions + 数据层表面**：打开 `la` 欢迎横幅展示今日信号与 **数据层高层次摘要**（Hot / Warm / Cold / Aware）；`la status` / 会话 `/status` 给出完整盘点（含新闻·总结收藏计数）并说明综合召回优先级（personal → archive → …；时间邻近加权）。
 
 **下一周期**：Aware 扩展占位源（wechat / calendar / email）、与 `rag` 更紧协同、外部任务源、Hot Profile Compile CLI。（`apps` 已在 MVP 落地，见 §4.10a。）
 
-用户输入**直接进入 Agent，不向用户做意图预检 / 澄清追问**（不先问「你是想 A 还是 B？」）。LA 内部仍有**执行路由**（显式 remember 短路、continue 续跑、复杂度门控 → milestone 或 ReAct），见 §4.11；这与「用户向不做预检」不矛盾。
+用户输入**直接进入 Agent，不向用户做意图预检 / 澄清追问**（不先问「你是想 A 还是 B？」）。LA 内部仍有**执行路由**（显式 remember 短路、continue 续跑、复杂度判断 → milestone 或 ReAct），见 §4.11；这与「用户向不做预检」不矛盾。
 
 1. **直接执行**：每轮用户输入经 Context Engine 预取后进入执行路径（§4.11）  
-2. **执行前确认**：`run_shell` / `write_file` 按 `LA_TOOL_APPROVAL` 门控；支持会话级 approve-once  
+2. **执行前确认**：`run_shell` / `write_file` 按 `LA_TOOL_APPROVAL` 需用户确认；支持会话内免重复确认  
 3. **幻觉检测**：模型声称已写入却未调用 `write_file` 时，重试或明确报错  
 4. **工具结果校验**：副作用工具执行后程序化核对（及可选 LLM semantic）；失败驱动 ReAct 重试（§4.11）  
 5. **失败重试**：联网结果不可用时先换查询再试  
-6. **办完回执**：有副作用工具或多步里程碑时输出 Action receipt（含 ✓/○）
+6. **办完回执**：有副作用工具或多步里程碑时输出操作回执（含 ✓/○）
 
-**可观测性（故事 17–18）**：用户输入后，L0 通过 `[chat] …` status 行感知关键节点——prefetch 命中、连接模型、工具调用（截断 preview）、等待确认、生成/综合、记忆写入；Turn 末 Action receipt 确认副作用与里程碑 ✓/○。L1 verbose（`LA_TRACE=1` 或 `/trace on`，设计目标）展开 prefetch 路由、里程碑 i/N、validation warn/fail 摘要。`/status` 只展示 Daily Actions 与 Hot/Warm/Cold/Aware **库存**；查「刚才 Agent 做了什么」用 status 行 + receipt，进阶用 `/last-turn` 或 `la audit`（TDD §8）。
+**可观测性（故事 17–18）**：用户输入后，L0 通过 `[chat] …` status 行感知关键节点——prefetch 命中、连接模型、工具调用（截断 preview）、等待确认、生成/综合、记忆写入；Turn 末操作回执确认副作用与里程碑 ✓/○。L1 verbose（`LA_TRACE=1` 或 `/trace on`，设计目标）展开 prefetch 路由、里程碑 i/N、validation warn/fail 摘要。`/status` 只展示 Daily Actions 与 Hot/Warm/Cold/Aware **库存**；查「刚才 Agent 做了什么」用 status 行 + 回执，进阶用 `/last-turn` 或 `la audit`（TDD §8）。
 
 ### 4.5 审计与报告（Actions · 信任刹车）
 
@@ -180,10 +180,10 @@ LA audit --since 7d
 ### 4.6 文档 RAG（Memory Forever · Cold）
 
 - `LA ingest doc` / `LA ingest kb`：软链 + 索引个人文档（`.txt` / `.md` / `.pdf` / `.xlsx` 等）
-- 对话时 `search_knowledge` / `rag search` 深度召回 Cold（文档 + 对话归档）
-- 与 Warm 分离：文档不进事实提取主路径
+- 对话时 `search_knowledge` / `rag search` 检索知识库 Cold 层（文档 + 对话归档）
+- 与 Warm 分离：文档不进事实提取常用路径
 
-### 4.7 一键总结 / 文档对话（Actions · 旁路快捷）
+### 4.7 一键总结 / 文档对话（Actions · 快捷能力）
 
 - `la summarize <path>`：支持 `.txt` / `.md` / `.pdf` / `.xlsx`（**不含图片**——图片请用 `la ocr`）；短文档优先；输出「最多三句话」+ 结构化要点（〔§章节 | p.页〕）；**TTY 下默认进入 `sum>` 文档对话**
 - **扫描 PDF**：loader 检测文本层覆盖率不足 → 调用 `ingest/ocr.py`（RapidOCR）→ 再走 summarize
@@ -194,21 +194,21 @@ LA audit --since 7d
 - 与 `la ocr` / VL 区分：summarize = LLM 速读+深聊；OCR = 精确取字；VL = 图片语义描述（独立开关）
 - 对话内工具：`summarize_document`（原子速读）
 
-### 4.7a 本地 OCR（Actions · 旁路快捷）
+### 4.7a 本地 OCR（Actions · 快捷能力）
 
 - `la ocr <path>`：图片（`.png` / `.jpg` / `.jpeg` / `.webp` / `.bmp` / `.tiff`）与 PDF 逐页 OCR → 纯文本（stdout 或 `--out`）
 - 依赖：`pip install 'la-localagent[ocr]'`；`LA_OCR_ENABLED=1`（见 `env.example` 中 `LA_OCR_*`）
 - 未安装 extra 或 OCR 关闭时：清晰报错，不静默失败
 - **边界**：`la summarize` 拒绝图片；`la ingest doc` 仍可对图片/扫描 PDF OCR 入库；与 VL（`LA_VL_ENABLED`）独立——OCR 取字，VL 描述场景
 
-### 4.8 一键润色（Actions · 旁路快捷）
+### 4.8 一键润色（Actions · 快捷能力）
 
-- `la polish` / `/polish`：旁路 Agent 循环；识别邮件 / 朋友圈 / 简历 / 商务对话场景与态度后改写
+- `la polish` / `/polish`：独立 Agent 循环；识别邮件 / 朋友圈 / 简历 / 商务对话场景与态度后改写
 - 输出 Taste Brief + 主推 + 两个备选 + 改动说明；**默认将主推写入系统剪贴板**（`--no-copy` 可关）
 - 可选 `--scene` / `--tone`；注入 Hot 画像偏好（若有）；硬约束禁止编造数字/承诺（尤其简历）
-- 与「一键总结」同属旁路快捷能力；不进入 `run_shell` / 写文件工具循环
+- 与「一键总结」同属快捷能力；不进入 `run_shell` / 写文件工具循环
 
-### 4.9 新闻嗅探（Actions · 旁路 + 定时）
+### 4.9 新闻嗅探（Actions · 快捷 + 定时）
 
 - 默认信源：BestBlogs RSS（AI 精选池；可改 `LA_NEWS_RSS_URL`）
 - `la news sync` → `la news brief`：TTY 下进入交互浏览器（↑↓/`jk` 切换；`o`/Enter 打开系统浏览器；OSC 8 可点标题；`r` 精读后进入与 summarize 同款深聊）；`--no-ui` 一次性 dump
@@ -222,13 +222,13 @@ LA audit --since 7d
 
 | 档 | 能力 | 说明 |
 |----|------|------|
-| 旁路快捷 | summarize · **ocr** · news · polish · aware | 不走漫长 Agent 工具循环，直接出结果；**OCR ≠ summarize ≠ VL** |
-| Agent 工具循环 | `run_shell` / `write_file` / workspace / web_search + 可选 MCP | Context Engine JIT 预取；复杂度门控 milestone；ReAct + validation；执行前确认；approve-once；办完回执 |
+| 快捷能力 | summarize · **ocr** · news · polish · aware | 不走漫长 Agent 工具循环，直接出结果；**OCR ≠ summarize ≠ VL** |
+| Agent 工具循环 | `run_shell` / `write_file` / workspace / web_search + 可选 MCP | Context Engine JIT 预取；复杂度判断 milestone；ReAct + validation；执行前确认；会话内免重复确认；办完回执 |
 | 定时 | `la news schedule` · `la aware schedule` | 本机定时准备，打开 LA 可见就绪信号 |
 
-### 4.10a Aware——本机感知（Actions · 旁路 · opt-in）
+### 4.10a Aware——本机感知（Actions · 快捷 · opt-in）
 
-按源授权后感知本机工作上下文；默认关闭。与 summarize/news/polish 同属旁路，但**采集面更大，隐私边界更硬**。
+按源授权后感知本机工作上下文；默认关闭。与 summarize/news/polish 同属快捷能力，但**采集面更大，隐私边界更硬**。
 
 | 项 | 约定 |
 |----|------|
@@ -237,7 +237,7 @@ LA audit --since 7d
 | 占位源 | `wechat` · `calendar` · `email`（未实现） |
 | Episode | tick 后会话化；相关问题可注入 `la chat`（默认近时窗） |
 | Suggestion | 可索引文件 / 洞察进队列；**绝不自动写 Cold/`kb/`**；`approve` 仅白名单（`la ingest doc\|text` · `la summarize`）；insight/wellness 为 ack-only |
-| 浏览器语义 | **selected ≠ viewing**：仅 OS 前台浏览器累计 dwell；后台选中不算「在看」 |
+| 浏览器语义 | **selected ≠ viewing**：仅 OS 前台浏览器累计前台停留时长；后台选中不算「在看」 |
 | 非目标 | 录屏、键内容捕获、自动任意 Shell、未授权采集 |
 
 数据落 `data/aware/`。§0 有实现面摘要；验收见 §6.3。
@@ -309,7 +309,7 @@ LA 作为 **MCP client** 连接外部 tool server，已发现工具自动合并�
 
 普通用户几乎只在 **对话**里完成工作；下列命令按任务分层。会话内 `/memory add` 等与外层同名路径等价；`/add`、`/search` 仅为会话快捷方式（外层请写完整 `LA memory …`）。
 
-### 5.1 主路径（少即是多）
+### 5.1 常用路径（少即是多）
 
 | 命令 | 作用 |
 |------|------|
@@ -354,7 +354,7 @@ LA 作为 **MCP client** 连接外部 tool server，已发现工具自动合并�
 | `LA tasks` | 后台索引任务 |
 | `LA workspace` / `LA logs` / `LA websearch` | 工作区快照、诊断日志、直连联网 |
 | `LA mcp list` / `test` / `tools` / `serve` | MCP server 管理与 LA 反向 serve（§4.12；需 `[mcp]` extra） |
-| `LA news skim` / `read` / `mark` … | 新闻速读/精读/标记等（日常主路径见 `brief`） |
+| `LA news skim` / `read` / `mark` … | 新闻速读/精读/标记等（日常常用路径见 `brief`） |
 
 **相关环境变量（运维）**：`LA_PREFETCH_*` · `LA_PLANNER_*` · `LA_MCP_*` · `LA_MEMORY_RERANK_*` · `LA_OBSERVE_BUDGET_CHARS` — 见 `env.example` / `src/localagent/resources/env.example`。
 
@@ -407,7 +407,7 @@ LA 作为 **MCP client** 连接外部 tool server，已发现工具自动合并�
 
 - 联网搜索与 `/deepsearch` **默认 ddgs 可用**（无需 Tavily）；Tavily / SearXNG 为可选增强
 - 用户输入直接进入 Agent，**不向用户做意图预检追问**；内部执行路由见 §4.11
-- `run_shell` / `write_file` 按审批策略确认后执行；危险命令硬拦截
+- `run_shell` / `write_file` 按审批策略确认后执行；危险命令直接拦截
 - 模型声称已写入却未调用 `write_file` 时，重试或明确报错
 - `LA workspace`：最近文件、Git 摘要、托管待办生命周期可用；代码 TODO 扫描为诊断（未入队）
 - **本地 OCR（故事 10b）**：`la ocr <path>` 输出可复制原文；未装 `[ocr]` 或 `LA_OCR_ENABLED=0` 时有清晰错误；图片不走 summarize
@@ -415,11 +415,11 @@ LA 作为 **MCP client** 连接外部 tool server，已发现工具自动合并�
 - **新闻嗅探**：`la news sync` 拉取 BestBlogs RSS；TTY 下 `la news brief` 可 ↑↓ 浏览、`o` 打开浏览器、`r` 精读深聊；`schedule on/off` 控制早 8 点自动 sync；入 chat 可提示就绪
 - **一键润色**：`la polish` / `/polish` 输出识别 Brief + 主推/备选；默认主推进剪贴板；`--no-copy` 可关；简历场景不编造原文没有的数字
 - **Aware（故事 13b）**：未 `grant` 前不采集；`grant` → `tick` 产生 Episode / suggestion；可索引文件**不**自动写 Cold/`kb/`；`approve` 仅白名单（`ingest doc|text` / `summarize`）；`la aware` 可出智能总结；相关 `la chat` 可注入近时 Episode；浏览器 selected ≠ viewing
-- **Action receipt**：本轮有副作用工具调用时，输出含工具名/路径或命令摘要的回执
-- **Session approve-once**：用户选择后，同会话同类安全操作不再交互确认；危险命令仍硬拦
+- **操作回执**：本轮有副作用工具调用时，输出含工具名/路径或命令摘要的回执
+- **会话内免重复确认**：用户选择后，同会话同类安全操作不再交互确认；危险命令仍直接拦截
 - **Daily Actions + 数据层**：欢迎横幅可见今日信号与 Hot/Warm/Cold/Aware 高净值；`la status` / `/status` 含完整数据层盘点与召回优先级说明；托管待办可 `done`/`dismiss`/`snooze`
-- **可观测性（故事 17–18）**：L0 默认 Turn 内有 status 行（prefetch / 工具 / 审批 / 生成等）；有副作用时 Action receipt 含工具与路径摘要；L1 verbose 可展开 prefetch 命中与 validation 摘要（`LA_TRACE=1` / `/trace`，设计目标）；`/status` 不混入 turn trace
-- **Milestone Planner（故事 19）**：复杂多步行动 receipt 含 milestone ✓/○；partial 未完成时 plan 写入 session work；audit 有 `planner.*` 事件
+- **可观测性（故事 17–18）**：L0 默认 Turn 内有 status 行（prefetch / 工具 / 审批 / 生成等）；有副作用时操作回执含工具与路径摘要；L1 verbose 可展开 prefetch 命中与 validation 摘要（`LA_TRACE=1` / `/trace`，设计目标）；`/status` 不混入 turn trace
+- **Milestone Planner（故事 19）**：复杂多步行动回执含 milestone ✓/○；partial 未完成时 plan 写入 session work；audit 有 `planner.*` 事件
 - **Session Work 续跑（故事 20）**：同 session 说「继续/下一步」可恢复 72h 内未完成 milestone plan；prefetch 注入 work 摘要
 - **MCP（故事 21）**：配置 `mcp.yaml` 后 `la mcp list` 可见 server；chat 可调用外部 MCP 工具；builtin 未配置 MCP 时仍可完整跑通；audit 记录 tool 决策
 - **Remember 快捷（故事 22）**：chat 内「记住 xxx」直写记忆，不进入完整 ReAct tool loop

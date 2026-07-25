@@ -201,7 +201,7 @@ LA workspace --cwd .
 LA chat --cwd . --provider ollama
 ```
 
-本机感知（`la aware`）见 [§7](#7-日常旁路总结--新闻--润色--aware)。
+本机感知（`la aware`）见 [§7](#7-日常快捷功能ocr--总结--新闻--润色--aware)。
 
 **预期输出（workspace）：**
 
@@ -271,7 +271,7 @@ LA audit --since 7d --report examples/my-audit.md
 
 ---
 
-## 7. 日常旁路：OCR · 总结 · 新闻 · 润色 · Aware
+## 7. 日常快捷功能：OCR · 总结 · 新闻 · 润色 · Aware
 
 ### 本地 OCR `la ocr`
 
@@ -316,7 +316,7 @@ la polish --no-copy --scene email "您好，上次说的方案这周能给一下
 
 按源 `grant` 后才采集。**绝不自动写入 Cold / `kb/`**——可索引文件只进 suggestion。
 
-Aware 是可关闭的**本机事实层**（不是全知副脑）：`tick` 只做 Collect→Reduce（events / episodes / `context/hot.json`+`diff.json`），LLM 摘要与对话注入属于 Reason，仅在你主动问时跑。回答锚定事实卡；缺字段答「未观测到」，不瞎猜。
+Aware 是可关闭的**本机活动记录**（不是无所不知的第二大脑）：`tick` 只负责采集和汇总（events / episodes / `context/hot.json`+`diff.json`）；只有你主动提问时，才会用本地模型做摘要或注入对话。回答以事实为准；没有数据就说「暂无记录」，不猜测。
 
 ```bash
 la aware status
