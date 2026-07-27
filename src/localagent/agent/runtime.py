@@ -20,6 +20,7 @@ from localagent.context.router import (
     is_weak_archive_topic,
 )
 from localagent.i18n import resolve_lang, t
+from localagent import config
 from localagent.models.router import ChatMessage, get_model_router
 from localagent.tools import TOOL_DEFINITIONS, execute_tool
 from localagent.audit.events import log_event
@@ -35,6 +36,8 @@ from localagent.tools.approval import (
 )
 
 logger = logging.getLogger(__name__)
+
+_SUMMARIZE_SUFFIXES_HINT = config.format_summarize_suffixes()
 
 
 SYSTEM_PROMPT_ZH = """你是 LocalAgent，用户的本机个人 AI 助手。你可访问本地记忆库（长期记忆）和知识库。
@@ -58,7 +61,7 @@ SYSTEM_PROMPT_ZH = """你是 LocalAgent，用户的本机个人 AI 助手。你�
 6. 涉及工作区、Git、最近改了什么、待办任务时，调用 workspace_context（若下方已预加载则直接回答）。正式待办是托管队列（非代码 TODO 扫描）；用户要记下/完成/搁置待办时用 workspace_task（add 须 rationale；propose 仅重大问题）
 7. 需要创建、修改、写入工作区文件时：局部修改优先 edit_file；新建或整文件覆盖用 write_file；禁止在未实际调用工具的情况下声称已完成文件操作
 8. 读文件用 read_file，按文件名找文件用 glob，搜代码内容用 grep；run_shell 仅用于测试/构建/包管理/git 等终端操作，不要用 cat/find/grep/sed/echo 重定向替代专用工具
-9. 用户要「总结/速读/3 分钟读懂」某份本地文档（txt/md/pdf/xlsx）时，调用 summarize_document（原子速读，默认不入库）。深入追问请让用户运行 `la summarize <path>` 进入文档对话。禁止在总结后追问是否入库；仅当用户明确说入库/收藏/进知识库时才传 keep=true。若用户问「刚才总结的为啥没入库/搜不到」，说明默认不入库，并告知可用会话内 /keep 或 `la summarize <path> --keep`
+9. 用户要「总结/速读/3 分钟读懂」某份本地文档（{summarize_suffixes}）时，调用 summarize_document（原子速读，默认不入库）。深入追问请让用户运行 `la summarize <path>` 进入文档对话。禁止在总结后追问是否入库；仅当用户明确说入库/收藏/进知识库时才传 keep=true。若用户问「刚才总结的为啥没入库/搜不到」，说明默认不入库，并告知可用会话内 /keep 或 `la summarize <path> --keep`
 10. 用户问「今天新闻/早报/资讯/BestBlogs」时，优先调用 news_brief；精读某篇用 news_read；收藏/不感兴趣用 news_mark。简报每条已含原文链接。库为空时提示先 `la news sync`
 11. run_shell / write_file / edit_file 会先经用户确认；若工具结果为「用户拒绝」，如实告知并给出不执行的替代建议，不要擅自重试同一危险操作
 12. 回答简洁、准确；使用联网搜索（含预加载结果）作答时【必须标注来源】：在答复末尾列出所依据条目的标题与完整链接，便于用户核实。禁止只写「根据联网信息/预加载结果」而不给链接
@@ -98,7 +101,7 @@ Principles:
 6. For workspace, Git, recent changes, or todos, call workspace_context (or use preload). Formal todos are a managed queue (not code TODO scans); add/complete/defer via workspace_task (add needs rationale; propose only for major issues).
 7. To create/modify workspace files: prefer edit_file for local edits; write_file for new/full overwrite; never claim a file op succeeded without actually calling the tool.
 8. Read with read_file; find by name with glob; search code with grep; run_shell only for test/build/package/git — do not use cat/find/grep/sed/echo redirects instead of dedicated tools.
-9. For "summarize / skim / 3-minute read" of a local doc (txt/md/pdf/xlsx), call summarize_document (atomic skim; default not ingested). For follow-ups, tell the user to run `la summarize <path>`. Do not ask whether to ingest after summarizing; only pass keep=true when the user clearly asks to save/ingest. If they ask why it is not in the KB, explain default no-ingest and mention /keep or `la summarize <path> --keep`.
+9. For "summarize / skim / 3-minute read" of a local doc ({summarize_suffixes}), call summarize_document (atomic skim; default not ingested). For follow-ups, tell the user to run `la summarize <path>`. Do not ask whether to ingest after summarizing; only pass keep=true when the user clearly asks to save/ingest. If they ask why it is not in the KB, explain default no-ingest and mention /keep or `la summarize <path> --keep`.
 10. For "today's news / briefing / BestBlogs", prefer news_brief; deep-read with news_read; like/dislike with news_mark. Each brief item already has a source link. If the store is empty, suggest `la news sync` first.
 11. run_shell / write_file / edit_file require user confirmation first; if the tool result is "user denied", say so and suggest alternatives — do not silently retry the same dangerous op.
 12. Be concise and accurate; when using web search (including preload), you MUST cite sources: list titles and full URLs at the end. Do not say "based on web/preload" without links.

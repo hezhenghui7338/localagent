@@ -138,7 +138,7 @@ data/
 | Warm 写入确认 | `LA_MEMORY_APPROVAL_REQUIRED`（默认开）：非交互提取入 `pending_queue.json`；`approve`/`reject`；`LA_MEMORY_APPROVAL_AUTO=1` 跳过（CI） |
 | 记忆引擎 | Mem0（主依赖）+ JSON fallback / 注册表 |
 | 知识检索 | Chroma + BM25 + RRF；文档与对话归档入 Cold |
-| 一键总结 | 短路径（1～3 句 + 〔§/p.〕）+ **长文档分段**（段 TUI / prefetch / 段缓存 / 跨段 RAG）；TTY 默认 `DocumentChatREPL`（`sum>`）或段浏览器；`--list`/`--resume`；默认不入库；`SUMMARIZE_SUFFIXES` 含 mobi/epub，不含图片 |
+| 一键总结 | 短路径（1～3 句 + 〔§/p.〕）+ **长文档分段**（段 TUI / prefetch / 段缓存 / 跨段 RAG）；TTY 默认 `DocumentChatREPL`（`sum>`）或段浏览器；`--list`/`--resume`；默认不入库；`SUMMARIZE_SUFFIXES` 含 `.markdown` / mobi / epub，不含图片 |
 | 本地 OCR | `ingest/ocr.py` + `ocr_cmd.py`；RapidOCR（PP-OCRv6 / ONNX）；`la ocr` 旁路；扫描 PDF / ingest doc 内嵌 OCR；`pyproject.toml` `[ocr]` extra；`LA_OCR_*` 见 `env.example`；测试 `tests/test_ocr.py`（mock） |
 | 新闻嗅探 | BestBlogs RSS → SQLite；兴趣重排；`brief` TTY 用 prompt_toolkit 浏览器（↑↓ / o→webbrowser / r→精读+DocumentChatREPL）；launchd/cron 早 8 点 sync；chat 启动就绪通知 |
 | 一键润色 | `writing/polish.py` 旁路 Agent；场景/态度识别 → 主推+备选；默认 `clipboard.copy_text` |

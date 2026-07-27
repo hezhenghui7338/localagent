@@ -185,7 +185,7 @@ LA audit --since 7d
 
 ### 4.7 一键总结 / 文档对话（Actions · 旁路快捷）
 
-- `la summarize <path>`：支持 `.txt` / `.md` / `.pdf` / `.xlsx` / `.mobi` / `.epub`（**不含图片**——图片请用 `la ocr`；**电子书不支持 DRM**）；短文档优先；输出「最多三句话」+ 结构化要点（〔§章节 | p.页〕）；**TTY 下默认进入 `sum>` 文档对话**
+- `la summarize <path>`：支持 `.txt` / `.md` / `.markdown` / `.pdf` / `.xlsx` / `.mobi` / `.epub`（**不含图片**——图片请用 `la ocr`；**电子书不支持 DRM**）；短文档优先；输出「最多三句话」+ 结构化要点（〔§章节 | p.页〕）；**TTY 下默认进入 `sum>` 文档对话**
 - **扫描 PDF**：loader 检测文本层覆盖率不足 → 调用 `ingest/ocr.py`（RapidOCR）→ 再走 summarize
 - **长文档逐段阅读**：annotated 字数超过 `LA_SUMMARIZE_SHORT_MAX_CHARS`（默认 12000）→ 自动分段；TTY 下默认进入**段列表 TUI**（↑↓ 浏览段摘要、`Enter` 进入该段 `sum>`）；后台 prefetch 并行段摘要；段摘要磁盘缓存（`data/summarize_sessions/cache/`）；`sum>` 内 `/next` `/goto N`；跨段问题走 session RAG
 - 分段高级：`--no-ui`（跳过 TUI 回退 `sum>` REPL）、`--no-prefetch`、`--refresh-segments`（忽略段缓存）、`--force`（跳过续聊并重新分段/摘要）、`--heuristic`（离线启发式）
@@ -331,7 +331,7 @@ LA 作为 **MCP client** 连接外部 tool server，已发现工具自动合并�
 | 导入 ChatGPT | `LA ingest chatgpt <path>` |
 | 把文档放进知识库 | `LA ingest doc <path>` → `LA rag search <query>` |
 | OCR 取字（截图/扫描件原文） | `la ocr <path>`；`--out` / `--json`；需 `[ocr]` extra |
-| 一键总结文档（默认文档对话，不入库） | `la summarize <path>` → 速读卡 → `sum>` 或段 TUI（`.txt/.md/.pdf/.xlsx/.mobi/.epub`，不含图片）；同路径默认续聊；`--force` 强制重分段；长期召回：`--keep` / `/keep`；仅速读：`--no-chat` |
+| 一键总结文档（默认文档对话，不入库） | `la summarize <path>` → 速读卡 → `sum>` 或段 TUI（`.txt/.md/.markdown/.pdf/.xlsx/.mobi/.epub`，不含图片）；同路径默认续聊；`--force` 强制重分段；长期召回：`--keep` / `/keep`；仅速读：`--no-chat` |
 | 新闻嗅探 / 今日简报 | `la news sync` → `la news brief`（TTY 交互）；`r` 精读深聊；`la news schedule on` |
 | 一键润色文案（默认复制主推） | `la polish "草稿"` / `/polish`；`--scene` · `--tone` · `--no-copy` |
 | 授权后感知本机 | `la aware` · `grant` · `tick` · `suggestion`（不自动写 Cold/`kb/`） |
@@ -413,7 +413,7 @@ LA 作为 **MCP client** 连接外部 tool server，已发现工具自动合并�
 - 模型声称已写入却未调用 `write_file` 时，重试或明确报错
 - `LA workspace`：最近文件、Git 摘要、托管待办生命周期可用；代码 TODO 扫描为诊断（未入队）
 - **本地 OCR（故事 10b）**：`la ocr <path>` 输出可复制原文；未装 `[ocr]` 或 `LA_OCR_ENABLED=0` 时有清晰错误；图片不走 summarize
-- **一键总结**：`la summarize <path>` 支持 `.txt/.md/.pdf/.xlsx/.mobi/.epub`（不含图片；电子书无 DRM）；扫描 PDF 内嵌 OCR；输出 1～3 句 + 〔§/p.〕要点；TTY 默认进 `sum>` 或长文档段 TUI；`--list`/同路径默认续聊/`--id` 可续聊；`--force` 强制重来；默认不写 kb；`--keep` / `/keep` 后可检索；不追问入库
+- **一键总结**：`la summarize <path>` 支持 `.txt/.md/.markdown/.pdf/.xlsx/.mobi/.epub`（不含图片；电子书无 DRM）；扫描 PDF 内嵌 OCR；输出 1～3 句 + 〔§/p.〕要点；TTY 默认进 `sum>` 或长文档段 TUI；`--list`/同路径默认续聊/`--id` 可续聊；`--force` 强制重来；默认不写 kb；`--keep` / `/keep` 后可检索；不追问入库
 - **新闻嗅探**：`la news sync` 拉取 BestBlogs RSS；TTY 下 `la news brief` 可 ↑↓ 浏览、`o` 打开浏览器、`r` 精读深聊；`schedule on/off` 控制早 8 点自动 sync；入 chat 可提示就绪
 - **一键润色**：`la polish` / `/polish` 输出识别 Brief + 主推/备选；默认主推进剪贴板；`--no-copy` 可关；简历场景不编造原文没有的数字
 - **Aware（故事 13b）**：未 `grant` 前不采集；`grant` → `tick` 产生 Episode / suggestion；可索引文件**不**自动写 Cold/`kb/`；`approve` 仅白名单（`ingest doc|text` / `summarize`）；`la aware` 可出智能总结；相关 `la chat` 可注入近时 Episode；浏览器 selected ≠ viewing

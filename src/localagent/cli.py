@@ -1898,8 +1898,10 @@ def cmd_config(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    from localagent import __version__
+    from localagent import __version__, config
     from localagent.i18n import H, t
+
+    summarize_suffixes = config.format_summarize_suffixes()
 
     parser = argparse.ArgumentParser(
         prog="LA",
@@ -2537,7 +2539,24 @@ def build_parser() -> argparse.ArgumentParser:
     p_summarize = sub.add_parser(
         "summarize",
         help=H("<path…> [--no-chat] [--keep] [--force]  文档速读；默认进入文档对话", "<path…> [--no-chat] [--keep] [--force]  doc skim; enter doc chat by default"),
-        description=H("针对本地文档的速读与文档对话（与 la chat「和助手聊」不同）。\n  默认：打印速读卡后进入 sum> 文档对话（TTY）；同路径已有会话则自动续聊。\n  --no-chat：仅速读（可多文件），不进入对话。\n  --force：跳过续聊，忽略段摘要缓存并重新分段/摘要。\n支持 .txt / .md / .pdf / .xlsx / .mobi / .epub；图片请用 la ocr。\n默认不入库；会话内 /keep 或 --keep 收藏到知识库（不每次追问）。\n  la summarize --list                 # 最近文档对话\n  la summarize <path>                 # 续聊（若已有会话）\n", "Local document skim and doc chat (unlike la chat with the assistant).\n  Default: print skim card then enter sum> doc chat (TTY); auto-resumes if a session exists.\n  --no-chat: skim only (multi-file ok), no chat.\n  --force: skip resume, ignore segment cache and re-segment/re-summarize.\nSupports .txt / .md / .pdf / .xlsx / .mobi / .epub; use la ocr for images.\nNot ingested by default; /keep or --keep bookmarks to knowledge (no prompt each time).\n  la summarize --list                 # recent doc chats\n  la summarize <path>                 # resume when session exists\n"),
+        description=H(
+            f"针对本地文档的速读与文档对话（与 la chat「和助手聊」不同）。\n"
+            f"  默认：打印速读卡后进入 sum> 文档对话（TTY）；同路径已有会话则自动续聊。\n"
+            f"  --no-chat：仅速读（可多文件），不进入对话。\n"
+            f"  --force：跳过续聊，忽略段摘要缓存并重新分段/摘要。\n"
+            f"支持 {summarize_suffixes}；图片请用 la ocr。\n"
+            f"默认不入库；会话内 /keep 或 --keep 收藏到知识库（不每次追问）。\n"
+            f"  la summarize --list                 # 最近文档对话\n"
+            f"  la summarize <path>                 # 续聊（若已有会话）\n",
+            f"Local document skim and doc chat (unlike la chat with the assistant).\n"
+            f"  Default: print skim card then enter sum> doc chat (TTY); auto-resumes if a session exists.\n"
+            f"  --no-chat: skim only (multi-file ok), no chat.\n"
+            f"  --force: skip resume, ignore segment cache and re-segment/re-summarize.\n"
+            f"Supports {summarize_suffixes}; use la ocr for images.\n"
+            f"Not ingested by default; /keep or --keep bookmarks to knowledge (no prompt each time).\n"
+            f"  la summarize --list                 # recent doc chats\n"
+            f"  la summarize <path>                 # resume when session exists\n",
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_summarize.add_argument(
@@ -2648,13 +2667,13 @@ def build_parser() -> argparse.ArgumentParser:
             "  la ocr screenshot.png\n"
             "  la ocr scan.pdf --out /tmp/scan.txt\n"
             "  la ocr menu.png --keep\n"
-            "图片请用 la ocr；la summarize 仅支持 .txt / .md / .pdf / .xlsx / .mobi / .epub。\n"
+            f"图片请用 la ocr；la summarize 仅支持 {summarize_suffixes}。\n"
             "需 LA_OCR_ENABLED=1 且 pip install 'la-localagent[ocr]'。",
             "Extract visible text from images or PDFs (RapidOCR / PP-OCRv6); no LLM, no summarize doc chat.\n"
             "  la ocr screenshot.png\n"
             "  la ocr scan.pdf --out /tmp/scan.txt\n"
             "  la ocr menu.png --keep\n"
-            "Use la ocr for images; la summarize supports .txt / .md / .pdf / .xlsx / .mobi / .epub only.\n"
+            f"Use la ocr for images; la summarize supports {summarize_suffixes} only.\n"
             "Requires LA_OCR_ENABLED=1 and pip install 'la-localagent[ocr]'.",
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,

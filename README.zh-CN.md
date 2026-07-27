@@ -71,7 +71,7 @@ la
 | 跨会话被记住 | Hot / Warm / Cold + Mem0；ChatGPT 历史可 `LA ingest chatgpt` · [产品体验 §3–4](examples/product-tour.zh-CN.md) |
 | 文档进知识库并深度召回 | `LA ingest doc` / `rag search` · [产品体验 §5](examples/product-tour.zh-CN.md) |
 | **OCR 取字**（截图/扫描件原文） | `la ocr <path>`；本地 RapidOCR，无 API；需 `pip install 'la-localagent[ocr]'` |
-| **一键总结**文档（默认进 `sum>` 深聊） | `la summarize <path>`；`.txt/.md/.pdf/.xlsx/.mobi/.epub`（**不含图片**）；长书自动逐段阅读；同路径默认续聊；`--force` 强制重分段；扫描 PDF 内嵌 OCR；`/keep` 或 `--keep` 入库；仅速读加 `--no-chat` |
+| **一键总结**文档（默认进 `sum>` 深聊） | `la summarize <path>`；`.txt/.md/.markdown/.pdf/.xlsx/.mobi/.epub`（**不含图片**）；长书自动逐段阅读；同路径默认续聊；`--force` 强制重分段；扫描 PDF 内嵌 OCR；`/keep` 或 `--keep` 入库；仅速读加 `--no-chat` |
 | **新闻嗅探** / 今日简报 | `la news sync` → `la news brief`（TTY ↑↓ / `o` 打开 / `r` 精读深聊）；`la news schedule on` |
 | **Aware**（本机感知，需授权） | `la aware` · [Aware](#4-aware本机感知需授权) · grant → tick → suggestion → `aware>` · 相关时注入 `la chat` |
 | **一键润色**文案（默认复制主推） | `la polish` / `/polish` · `--scene` / `--tone` / `--no-copy` |
@@ -225,7 +225,7 @@ la summarize ~/book.pdf                    # 同路径默认续聊（若已有�
 la summarize ~/book.pdf --force            # 跳过续聊，重新分段/摘要
 ```
 
-- 支持：`.txt` / `.md` / `.pdf` / `.xlsx` / `.mobi` / `.epub`（**不含图片**——图片请用 `la ocr`）
+- 支持：`.txt` / `.md` / `.markdown` / `.pdf` / `.xlsx` / `.mobi` / `.epub`（**不含图片**——图片请用 `la ocr`）
 - 扫描 PDF（无文本层）在 summarize/ingest 内**自动 OCR** 后再速读或入库
 - 输出：最多三句话总结 + 带 〔§章节 | p.页〕索引的结构化要点
 - **默认不入库**；在 `sum>` 里 `/keep` 或启动时加 `--keep`

@@ -36,7 +36,7 @@ LocalAgent 的核心链路——**对话、记忆写入、记忆召回、文档�
 | 工作区 `LA workspace` | 否 | 读本地 Git / 文件 / TODO |
 | 本机感知 `la aware` | 否（本地模型可选） | 默认：当前状态 + 近 3 小时动态；`--detail` 分源明细 |
 | 审计 `LA audit` | 否 | 读本地 usage.jsonl |
-| 一键总结 `la summarize` | 否（本地模型） | `.txt/.md/.pdf/.xlsx/.mobi/.epub` 速读 + `sum>`；长书逐段 TUI；**不含图片**；扫描 PDF 内嵌 OCR |
+| 一键总结 `la summarize` | 否（本地模型） | `.txt/.md/.markdown/.pdf/.xlsx/.mobi/.epub` 速读 + `sum>`；长书逐段 TUI；**不含图片**；扫描 PDF 内嵌 OCR |
 | OCR 取字 `la ocr` | 否 | 本地 RapidOCR；图片/扫描 PDF 原文；需 `[ocr]` extra |
 | 新闻嗅探 `la news` | 仅 sync 时需联网 | RSS → 简报；精读可本地总结 |
 | 一键润色 `la polish` | 否（本地模型） | 场景改写 + 剪贴板 |
@@ -291,7 +291,7 @@ OCR = 精确取字；`la summarize` = 文档速读 + `sum>`；VL（`LA_VL_ENABLE
 
 ### 一键总结
 
-支持 `.txt` / `.md` / `.pdf` / `.xlsx` / `.mobi` / `.epub`（**不含图片**；电子书不支持 DRM）。扫描 PDF 无文本层时自动 OCR 后再速读。
+支持 `.txt` / `.md` / `.markdown` / `.pdf` / `.xlsx` / `.mobi` / `.epub`（**不含图片**；电子书不支持 DRM）。扫描 PDF 无文本层时自动 OCR 后再速读。
 
 ```bash
 la summarize examples/sample-project-notes.md

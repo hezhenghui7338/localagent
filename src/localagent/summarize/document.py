@@ -80,9 +80,10 @@ def _suffix_ok(path: Path) -> bool:
 def _summarize_reject_reason(path: Path) -> str | None:
     suffix = path.suffix.lower()
     if suffix in config.IMAGE_SUFFIXES:
-        return f"图片请使用 la ocr {path}；summarize 仅支持文档（.txt / .md / .pdf / .xlsx / .mobi / .epub）"
+        supported = config.format_summarize_suffixes()
+        return f"图片请使用 la ocr {path}；summarize 仅支持文档（{supported}）"
     if not _suffix_ok(path):
-        supported = ", ".join(sorted(config.SUMMARIZE_SUFFIXES))
+        supported = config.format_summarize_suffixes(style="comma")
         return f"不支持的文件类型 {suffix!r}；支持: {supported}"
     return None
 
@@ -449,7 +450,7 @@ def summarize_path(
     if reject:
         raise SummarizeError(reject)
     if not _suffix_ok(source):
-        supported = ", ".join(sorted(config.SUMMARIZE_SUFFIXES))
+        supported = config.format_summarize_suffixes(style="comma")
         raise SummarizeError(f"不支持的文件类型 {source.suffix!r}；支持: {supported}")
 
     doc = load_file(source)

@@ -117,6 +117,16 @@ IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 # Images load when LA_OCR_ENABLED=1 (exact text) or LA_VL_ENABLED=1 (semantic caption).
 SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt", ".xlsx", ".pdf", ".mobi", ".epub"} | IMAGE_SUFFIXES
 SUMMARIZE_SUFFIXES = {".md", ".markdown", ".txt", ".xlsx", ".pdf", ".mobi", ".epub"}
+
+
+def format_summarize_suffixes(*, style: str = "slash") -> str:
+    """Human-readable la summarize suffix list derived from SUMMARIZE_SUFFIXES."""
+    ordered = sorted(SUMMARIZE_SUFFIXES)
+    if style == "comma":
+        return ", ".join(ordered)
+    return " / ".join(ordered)
+
+
 DEFAULT_USER_ID = "default_user"
 # One-click summarize: short-doc path (chars of annotated text).
 SUMMARIZE_SHORT_MAX_CHARS = _env_int("LA_SUMMARIZE_SHORT_MAX_CHARS", "12000")

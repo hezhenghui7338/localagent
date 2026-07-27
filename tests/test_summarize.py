@@ -212,6 +212,25 @@ def test_unsupported_suffix(tmp_path: Path):
     assert "不支持" in str(exc.value)
 
 
+def test_markdown_suffix_accepted(tmp_path: Path):
+    path = tmp_path / "notes.markdown"
+    path.write_text(
+        "# 章节\n\n"
+        "这是一段用于速读测试的正文。\n",
+        encoding="utf-8",
+    )
+    result = summarize_path(path, use_llm=False)
+    assert "## 总结" in result.markdown
+    assert result.filename == "notes.markdown"
+
+
+def test_format_summarize_suffixes_includes_markdown():
+    text = config.format_summarize_suffixes()
+    assert ".markdown" in text
+    assert ".md" in text
+    assert text == config.format_summarize_suffixes(style="comma").replace(", ", " / ")
+
+
 def test_should_enter_document_chat_respects_no_chat():
     from localagent.summarize.repl import should_enter_document_chat
 
