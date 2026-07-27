@@ -274,6 +274,161 @@ def test_summarize_session_upsert_and_list(tmp_path: Path, monkeypatch: pytest.M
     assert list_sessions()[0].filename == path.name
 
 
+def _summarize_args(tmp_path: Path, **overrides):
+    import argparse
+
+    if "paths" not in overrides and "path" not in overrides:
+        overrides["paths"] = [str(_md_doc(tmp_path))]
+    defaults = {
+        "paths": [],
+        "path": None,
+        "no_chat": False,
+        "keep": False,
+        "heuristic": True,
+        "provider": "auto",
+        "out": None,
+        "list": False,
+        "limit": 20,
+        "resume": False,
+        "force": False,
+        "id": None,
+        "no_ui": True,
+        "no_prefetch": True,
+        "refresh_segments": False,
+        "retry_failed": False,
+    }
+    defaults.update(overrides)
+    return argparse.Namespace(**defaults)
+
+
+def test_cmd_summarize_auto_resumes_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from localagent.cli import cmd_summarize
+    from localagent.summarize.sessions import SummarizeSessionRecord
+
+    path = _md_doc(tmp_path)
+    record = SummarizeSessionRecord(
+        id="sum-auto01",
+        path=str(path.resolve()),
+        filename=path.name,
+        mtime=path.stat().st_mtime,
+        updated_at="",
+        conversation_session_id="sum-auto01",
+        summary_md="## 总结\nhello\n",
+        char_count=10,
+        kept=False,
+    )
+    resume_calls: list[tuple] = []
+
+    monkeypatch.setattr(
+        "localagent.summarize.sessions.find_session_by_path",
+        lambda p: record if Path(p).resolve() == path.resolve() else None,
+    )
+
+    def _fake_resume(source, *, record, **kwargs):
+        resume_calls.append((source, record.id, kwargs.get("refresh_cache")))
+        return 0
+
+    monkeypatch.setattr("localagent.cli._summarize_resume_one", _fake_resume)
+    monkeypatch.setattr(
+        "localagent.summarize.repl.should_enter_document_chat",
+        lambda *, no_chat: not no_chat,
+    )
+
+    args = _summarize_args(tmp_path, paths=[str(path)], resume=False, force=False)
+    assert cmd_summarize(args) == 0
+    assert len(resume_calls) == 1
+    assert resume_calls[0][1] == "sum-auto01"
+    assert resume_calls[0][2] is False
+
+
+def test_cmd_summarize_force_skips_resume_and_refreshes_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from localagent.cli import cmd_summarize
+    from localagent.summarize.sessions import SummarizeSessionRecord
+
+    path = _md_doc(tmp_path)
+    record = SummarizeSessionRecord(
+        id="sum-force01",
+        path=str(path.resolve()),
+        filename=path.name,
+        mtime=path.stat().st_mtime,
+        updated_at="",
+        conversation_session_id="sum-force01",
+        summary_md="## 总结\nhello\n",
+        char_count=10,
+        kept=False,
+    )
+    resume_calls: list[tuple] = []
+    summarize_calls: list[tuple] = []
+
+    monkeypatch.setattr(
+        "localagent.summarize.sessions.find_session_by_path",
+        lambda p: record if Path(p).resolve() == path.resolve() else None,
+    )
+    monkeypatch.setattr(
+        "localagent.cli._summarize_resume_one",
+        lambda *a, **k: resume_calls.append((a, k)) or 0,
+    )
+
+    def _fake_summarize(source, *, keep, use_llm, refresh_cache, retry_failed):
+        from localagent.summarize.document import SummarizeResult
+
+        summarize_calls.append((source, refresh_cache, retry_failed))
+        return SummarizeResult(
+            markdown="## 总结\nnew\n",
+            path=Path(source),
+            filename=Path(source).name,
+            char_count=10,
+            used_llm=False,
+        )
+
+    monkeypatch.setattr("localagent.summarize.document.summarize_path", _fake_summarize)
+    monkeypatch.setattr("localagent.summarize.repl.enter_summarize_interactive", lambda *a, **k: 0)
+    monkeypatch.setattr(
+        "localagent.summarize.repl.should_enter_document_chat",
+        lambda *, no_chat: not no_chat,
+    )
+
+    args = _summarize_args(tmp_path, paths=[str(path)], force=True)
+    assert cmd_summarize(args) == 0
+    assert resume_calls == []
+    assert len(summarize_calls) == 1
+    assert summarize_calls[0][1] is True
+
+
+def test_cmd_summarize_no_chat_does_not_auto_resume(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from localagent.cli import cmd_summarize
+    from localagent.summarize.sessions import SummarizeSessionRecord
+
+    path = _md_doc(tmp_path)
+    record = SummarizeSessionRecord(
+        id="sum-nochat01",
+        path=str(path.resolve()),
+        filename=path.name,
+        mtime=path.stat().st_mtime,
+        updated_at="",
+        conversation_session_id="sum-nochat01",
+        summary_md="## 总结\nhello\n",
+        char_count=10,
+        kept=False,
+    )
+
+    monkeypatch.setattr(
+        "localagent.summarize.sessions.find_session_by_path",
+        lambda p: record if Path(p).resolve() == path.resolve() else None,
+    )
+    monkeypatch.setattr(
+        "localagent.cli._summarize_resume_one",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not resume")),
+    )
+
+    args = _summarize_args(tmp_path, paths=[str(path)], no_chat=True)
+    assert cmd_summarize(args) == 0
+
+
 def test_cmd_summarize_multi_requires_no_chat(tmp_path: Path):
     import argparse
 
@@ -293,7 +448,12 @@ def test_cmd_summarize_multi_requires_no_chat(tmp_path: Path):
         list=False,
         limit=20,
         resume=False,
+        force=False,
         id=None,
+        no_ui=True,
+        no_prefetch=True,
+        refresh_segments=False,
+        retry_failed=False,
     )
     assert cmd_summarize(args) == 1
 
@@ -318,7 +478,12 @@ def test_cmd_summarize_no_chat_batch(tmp_path: Path):
         list=False,
         limit=20,
         resume=False,
+        force=False,
         id=None,
+        no_ui=True,
+        no_prefetch=True,
+        refresh_segments=False,
+        retry_failed=False,
     )
     assert cmd_summarize(args) == 0
     text = out.read_text(encoding="utf-8")

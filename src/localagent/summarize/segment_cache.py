@@ -224,6 +224,9 @@ def apply_cache_to_progress(progress: ReadingProgress, data: dict[str, Any]) -> 
     )
     progress.segment_summaries = summaries
     progress.segment_statuses = statuses
+    from localagent.summarize.segment_reader import normalize_stale_running_segments
+
+    normalize_stale_running_segments(progress)
     progress.sync_done_count()
     return progress.done_count()
 

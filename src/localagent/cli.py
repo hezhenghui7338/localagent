@@ -243,18 +243,18 @@ def cmd_summarize(args: argparse.Namespace) -> int:
         paths_raw = [args.path]
 
     no_chat = bool(getattr(args, "no_chat", False))
-    do_resume = bool(getattr(args, "resume", False)) or bool(resume_id)
+    force = bool(getattr(args, "force", False))
     heuristic = bool(getattr(args, "heuristic", False))
     keep = bool(getattr(args, "keep", False))
     provider = getattr(args, "provider", None) or "auto"
     out_path = getattr(args, "out", None)
     no_ui = bool(getattr(args, "no_ui", False))
     no_prefetch = bool(getattr(args, "no_prefetch", False))
-    refresh_cache = bool(getattr(args, "refresh_segments", False))
+    refresh_cache = bool(getattr(args, "refresh_segments", False)) or force
     retry_failed = bool(getattr(args, "retry_failed", False))
 
     # Resume by session id
-    if resume_id:
+    if resume_id and not force:
         record = get_session(resume_id)
         if record is None:
             print(t("summarize.session_not_found", id=resume_id))
@@ -283,6 +283,14 @@ def cmd_summarize(args: argparse.Namespace) -> int:
     if len(paths) > 1 and not no_chat:
         print(t("summarize.multi_no_chat"))
         return 1
+
+    auto_resume = len(paths) == 1 and not no_chat
+    do_resume = not force and (
+        bool(getattr(args, "resume", False)) or auto_resume
+    )
+
+    if force:
+        print(t("summarize.force_fresh"))
 
     if do_resume and len(paths) == 1 and not no_chat:
         record = find_session_by_path(paths[0])
@@ -2528,8 +2536,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_summarize = sub.add_parser(
         "summarize",
-        help=H("<path…> [--no-chat] [--keep] [--resume]  文档速读；默认进入文档对话", "<path…> [--no-chat] [--keep] [--resume]  doc skim; enter doc chat by default"),
-        description=H("针对本地文档的速读与文档对话（与 la chat「和助手聊」不同）。\n  默认：打印速读卡后进入 sum> 文档对话（TTY）。\n  --no-chat：仅速读（可多文件），不进入对话。\n支持 .txt / .md / .pdf / .xlsx / .mobi / .epub；图片请用 la ocr。\n默认不入库；会话内 /keep 或 --keep 收藏到知识库（不每次追问）。\n  la summarize --list                 # 最近文档对话\n  la summarize <path> --resume        # 续聊\n", "Local document skim and doc chat (unlike la chat with the assistant).\n  Default: print skim card then enter sum> doc chat (TTY).\n  --no-chat: skim only (multi-file ok), no chat.\nSupports .txt / .md / .pdf / .xlsx / .mobi / .epub; use la ocr for images.\nNot ingested by default; /keep or --keep bookmarks to knowledge (no prompt each time).\n  la summarize --list                 # recent doc chats\n  la summarize <path> --resume        # resume\n"),
+        help=H("<path…> [--no-chat] [--keep] [--force]  文档速读；默认进入文档对话", "<path…> [--no-chat] [--keep] [--force]  doc skim; enter doc chat by default"),
+        description=H("针对本地文档的速读与文档对话（与 la chat「和助手聊」不同）。\n  默认：打印速读卡后进入 sum> 文档对话（TTY）；同路径已有会话则自动续聊。\n  --no-chat：仅速读（可多文件），不进入对话。\n  --force：跳过续聊，忽略段摘要缓存并重新分段/摘要。\n支持 .txt / .md / .pdf / .xlsx / .mobi / .epub；图片请用 la ocr。\n默认不入库；会话内 /keep 或 --keep 收藏到知识库（不每次追问）。\n  la summarize --list                 # 最近文档对话\n  la summarize <path>                 # 续聊（若已有会话）\n", "Local document skim and doc chat (unlike la chat with the assistant).\n  Default: print skim card then enter sum> doc chat (TTY); auto-resumes if a session exists.\n  --no-chat: skim only (multi-file ok), no chat.\n  --force: skip resume, ignore segment cache and re-segment/re-summarize.\nSupports .txt / .md / .pdf / .xlsx / .mobi / .epub; use la ocr for images.\nNot ingested by default; /keep or --keep bookmarks to knowledge (no prompt each time).\n  la summarize --list                 # recent doc chats\n  la summarize <path>                 # resume when session exists\n"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_summarize.add_argument(
@@ -2567,7 +2575,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_summarize.add_argument(
         "--resume",
         action="store_true",
-        help=H("按路径续聊已有文档对话", "resume existing doc chat by path"),
+        help=H("按路径续聊已有文档对话（单文件默认已开启）", "resume existing doc chat by path (default for single file)"),
+    )
+    p_summarize.add_argument(
+        "--force",
+        action="store_true",
+        help=H(
+            "跳过续聊，忽略段摘要缓存并重新分段/摘要",
+            "skip resume, ignore segment cache and re-segment/re-summarize",
+        ),
     )
     p_summarize.add_argument(
         "--id",

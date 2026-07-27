@@ -30,6 +30,8 @@ class BrowserUiState:
     prefetch_enabled: bool = True
     active_workers: int = 0
 
+    worker_alive: bool = False
+
     def mark_dirty(self) -> None:
         with self.lock:
             self.dirty = True
@@ -50,8 +52,10 @@ class BrowserUiState:
                 snap = worker.snapshot()
                 self.active_workers = snap.active_workers
                 self.prefetch_enabled = snap.enabled
+                self.worker_alive = snap.running
             else:
                 self.active_workers = 0
+                self.worker_alive = False
             self.dirty = False
 
 
@@ -84,6 +88,7 @@ def render_segment_browser_text(
     prefetch_enabled: bool = True,
     done_count: int | None = None,
     active_workers: int = 0,
+    worker_alive: bool = False,
     detail_scroll: int = 0,
     detail_max_lines: int | None = None,
 ) -> str:
@@ -143,6 +148,7 @@ def render_segment_browser_text(
             done=done,
             total=state.total,
             active=active_workers,
+            worker_alive=worker_alive,
         )
     )
     lines.append(t("summarize.browser_help"))
@@ -154,6 +160,17 @@ def should_enter_segment_browser(*, no_ui: bool) -> bool:
     if no_ui:
         return False
     return bool(sys.stdin.isatty() and sys.stdout.isatty())
+
+
+def parse_goto_segment_no(raw: str, *, total: int) -> int | None:
+    """Parse 1-based segment number for goto mode; None if invalid."""
+    text = (raw or "").strip()
+    if not text or not text.isdigit():
+        return None
+    segment_no = int(text)
+    if segment_no < 1 or segment_no > total:
+        return None
+    return segment_no
 
 
 def run_segment_browser(
@@ -205,6 +222,10 @@ def run_segment_browser(
             result.markdown = summary.strip()
         ui_state.mark_dirty()
 
+    from localagent.summarize.segment_reader import normalize_stale_running_segments
+
+    normalize_stale_running_segments(progress)
+
     prefetch_on = config.SUMMARIZE_SEGMENT_PREFETCH and not no_prefetch
     worker = attach_prefetch_worker(
         result,
@@ -214,6 +235,8 @@ def run_segment_browser(
         on_update=_on_update,
         on_persist=lambda: _persist_cache(full_md=False),
     )
+    if worker is not None:
+        worker.ensure_work_scheduled()
     _persist_session()
     _persist_cache(full_md=False)
 
@@ -308,6 +331,43 @@ def _run_one_session(
     line_count = [1]
     detail_max_lines = config.SUMMARIZE_BROWSER_DETAIL_LINES
     refresh_sec = float(config.SUMMARIZE_BROWSER_REFRESH_SEC)
+    goto_mode = [False]
+    goto_buffer = [""]
+
+    def _goto_prompt() -> str:
+        return t(
+            "summarize.browser_goto_prompt",
+            total=state.total,
+            input=goto_buffer[0],
+        )
+
+    def _enter_goto_mode(event: Any) -> None:
+        goto_mode[0] = True
+        goto_buffer[0] = ""
+        state.message = _goto_prompt()
+        event.app.invalidate()
+
+    def _cancel_goto_mode() -> None:
+        goto_mode[0] = False
+        goto_buffer[0] = ""
+
+    def _confirm_goto(event: Any) -> None:
+        segment_no = parse_goto_segment_no(goto_buffer[0], total=state.total)
+        if segment_no is None:
+            state.message = t("summarize.browser_goto_invalid", total=state.total)
+            event.app.invalidate()
+            return
+        goto_mode[0] = False
+        goto_buffer[0] = ""
+        if state.goto_one_based(segment_no):
+            state.progress.current_index = state.index
+            state.message = t(
+                "summarize.browser_goto_done",
+                current=segment_no,
+                total=state.total,
+            )
+            _reset_scroll()
+        event.app.invalidate()
 
     class ScrollableFormattedTextControl(FormattedTextControl):
         def create_content(self, width: int, height: int | None) -> Any:
@@ -330,15 +390,19 @@ def _run_one_session(
         from prompt_toolkit.formatted_text import FormattedText
 
         ui_state.sync_from(progress=state.progress, worker=worker, force=False)
+        if worker is not None:
+            worker.ensure_work_scheduled()
         with ui_state.lock:
             done = ui_state.done_count
             prefetch_on = ui_state.prefetch_enabled
             active = ui_state.active_workers
+            worker_alive = ui_state.worker_alive
         text = render_segment_browser_text(
             state,
             prefetch_enabled=prefetch_on,
             done_count=done,
             active_workers=active,
+            worker_alive=worker_alive,
             detail_scroll=detail_scroll[0],
             detail_max_lines=detail_max_lines,
         )
@@ -384,7 +448,13 @@ def _run_one_session(
     def _detail_line_count() -> int:
         return len(state.detail_text().splitlines())
 
+    from prompt_toolkit.filters import Condition
+
+    in_goto_mode = Condition(lambda: goto_mode[0])
+
     def _scroll_up(event: Any) -> None:
+        if goto_mode[0]:
+            return
         if detail_scroll[0] > 0:
             detail_scroll[0] -= 1
         else:
@@ -392,6 +462,8 @@ def _run_one_session(
         event.app.invalidate()
 
     def _scroll_down(event: Any) -> None:
+        if goto_mode[0]:
+            return
         total_detail = _detail_line_count()
         if detail_max_lines > 0 and detail_scroll[0] + detail_max_lines < total_detail:
             detail_scroll[0] += 1
@@ -400,16 +472,22 @@ def _run_one_session(
         event.app.invalidate()
 
     def _seg_prev(event: Any) -> None:
+        if goto_mode[0]:
+            return
         state.move(-1)
         _reset_scroll()
         event.app.invalidate()
 
     def _seg_next(event: Any) -> None:
+        if goto_mode[0]:
+            return
         state.move(1)
         _reset_scroll()
         event.app.invalidate()
 
     def _page_down(event: Any) -> None:
+        if goto_mode[0]:
+            return
         total_detail = _detail_line_count()
         if detail_max_lines > 0 and detail_scroll[0] + detail_max_lines < total_detail:
             detail_scroll[0] = min(
@@ -426,6 +504,8 @@ def _run_one_session(
         event.app.invalidate()
 
     def _page_up(event: Any) -> None:
+        if goto_mode[0]:
+            return
         if detail_scroll[0] > 0:
             detail_scroll[0] = max(0, detail_scroll[0] - detail_max_lines)
         else:
@@ -470,26 +550,58 @@ def _run_one_session(
     def _pgup(event: Any) -> None:
         _page_up(event)
 
-    @kb.add("enter")
-    @kb.add("r")
+    @kb.add("enter", filter=in_goto_mode)
+    def _goto_confirm(event: Any) -> None:
+        _confirm_goto(event)
+
+    @kb.add("enter", filter=~in_goto_mode)
     def _read(event: Any) -> None:
         _exit(event, "chat")
 
-    @kb.add("R")
+    @kb.add("g", eager=True)
+    def _goto_start(event: Any) -> None:
+        if goto_mode[0]:
+            return
+        _enter_goto_mode(event)
+
+    for digit in "0123456789":
+
+        @kb.add(digit, filter=in_goto_mode)
+        def _goto_digit(event: Any, *, _digit: str = digit) -> None:
+            goto_buffer[0] += _digit
+            state.message = _goto_prompt()
+            event.app.invalidate()
+
+    @kb.add("backspace", filter=in_goto_mode)
+    def _goto_backspace(event: Any) -> None:
+        goto_buffer[0] = goto_buffer[0][:-1]
+        state.message = _goto_prompt()
+        event.app.invalidate()
+
+    @kb.add("escape", filter=in_goto_mode)
+    @kb.add("c-c", filter=in_goto_mode)
+    def _goto_cancel(event: Any) -> None:
+        _cancel_goto_mode()
+        state.message = t("summarize.browser_goto_cancelled")
+        event.app.invalidate()
+
+    @kb.add("r", filter=~in_goto_mode)
     def _retry(event: Any) -> None:
         progress = state.progress
         idx = state.index
         status = progress.segment_status_at(idx)
-        if status == "running":
+        from localagent.summarize.segment_reader import (
+            can_manual_retry_segment,
+            is_stale_running,
+            summarize_segment,
+        )
+
+        if status == "running" and not is_stale_running(progress, idx):
             state.message = t("summarize.browser_retry_running")
         else:
             ui_state.sync_from(progress=progress, worker=worker, force=True)
             with ui_state.lock:
                 prefetch_on = ui_state.prefetch_enabled
-            from localagent.summarize.segment_reader import (
-                can_manual_retry_segment,
-                summarize_segment,
-            )
 
             if not can_manual_retry_segment(
                 progress, idx, prefetch_enabled=prefetch_on
@@ -531,7 +643,7 @@ def _run_one_session(
         ui_state.mark_dirty()
         event.app.invalidate()
 
-    @kb.add("s")
+    @kb.add("s", filter=~in_goto_mode)
     def _toggle_prefetch(event: Any) -> None:
         if worker is None:
             state.message = t("summarize.prefetch_unavailable")
@@ -545,14 +657,14 @@ def _run_one_session(
         ui_state.mark_dirty()
         event.app.invalidate()
 
-    @kb.add("?")
+    @kb.add("?", filter=~in_goto_mode)
     def _help(event: Any) -> None:
         state.message = t("summarize.browser_help").replace("\n", " | ")
         event.app.invalidate()
 
-    @kb.add("q")
-    @kb.add("escape")
-    @kb.add("c-c")
+    @kb.add("q", filter=~in_goto_mode)
+    @kb.add("escape", filter=~in_goto_mode)
+    @kb.add("c-c", filter=~in_goto_mode)
     def _quit(event: Any) -> None:
         _exit(event, "quit")
 

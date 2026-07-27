@@ -71,7 +71,7 @@ Runs fully local by default; optional cloud and web. Details: [summarize · news
 | Be remembered across sessions | Hot / Warm / Cold + Mem0; import ChatGPT via `LA ingest chatgpt` · [Product tour §3–4](examples/product-tour.md) |
 | Put docs in a KB and recall deeply | `LA ingest doc` / `rag search` · [Product tour §5](examples/product-tour.md) |
 | **OCR text extraction** (screenshots/scans) | `la ocr <path>`; local RapidOCR, no API; needs `pip install 'la-localagent[ocr]'` |
-| **Summarize** a doc (`sum>` dialogue by default) | `la summarize <path>`; `.txt/.md/.pdf/.xlsx/.mobi/.epub` (**no images**); long docs → segmented reading; `--resume` to continue; scanned PDFs OCR inline; `/keep` or `--keep` to archive; `--no-chat` for digest-only |
+| **Summarize** a doc (`sum>` dialogue by default) | `la summarize <path>`; `.txt/.md/.pdf/.xlsx/.mobi/.epub` (**no images**); long docs → segmented reading; auto-resumes same path; `--force` to re-segment; scanned PDFs OCR inline; `/keep` or `--keep` to archive; `--no-chat` for digest-only |
 | **News sniff** / daily brief | `la news sync` → `la news brief` (TTY ↑↓ / `o` open / `r` deep-read); `la news schedule on` |
 | **Aware** (opt-in machine sensing) | `la aware` · [Aware](#4-aware--opt-in-machine-sensing) · grant → tick → suggestion → `aware>` · inject into `la chat` when relevant |
 | **Polish** copy (clipboard by default) | `la polish` / `/polish` · `--scene` / `--tone` / `--no-copy` |
@@ -221,7 +221,8 @@ la summarize book.mobi                     # ebooks (MOBI/EPUB; no DRM)
 la summarize notes.md --no-chat            # card only (multi-file ok)
 la summarize report.xlsx --keep            # also archive to KB
 la summarize --list                        # recent doc chats
-la summarize ~/book.pdf --resume           # resume by path
+la summarize ~/book.pdf                    # auto-resumes when a session exists
+la summarize ~/book.pdf --force            # skip resume; re-segment/re-summarize
 ```
 
 - Formats: `.txt` / `.md` / `.pdf` / `.xlsx` / `.mobi` / `.epub` (**not images** — use `la ocr`)
@@ -235,9 +236,9 @@ la summarize ~/book.pdf --resume           # resume by path
 - In a TTY you get a **segment browser TUI**: ↑↓ / `j` `k` browse segment digests; `Enter` / `r` open that segment in `sum>`; `s` toggle background prefetch; `q` quit
 - Background parallel segment summaries (`LA_SUMMARIZE_SEGMENT_PREFETCH`, on by default); disk cache under `data/summarize_sessions/cache/`
 - In `sum>`: `/next` `/prev` `/goto N` `/progress`; cross-segment questions (“whole doc”, “compare earlier…”) retrieve read segments
-- Scripts/CI: `--no-ui` skip TUI and use `sum>` REPL; `--no-prefetch` disable background prefetch; `--refresh-segments` ignore segment cache
+- Scripts/CI: `--no-ui` skip TUI and use `sum>` REPL; `--no-prefetch` disable background prefetch; `--refresh-segments` ignore segment cache; `--force` skip resume and re-segment/re-summarize
 
-**Resume sessions**: `--list` recent doc chats; `<path> --resume` or `--id SESSION_ID` restore progress (reuses segment cache when the file is unchanged).
+**Resume sessions**: `--list` recent doc chats; `la summarize <path>` auto-resumes same path; `--id SESSION_ID` resume by id; `--force` start fresh (reuses segment cache when the file is unchanged).
 
 #### 2. Local OCR `la ocr` — extract text from screenshots/scans
 

@@ -176,6 +176,7 @@ class ReadingProgress:
             for idx in range(progress.total):
                 if progress.summary_ready(idx):
                     progress.segment_statuses[idx] = "done"
+        normalize_stale_running_segments(progress)
         progress.sync_done_count()
         return progress
 
@@ -413,11 +414,32 @@ def _llm_compress_prior(text: str, *, filename: str, budget: int) -> str | None:
     return apply_context_budget(out, budget=budget, label="已读段滚动摘要")
 
 
+def is_stale_running(progress: ReadingProgress, index: int) -> bool:
+    """Segment marked running in cache but no worker is summarizing it."""
+    return (
+        progress.segment_status_at(index) == "running"
+        and not progress.summary_ready(index)
+    )
+
+
+def normalize_stale_running_segments(progress: ReadingProgress) -> list[int]:
+    """Convert orphaned running segments to pending (e.g. after interrupted prefetch)."""
+    normalized: list[int] = []
+    for idx in range(progress.total):
+        if is_stale_running(progress, idx):
+            progress.set_segment_status(idx, "pending")
+            normalized.append(idx)
+    return normalized
+
+
 def reset_segment_for_retry(progress: ReadingProgress, index: int) -> bool:
-    """Clear one segment summary and mark pending; skip if running or out of range."""
+    """Clear one segment summary and mark pending; skip active running with summary."""
     if index < 0 or index >= progress.total:
         return False
-    if progress.segment_status_at(index) == "running":
+    status = progress.segment_status_at(index)
+    if status == "running" and progress.summary_ready(index):
+        return False
+    if status not in {"failed", "pending"} and not is_stale_running(progress, index):
         return False
     while len(progress.segment_summaries) <= index:
         progress.segment_summaries.append("")
@@ -427,10 +449,11 @@ def reset_segment_for_retry(progress: ReadingProgress, index: int) -> bool:
 
 
 def reset_failed_segments(progress: ReadingProgress) -> list[int]:
-    """Reset all failed segments for retry; returns reset indices."""
+    """Reset failed and stale-running segments for retry; returns reset indices."""
     reset: list[int] = []
     for idx in range(progress.total):
-        if progress.segment_status_at(idx) == "failed":
+        status = progress.segment_status_at(idx)
+        if status == "failed" or is_stale_running(progress, idx):
             if reset_segment_for_retry(progress, idx):
                 reset.append(idx)
     return reset
@@ -445,6 +468,8 @@ def can_manual_retry_segment(
     """Whether TUI manual retry (R) should be offered for this segment."""
     status = progress.segment_status_at(index)
     if status == "failed":
+        return True
+    if is_stale_running(progress, index):
         return True
     if status == "pending" and not prefetch_enabled:
         return True

@@ -71,7 +71,7 @@ la
 | 跨会话被记住 | Hot / Warm / Cold + Mem0；ChatGPT 历史可 `LA ingest chatgpt` · [产品体验 §3–4](examples/product-tour.zh-CN.md) |
 | 文档进知识库并深度召回 | `LA ingest doc` / `rag search` · [产品体验 §5](examples/product-tour.zh-CN.md) |
 | **OCR 取字**（截图/扫描件原文） | `la ocr <path>`；本地 RapidOCR，无 API；需 `pip install 'la-localagent[ocr]'` |
-| **一键总结**文档（默认进 `sum>` 深聊） | `la summarize <path>`；`.txt/.md/.pdf/.xlsx/.mobi/.epub`（**不含图片**）；长书自动逐段阅读；`--resume` 续聊；扫描 PDF 内嵌 OCR；`/keep` 或 `--keep` 入库；仅速读加 `--no-chat` |
+| **一键总结**文档（默认进 `sum>` 深聊） | `la summarize <path>`；`.txt/.md/.pdf/.xlsx/.mobi/.epub`（**不含图片**）；长书自动逐段阅读；同路径默认续聊；`--force` 强制重分段；扫描 PDF 内嵌 OCR；`/keep` 或 `--keep` 入库；仅速读加 `--no-chat` |
 | **新闻嗅探** / 今日简报 | `la news sync` → `la news brief`（TTY ↑↓ / `o` 打开 / `r` 精读深聊）；`la news schedule on` |
 | **Aware**（本机感知，需授权） | `la aware` · [Aware](#4-aware本机感知需授权) · grant → tick → suggestion → `aware>` · 相关时注入 `la chat` |
 | **一键润色**文案（默认复制主推） | `la polish` / `/polish` · `--scene` / `--tone` / `--no-copy` |
@@ -221,7 +221,8 @@ la summarize book.mobi                     # 电子书（MOBI/EPUB，不支持 D
 la summarize notes.md --no-chat            # 只要卡片，不进对话（可多文件）
 la summarize report.xlsx --keep            # 总结后同时入库（长期召回）
 la summarize --list                        # 最近文档对话
-la summarize ~/book.pdf --resume           # 按路径续聊
+la summarize ~/book.pdf                    # 同路径默认续聊（若已有会话）
+la summarize ~/book.pdf --force            # 跳过续聊，重新分段/摘要
 ```
 
 - 支持：`.txt` / `.md` / `.pdf` / `.xlsx` / `.mobi` / `.epub`（**不含图片**——图片请用 `la ocr`）
@@ -235,9 +236,9 @@ la summarize ~/book.pdf --resume           # 按路径续聊
 - TTY 下先进入**段列表 TUI**：↑↓ / `j` `k` 浏览各段摘要；`Enter` / `r` 进入该段 `sum>` 深聊；`s` 开关后台预取；`q` 退出
 - 后台并行摘要各段（`LA_SUMMARIZE_SEGMENT_PREFETCH`，默认开）；段摘要缓存于 `data/summarize_sessions/cache/`
 - 在 `sum>` 内：`/next` `/prev` `/goto N` `/progress`；跨段问题（「全文」「对比前面…」）自动检索已读段
-- 脚本/CI：`--no-ui` 跳过 TUI 直接用 `sum>`；`--no-prefetch` 关闭后台预取；`--refresh-segments` 忽略段缓存
+- 脚本/CI：`--no-ui` 跳过 TUI 直接用 `sum>`；`--no-prefetch` 关闭后台预取；`--refresh-segments` 忽略段缓存；`--force` 跳过续聊并重新分段/摘要
 
-**会话续聊**：`--list` 列出最近文档对话；`<path> --resume` 或 `--id SESSION_ID` 恢复进度（文件未改时可复用段摘要）。
+**会话续聊**：`--list` 列出最近文档对话；`la summarize <path>` 默认同路径续聊；`--id SESSION_ID` 按 id 续聊；`--force` 强制重来（文件未改时可复用段摘要）。
 
 #### 2. 本地 OCR `la ocr` —— 从截图/扫描件取原文
 

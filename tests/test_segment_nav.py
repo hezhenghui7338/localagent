@@ -76,3 +76,29 @@ def test_detail_text_window_truncates_long_summary():
     scrolled = state.detail_text_window(scroll=5, max_lines=5)
     assert "line 5" in scrolled
     assert "上方还有" in scrolled
+
+
+def test_set_index_clamps():
+    progress = _progress(total=4, index=0)
+    state = SegmentNavState(progress=progress, filename="t.md", index=0)
+    state.set_index(99)
+    assert state.index == 3
+    state.set_index(-5)
+    assert state.index == 0
+
+
+def test_goto_one_based():
+    progress = _progress(total=5, index=0)
+    state = SegmentNavState(progress=progress, filename="t.md", index=0, message="hint")
+    assert state.goto_one_based(3) is True
+    assert state.index == 2
+    assert state.message == ""
+    assert state.goto_one_based(0) is False
+    assert state.goto_one_based(6) is False
+    assert state.index == 2
+
+
+def test_goto_one_based_empty_document():
+    progress = ReadingProgress(segments=[], current_index=0)
+    state = SegmentNavState(progress=progress, filename="empty.md", index=0)
+    assert state.goto_one_based(1) is False

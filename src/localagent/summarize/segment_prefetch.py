@@ -99,6 +99,27 @@ class SegmentPrefetchWorker:
         self._thread = threading.Thread(target=self._run, name="segment-prefetch", daemon=True)
         self._thread.start()
 
+    def ensure_work_scheduled(self) -> bool:
+        """Normalize stale running segments and restart worker when work remains."""
+        progress = self.progress
+        if progress is None or self._stop.is_set():
+            return False
+        from localagent.summarize.segment_reader import normalize_stale_running_segments
+
+        changed = bool(normalize_stale_running_segments(progress))
+        if changed and self.on_persist:
+            self.on_persist()
+        if progress.done_count() >= progress.total:
+            return changed
+        if self._next_pending_index(progress) is None:
+            return changed
+        progress.prefetch_enabled = True
+        if self._thread is None or not self._thread.is_alive():
+            self._stop.clear()
+            self.start()
+            return True
+        return changed
+
     def stop(self, *, join_timeout: float = 2.0) -> None:
         self._stop.set()
         progress = self.progress
@@ -252,6 +273,10 @@ class SegmentPrefetchWorker:
                 continue
             status = progress.segment_status_at(idx)
             if status in {"pending", "failed"}:
+                return idx
+            from localagent.summarize.segment_reader import is_stale_running
+
+            if is_stale_running(progress, idx):
                 return idx
         return None
 
