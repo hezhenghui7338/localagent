@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
+
 from localagent.i18n import reset_lang_cache
 from localagent.tone import (
     evening_active,
@@ -13,9 +15,19 @@ from localagent.tone import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _pin_la_tz(monkeypatch: pytest.MonkeyPatch) -> None:
+    from localagent.tzutil import reset_tz_cache
+
+    monkeypatch.setenv("LA_TZ", "Asia/Shanghai")
+    reset_tz_cache()
+
+
 def _local(hour: int, *, minute: int = 0) -> datetime:
-    """Build a timezone-aware datetime at the given local hour today."""
-    tz = datetime.now().astimezone().tzinfo or timezone.utc
+    """Build a timezone-aware datetime at the given LA_TZ wall-clock hour today."""
+    from localagent.tzutil import resolve_local_tz
+
+    tz = resolve_local_tz()
     now = datetime.now(tz)
     return now.replace(hour=hour, minute=minute, second=0, microsecond=0)
 

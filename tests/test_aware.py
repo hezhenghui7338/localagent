@@ -178,7 +178,11 @@ def test_infer_query_window(monkeypatch) -> None:
     assert period_key("2026-07-18T22:00:00+08:00") == "night"
 
 
-def test_episode_time_signals_and_rollup(aware_home: Path) -> None:
+def test_episode_time_signals_and_rollup(aware_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from localagent.tzutil import reset_tz_cache
+
+    monkeypatch.setenv("LA_TZ", "Asia/Shanghai")
+    reset_tz_cache()
     from localagent.aware.episode import (
         AwareEpisode,
         append_episodes,
