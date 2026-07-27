@@ -890,8 +890,11 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "summarize.browser_header": (
             "[summarize] 逐段阅读 · {filename} · {done}/{total} 已摘要"
         ),
+        "summarize.browser_header_with_failed": (
+            "[summarize] 逐段阅读 · {filename} · {done}/{total} 已摘要 · {failed} 失败"
+        ),
         "summarize.browser_help": (
-            "[/] 切换段 · ↑↓ 滚动详情 · Enter/r 深聊 · s 暂停摘要 · q 退出 · ? 帮助"
+            "[/] 切换段 · ↑↓ 滚动详情 · Enter/r 深聊 · R 重新摘要 · s 暂停摘要 · q 退出 · ? 帮助"
         ),
         "summarize.browser_scroll_hint": "PageDown/Space 翻页 · [/] 切换段",
         "summarize.browser_detail_above": "（上方还有 {n} 行）",
@@ -908,6 +911,13 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "summarize.browser_pending": "摘要待生成…",
         "summarize.browser_running": "摘要生成中…",
         "summarize.browser_failed": "摘要生成失败",
+        "summarize.browser_retry_hint": "按 R 重新摘要当前段",
+        "summarize.browser_retry_started": "已开始重新摘要当前段",
+        "summarize.browser_retry_running": "当前段摘要生成中，请稍候",
+        "summarize.browser_retry_done": "当前段摘要已重新生成",
+        "summarize.retry_failed_reset": (
+            "[summarize] 已重置 {count} 个失败段，正在重新摘要"
+        ),
         "summarize.browser_empty": "（无分段）",
         "summarize.browser_empty_summary": "（暂无速读卡）",
         "summarize.browser_chat_blocked": "本段摘要尚未就绪，请稍候",
@@ -1952,8 +1962,11 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "summarize.browser_header": (
             "[summarize] Segmented read · {filename} · {done}/{total} summarized"
         ),
+        "summarize.browser_header_with_failed": (
+            "[summarize] Segmented read · {filename} · {done}/{total} summarized · {failed} failed"
+        ),
         "summarize.browser_help": (
-            "[/] change segment · ↑↓ scroll detail · Enter/r chat · s toggle prefetch · q quit · ? help"
+            "[/] change segment · ↑↓ scroll detail · Enter/r chat · R retry summary · s toggle prefetch · q quit · ? help"
         ),
         "summarize.browser_scroll_hint": "PageDown/Space page · [/] change segment",
         "summarize.browser_detail_above": "({n} lines above)",
@@ -1970,6 +1983,13 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "summarize.browser_pending": "Summary pending…",
         "summarize.browser_running": "Summarizing…",
         "summarize.browser_failed": "Summary failed",
+        "summarize.browser_retry_hint": "Press R to retry summarizing this segment",
+        "summarize.browser_retry_started": "Retrying summary for current segment",
+        "summarize.browser_retry_running": "Segment summary in progress; please wait",
+        "summarize.browser_retry_done": "Segment summary regenerated",
+        "summarize.retry_failed_reset": (
+            "[summarize] Reset {count} failed segment(s); retrying"
+        ),
         "summarize.browser_empty": "(no segments)",
         "summarize.browser_empty_summary": "(no brief yet)",
         "summarize.browser_chat_blocked": "Segment summary not ready yet; please wait",

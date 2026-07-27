@@ -251,6 +251,7 @@ def cmd_summarize(args: argparse.Namespace) -> int:
     no_ui = bool(getattr(args, "no_ui", False))
     no_prefetch = bool(getattr(args, "no_prefetch", False))
     refresh_cache = bool(getattr(args, "refresh_segments", False))
+    retry_failed = bool(getattr(args, "retry_failed", False))
 
     # Resume by session id
     if resume_id:
@@ -271,6 +272,7 @@ def cmd_summarize(args: argparse.Namespace) -> int:
             no_ui=no_ui,
             no_prefetch=no_prefetch,
             refresh_cache=refresh_cache,
+            retry_failed=retry_failed,
         )
 
     if not paths_raw:
@@ -304,7 +306,7 @@ def cmd_summarize(args: argparse.Namespace) -> int:
     for source in paths:
         print(t("summarize.file", path=source))
         try:
-            result = summarize_path(source, keep=keep, use_llm=not heuristic, refresh_cache=refresh_cache)
+            result = summarize_path(source, keep=keep, use_llm=not heuristic, refresh_cache=refresh_cache, retry_failed=retry_failed)
         except KeyboardInterrupt:
             print(t("summarize.interrupted"))
             return 130
@@ -420,6 +422,7 @@ def _summarize_resume_one(
     no_ui: bool = False,
     no_prefetch: bool = False,
     refresh_cache: bool = False,
+    retry_failed: bool = False,
 ) -> int:
     from localagent.i18n import t
     from localagent.summarize.document import summarize_path
@@ -434,7 +437,7 @@ def _summarize_resume_one(
     history = _history_from_conversation(record.conversation_session_id)
     if abs(current_mtime - float(record.mtime or 0.0)) > 1e-6:
         print(t("summarize.file_updated"))
-        result = summarize_path(source, keep=keep or record.kept, use_llm=not heuristic, refresh_cache=refresh_cache)
+        result = summarize_path(source, keep=keep or record.kept, use_llm=not heuristic, refresh_cache=refresh_cache, retry_failed=retry_failed)
         if record.kept and not result.kept:
             result.kept = True
             result.keep_target = Path(record.keep_target) if record.keep_target else result.keep_target
@@ -461,6 +464,27 @@ def _summarize_resume_one(
             target, _ = add_file(source)
             result.kept = True
             result.keep_target = target
+
+        if retry_failed and result.reading_progress is not None:
+            from localagent.i18n import t
+            from localagent.summarize.segment_cache import save_segment_cache
+            from localagent.summarize.segment_reader import (
+                reset_failed_segments,
+                resolve_reading_budget,
+            )
+
+            progress = result.reading_progress
+            reset = reset_failed_segments(progress)
+            if reset:
+                budget = resolve_reading_budget(provider)
+                save_segment_cache(
+                    source,
+                    progress,
+                    filename=result.filename,
+                    char_count=result.char_count,
+                    budget=budget,
+                )
+                print(t("summarize.retry_failed_reset", count=len(reset)))
 
     print()
     print(result.markdown.rstrip())
@@ -2588,6 +2612,14 @@ def build_parser() -> argparse.ArgumentParser:
         help=H(
             "忽略段摘要磁盘缓存，强制重新摘要",
             "ignore on-disk segment summary cache and regenerate",
+        ),
+    )
+    p_summarize.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help=H(
+            "重置所有失败段并重新摘要（保留已成功段；可与 --resume 联用）",
+            "reset failed segments and retry (keep successful ones; use with --resume)",
         ),
     )
     p_summarize.set_defaults(func=cmd_summarize)

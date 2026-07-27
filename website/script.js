@@ -65,9 +65,9 @@
         "对比：典型聊天客户端换会话就忘；LocalAgent 从 Warm / Hot 召回。",
       "demo.deepread.title": "一篇文章，聊到懂",
       "demo.deepread.body":
-        "先速读，再围着原文追问；今日资讯精读也是同一套深聊。",
+        "先速读，再围着原文追问；长书自动分段浏览；PDF / 电子书均可；今日资讯精读也是同一套深聊。",
       "demo.deepread.note":
-        "summarize 与 news 精读共用 DocumentChat。本机上下文见「感知」演示。",
+        "summarize 与 news 精读共用 DocumentChat；长文档有段列表 TUI。本机上下文见「感知」演示。",
       "demo.aware.title": "本机感知，先授权再采集",
       "demo.aware.body":
         "按源 grant 后 tick 一轮：文件、终端、浏览器与前台应用变成 Episode。可索引文件只进 suggestion，绝不自动写 Cold。",
@@ -150,9 +150,9 @@
         "Contrast: a typical chat client forgets across sessions. LocalAgent recalls from Warm / Hot.",
       "demo.deepread.title": "One article. Talk until you get it.",
       "demo.deepread.body":
-        "Skim first, then ask against the source. News deep-read uses the same document chat.",
+        "Skim first, then ask against the source. Long books open a segment browser; PDF and ebooks supported. News deep-read uses the same document chat.",
       "demo.deepread.note":
-        "summarize and news deep-read share DocumentChat. For on-device context, see the Aware demo.",
+        "summarize and news deep-read share DocumentChat; long docs get a segment TUI. For on-device context, see the Aware demo.",
       "demo.aware.title": "Sense your machine — grant first",
       "demo.aware.body":
         "After per-source grant, one tick turns files, terminal, browser, and focus apps into episodes. Indexable files become suggestions only — never auto-written to Cold.",
@@ -276,64 +276,61 @@
       deepread: [
         {
           lines: [
-            { kind: "label", text: "文档速读" },
+            { kind: "label", text: "Short doc skim" },
             { kind: "prompt", text: "$ la summarize examples/sample-project-notes.md" },
-            { kind: "out", text: "## 总结（最多三句话）" },
+            { kind: "out", text: "## Summary (≤3 sentences)" },
             {
               kind: "out",
-              text: "LocalAgent 采用 Hot / Warm / Cold 三层记忆；换模型不换身份。本机可用 Ollama + qwen3.5:4b 跑通对话与检索。",
-            },
-            { kind: "out", text: "## 结构化要点" },
-            {
-              kind: "out",
-              text: "- **架构**：Hot / Warm / Cold — 依据：原文 〔§架构决策〕",
+              text: "LocalAgent uses Hot / Warm / Cold memory; swap the model, keep the identity.",
             },
             {
               kind: "out",
-              text: "- **本地**：Ollama + qwen3.5:4b — 依据：原文 〔§本地运行〕",
+              text: "- **Architecture**: Hot / Warm / Cold — 〔§Architecture〕",
             },
           ],
         },
         {
           lines: [
-            { kind: "dim", text: "进入文档对话（默认不入库；/keep 才归档）" },
+            { kind: "label", text: "Long book · segmented reading" },
+            { kind: "prompt", text: "$ la summarize ~/Books/cambridge-china-history.epub" },
+            { kind: "out", text: "## Summary (≤3 sentences)" },
+            { kind: "out", text: "A multi-volume survey of Chinese history from antiquity to the modern era…" },
+            { kind: "label", text: "Segment browser TUI" },
+            { kind: "accent", text: "▸ 1/36  Qin–Han transition · ready" },
+            { kind: "out", text: "  Unification, legalism, and the fall of Qin…" },
+            { kind: "dim", text: "↑↓ browse · Enter chat · s prefetch · --resume" },
+          ],
+        },
+        {
+          lines: [
             {
               kind: "you",
-              text: "sum> 检索方案和语义权重是怎么定的？",
+              text: "sum> What’s the core take on Qin institutions in this volume?",
             },
             {
               kind: "assistant",
-              text: "默认语义权重 LA_SEMANTIC_WEIGHT=0.75，BM25 补关键词；长文档导入时索引与记忆提取分离。 〔§检索方案〕",
+              text: "The text stresses unification and standardization, while linking rapid collapse to harsh rule. 〔§Qin–Han〕",
             },
           ],
         },
         {
           lines: [
-            { kind: "label", text: "资讯简报" },
+            { kind: "label", text: "News brief" },
             { kind: "prompt", text: "$ la news sync && la news brief" },
-            { kind: "out", text: "↑↓ 选择 · o 打开 · r 精读" },
+            { kind: "out", text: "↑↓ select · o open · r deep-read" },
             {
               kind: "accent",
               text: "▸ Open-source personal AI agents in 2026",
             },
-            { kind: "out", text: "  Local-first memory stacks, no cloud lock-in" },
-            { kind: "dim", text: "  BestBlogs · 2h ago · interest ★★★★" },
+            { kind: "dim", text: "  BestBlogs · 2h ago" },
           ],
         },
         {
           lines: [
-            { kind: "you", text: "(press r) → 抓正文，进入同一套深聊" },
-            {
-              kind: "you",
-              text: "sum> 这篇文章对「本机记忆」的核心主张是什么？",
-            },
-            {
-              kind: "assistant",
-              text: "主张身份与长期记忆留在本机：模型可替换，记忆层不可被会话清空。 〔§导语 | p.1〕",
-            },
+            { kind: "you", text: "(press r) → same DocumentChat as summarize" },
             {
               kind: "accent",
-              text: "news 精读 = summarize 同款 DocumentChat",
+              text: "PDF / MOBI / EPUB · long docs get segment TUI",
             },
           ],
         },
@@ -489,37 +486,40 @@
       deepread: [
         {
           lines: [
-            { kind: "label", text: "Document skim" },
+            { kind: "label", text: "Short doc skim" },
             { kind: "prompt", text: "$ la summarize examples/sample-project-notes.md" },
             { kind: "out", text: "## Summary (≤3 sentences)" },
             {
               kind: "out",
-              text: "LocalAgent uses Hot / Warm / Cold memory; swap the model, keep the identity. On-device Ollama + qwen3.5:4b runs chat and retrieval.",
-            },
-            { kind: "out", text: "## Key points" },
-            {
-              kind: "out",
-              text: "- **Architecture**: Hot / Warm / Cold — source 〔§Architecture〕",
+              text: "LocalAgent uses Hot / Warm / Cold memory; swap the model, keep the identity.",
             },
             {
               kind: "out",
-              text: "- **Local**: Ollama + qwen3.5:4b — source 〔§Local run〕",
+              text: "- **Architecture**: Hot / Warm / Cold — 〔§Architecture〕",
             },
           ],
         },
         {
           lines: [
-            {
-              kind: "dim",
-              text: "Document chat (not kept by default; /keep to archive)",
-            },
+            { kind: "label", text: "Long book · segmented reading" },
+            { kind: "prompt", text: "$ la summarize ~/Books/cambridge-china-history.epub" },
+            { kind: "out", text: "## Summary (≤3 sentences)" },
+            { kind: "out", text: "A multi-volume survey of Chinese history from antiquity to the modern era…" },
+            { kind: "label", text: "Segment browser TUI" },
+            { kind: "accent", text: "▸ 1/36  Qin–Han transition · ready" },
+            { kind: "out", text: "  Unification, legalism, and the fall of Qin…" },
+            { kind: "dim", text: "↑↓ browse · Enter chat · s prefetch · --resume" },
+          ],
+        },
+        {
+          lines: [
             {
               kind: "you",
-              text: "sum> How is retrieval weighted?",
+              text: "sum> What’s the core take on Qin institutions in this volume?",
             },
             {
               kind: "assistant",
-              text: "Default semantic weight LA_SEMANTIC_WEIGHT=0.75, with BM25 for keywords; indexing and memory extract stay separate on long docs. 〔§Retrieval〕",
+              text: "The text stresses unification and standardization, while linking rapid collapse to harsh rule. 〔§Qin–Han〕",
             },
           ],
         },
@@ -532,24 +532,15 @@
               kind: "accent",
               text: "▸ Open-source personal AI agents in 2026",
             },
-            { kind: "out", text: "  Local-first memory stacks, no cloud lock-in" },
-            { kind: "dim", text: "  BestBlogs · 2h ago · interest ★★★★" },
+            { kind: "dim", text: "  BestBlogs · 2h ago" },
           ],
         },
         {
           lines: [
-            { kind: "you", text: "(press r) → fetch body, same deep-read chat" },
-            {
-              kind: "you",
-              text: "sum> What’s the core claim about on-device memory?",
-            },
-            {
-              kind: "assistant",
-              text: "Identity and long-term memory stay on-device: models are swappable; memory must not vanish with a session. 〔§Lead | p.1〕",
-            },
+            { kind: "you", text: "(press r) → same DocumentChat as summarize" },
             {
               kind: "accent",
-              text: "News deep-read = the same DocumentChat as summarize",
+              text: "PDF / MOBI / EPUB · long docs get segment TUI",
             },
           ],
         },

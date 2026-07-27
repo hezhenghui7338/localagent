@@ -107,6 +107,11 @@ class ReadingProgress:
             self.segment_statuses[0] = "done"
         self.sync_done_count()
 
+    def failed_count(self) -> int:
+        return sum(
+            1 for i in range(self.total) if self.segment_status_at(i) == "failed"
+        )
+
     def select_segment(self, index: int, *, provider: str = "auto") -> DocumentSegment:
         self.current_index = max(0, min(index, self.total - 1))
         refresh_compressed_prior(self, provider=provider)
@@ -408,6 +413,44 @@ def _llm_compress_prior(text: str, *, filename: str, budget: int) -> str | None:
     return apply_context_budget(out, budget=budget, label="已读段滚动摘要")
 
 
+def reset_segment_for_retry(progress: ReadingProgress, index: int) -> bool:
+    """Clear one segment summary and mark pending; skip if running or out of range."""
+    if index < 0 or index >= progress.total:
+        return False
+    if progress.segment_status_at(index) == "running":
+        return False
+    while len(progress.segment_summaries) <= index:
+        progress.segment_summaries.append("")
+    progress.segment_summaries[index] = ""
+    progress.set_segment_status(index, "pending")
+    return True
+
+
+def reset_failed_segments(progress: ReadingProgress) -> list[int]:
+    """Reset all failed segments for retry; returns reset indices."""
+    reset: list[int] = []
+    for idx in range(progress.total):
+        if progress.segment_status_at(idx) == "failed":
+            if reset_segment_for_retry(progress, idx):
+                reset.append(idx)
+    return reset
+
+
+def can_manual_retry_segment(
+    progress: ReadingProgress,
+    index: int,
+    *,
+    prefetch_enabled: bool,
+) -> bool:
+    """Whether TUI manual retry (R) should be offered for this segment."""
+    status = progress.segment_status_at(index)
+    if status == "failed":
+        return True
+    if status == "pending" and not prefetch_enabled:
+        return True
+    return False
+
+
 def summarize_segment(
     seg: DocumentSegment,
     *,
@@ -448,6 +491,7 @@ def init_reading_progress(
     provider: str = "auto",
     use_llm: bool = True,
     refresh_cache: bool = False,
+    retry_failed: bool = False,
 ) -> tuple[ReadingProgress, "SegmentCacheLoad | None"]:
     from localagent.summarize.segment_cache import (
         SegmentCacheLoad,
@@ -492,6 +536,24 @@ def init_reading_progress(
                 total=progress.total,
                 md_path=md_path,
             )
+            if retry_failed:
+                reset = reset_failed_segments(progress)
+                if reset:
+                    save_segment_cache(
+                        resolved,
+                        progress,
+                        filename=filename,
+                        char_count=count,
+                        budget=budget,
+                    )
+                    cache_info = SegmentCacheLoad(
+                        loaded=True,
+                        done_count=progress.done_count(),
+                        total=progress.total,
+                        md_path=md_path,
+                        retry_reset_count=len(reset),
+                    )
+                    return progress, cache_info
             return progress, cache_info
 
     first_summary = summarize_segment(segments[0], filename=filename, use_llm=use_llm)

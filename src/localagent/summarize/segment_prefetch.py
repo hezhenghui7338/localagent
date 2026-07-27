@@ -126,6 +126,25 @@ class SegmentPrefetchWorker:
         self.start()
         return True
 
+    def retry_segment(self, index: int) -> bool:
+        """Reset a segment and ensure prefetch picks it up again."""
+        progress = self.progress
+        if progress is None:
+            return False
+        with self._lock:
+            if index in self._futures or index in self._running_indices:
+                return False
+        from localagent.summarize.segment_reader import reset_segment_for_retry
+
+        if not reset_segment_for_retry(progress, index):
+            return False
+        if self.on_persist:
+            self.on_persist()
+        snap = self.snapshot()
+        if not snap.running:
+            self.start()
+        return True
+
     def _summarize_one(self, index: int) -> str | None:
         progress = self.progress
         if progress is None:

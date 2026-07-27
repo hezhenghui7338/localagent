@@ -38,7 +38,7 @@ LocalAgent’s core path — **chat, memory write, memory recall, document retri
 | Workspace `LA workspace` | No | Reads local Git / files / TODOs |
 | Aware `la aware` | No (local model optional) | Default: current state + last 3h activity; `--detail` for per-source dump |
 | Audit `LA audit` | No | Reads local usage.jsonl |
-| Summarize `la summarize` | No (local model) | `.txt/.md/.pdf/.xlsx` digest + `sum>`; **no images**; scanned PDFs OCR inline |
+| Summarize `la summarize` | No (local model) | `.txt/.md/.pdf/.xlsx/.mobi/.epub` digest + `sum>`; long books → segment TUI; **no images**; scanned PDFs OCR inline |
 | OCR `la ocr` | No | Local RapidOCR; images/scanned PDF text; needs `[ocr]` extra |
 | News sniff `la news` | Network only for sync | RSS → brief; deep-read can summarize locally |
 | Polish `la polish` | No (local model) | Scene rewrite + clipboard |
@@ -272,13 +272,25 @@ OCR = exact text; `la summarize` = doc digest + `sum>`; VL (`LA_VL_ENABLED`) = s
 
 ### Summarize
 
-Formats: `.txt` / `.md` / `.pdf` / `.xlsx` (**not images**). Scanned PDFs with no text layer are auto-OCR'd before digest.
+Formats: `.txt` / `.md` / `.pdf` / `.xlsx` / `.mobi` / `.epub` (**not images**; ebooks: no DRM). Scanned PDFs with no text layer are auto-OCR'd before digest.
 
 ```bash
 la summarize examples/sample-project-notes.md
 # sum> What is the core decision in this note?
 # sum> /exit
+la summarize --list
+la summarize examples/sample-project-notes.md --resume
 ```
+
+**Long docs (>~12000 chars)**: TTY opens a segment browser TUI (↑↓ browse, `Enter` for segment chat, `s` prefetch); in `sum>` use `/next` `/goto N`; `--no-ui` falls back to REPL only.
+
+### 7.1 vs news deep-read
+
+| | summarize | news `r` deep-read |
+|--|-----------|-------------------|
+| Input | local file | RSS article body |
+| Segments | long books → segment TUI | single article, no segments |
+| Dialogue | `sum>` DocumentChat | same DocumentChat |
 
 ### News sniff
 

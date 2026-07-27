@@ -91,7 +91,11 @@ class SegmentNavState:
         if status == "running":
             return t("summarize.browser_running")
         if status == "failed":
-            return t("summarize.browser_failed")
+            return (
+                t("summarize.browser_failed")
+                + "\n\n"
+                + t("summarize.browser_retry_hint")
+            )
         return t("summarize.browser_pending")
 
     def detail_text_window(self, *, scroll: int = 0, max_lines: int = 0) -> str:

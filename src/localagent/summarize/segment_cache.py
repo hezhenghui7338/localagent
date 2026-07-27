@@ -28,6 +28,7 @@ class SegmentCacheLoad:
     done_count: int
     total: int
     md_path: Path | None = None
+    retry_reset_count: int = 0
 
 
 def cache_dir() -> Path:

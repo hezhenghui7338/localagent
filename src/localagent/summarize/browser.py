@@ -95,13 +95,21 @@ def render_segment_browser_text(
         if detail_max_lines is not None
         else config.SUMMARIZE_BROWSER_DETAIL_LINES
     )
+    failed = state.progress.failed_count()
+    header_key = (
+        "summarize.browser_header_with_failed"
+        if failed > 0
+        else "summarize.browser_header"
+    )
+    header_kwargs: dict[str, object] = {
+        "filename": state.filename,
+        "done": done,
+        "total": state.total,
+    }
+    if failed > 0:
+        header_kwargs["failed"] = failed
     lines: list[str] = [
-        t(
-            "summarize.browser_header",
-            filename=state.filename,
-            done=done,
-            total=state.total,
-        ),
+        t(header_key, **header_kwargs),
         "─" * min(width, 60),
     ]
     if state.empty:
@@ -225,6 +233,10 @@ def run_segment_browser(
                     state,
                     worker=worker,
                     ui_state=ui_state,
+                    result=result,
+                    use_llm=use_llm,
+                    on_persist=lambda: _persist_cache(full_md=False),
+                    on_update=_on_update,
                 )
             except KeyboardInterrupt:
                 print()
@@ -277,6 +289,10 @@ def _run_one_session(
     *,
     worker: SegmentPrefetchWorker | None,
     ui_state: BrowserUiState,
+    result: SummarizeResult | None = None,
+    use_llm: bool = True,
+    on_persist: Any | None = None,
+    on_update: Any | None = None,
 ) -> str:
     from prompt_toolkit.application import Application
     from prompt_toolkit.data_structures import Point
@@ -458,6 +474,62 @@ def _run_one_session(
     @kb.add("r")
     def _read(event: Any) -> None:
         _exit(event, "chat")
+
+    @kb.add("R")
+    def _retry(event: Any) -> None:
+        progress = state.progress
+        idx = state.index
+        status = progress.segment_status_at(idx)
+        if status == "running":
+            state.message = t("summarize.browser_retry_running")
+        else:
+            ui_state.sync_from(progress=progress, worker=worker, force=True)
+            with ui_state.lock:
+                prefetch_on = ui_state.prefetch_enabled
+            from localagent.summarize.segment_reader import (
+                can_manual_retry_segment,
+                summarize_segment,
+            )
+
+            if not can_manual_retry_segment(
+                progress, idx, prefetch_enabled=prefetch_on
+            ):
+                event.app.invalidate()
+                return
+            if worker is not None and prefetch_on:
+                if worker.retry_segment(idx):
+                    state.message = t("summarize.browser_retry_started")
+                else:
+                    state.message = t("summarize.browser_retry_running")
+            elif result is not None:
+                progress.set_segment_status(idx, "running")
+                try:
+                    summary = summarize_segment(
+                        progress.segments[idx],
+                        filename=result.filename,
+                        use_llm=use_llm,
+                    )
+                except Exception:
+                    summary = ""
+                if summary.strip():
+                    while len(progress.segment_summaries) <= idx:
+                        progress.segment_summaries.append("")
+                    progress.segment_summaries[idx] = summary
+                    progress.set_segment_status(idx, "done")
+                    if idx == state.index:
+                        result.markdown = summary.strip()
+                    if on_update:
+                        on_update(idx, summary)
+                    state.message = t("summarize.browser_retry_done")
+                else:
+                    progress.set_segment_status(idx, "failed")
+                    state.message = t("summarize.browser_failed")
+                if on_persist:
+                    on_persist()
+            else:
+                state.message = t("summarize.browser_retry_running")
+        ui_state.mark_dirty()
+        event.app.invalidate()
 
     @kb.add("s")
     def _toggle_prefetch(event: Any) -> None:

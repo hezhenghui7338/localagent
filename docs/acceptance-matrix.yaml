@@ -284,6 +284,49 @@ items:
     coverage: automated
     ci_tier: pr
 
+  - id: "6.3.summarize.segment"
+    prd_ref: "§6.3"
+    story: [11]
+    pillar: actions_automated
+    title: "长文档分段模式；段 TUI / prefetch / 缓存"
+    checks:
+      - type: unit
+        test: tests/test_summarize_segment.py
+      - type: unit
+        test: tests/test_segment_browser.py
+      - type: unit
+        test: tests/test_segment_cache.py
+      - type: manual
+        ref: examples/product-tour.zh-CN.md#10b-长文档逐段阅读
+    coverage: partial
+    ci_tier: pr
+
+  - id: "6.3.summarize.ebook"
+    prd_ref: "§6.3"
+    story: [11]
+    pillar: actions_automated
+    title: "MOBI/EPUB 加载（无 DRM）"
+    checks:
+      - type: unit
+        test: tests/test_ingest_mobi.py
+      - type: unit
+        test: tests/test_ingest_epub.py
+    coverage: automated
+    ci_tier: pr
+
+  - id: "6.3.summarize.resume"
+    prd_ref: "§6.3"
+    story: [11]
+    pillar: actions_automated
+    title: "文档对话 --list / --resume 可续聊"
+    checks:
+      - type: unit
+        test: tests/test_summarize.py
+      - type: manual
+        ref: examples/product-tour.zh-CN.md#10b-长文档逐段阅读
+    coverage: partial
+    ci_tier: pr
+
   - id: "6.3.ocr"
     prd_ref: "§6.3"
     story: [10]

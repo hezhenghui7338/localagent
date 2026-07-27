@@ -714,7 +714,9 @@ echo "演示数据: $LA_DATA_DIR"
 
 ## 10. 一键总结（故事 6b）
 
-对本地 PDF / Markdown 做「3 分钟读懂」，并进入文档对话：
+对本地文档（PDF / Markdown / 表格 / **MOBI / EPUB 电子书**）做「3 分钟读懂」，并进入文档对话。
+
+### 10a 短文档（速读 + 深聊）
 
 **输入：**
 
@@ -723,6 +725,23 @@ la summarize examples/sample-project-notes.md
 ```
 
 **预期：** 打印速读卡（总结 + 带 〔§…〕 的要点）；TTY 下进入 `sum>`，可继续追问该文件；`/keep` 才入库；`/exit` 结束。仅要卡片时加 `--no-chat`。
+
+### 10b 长文档（逐段阅读）
+
+**输入：** 任选一本长 PDF 或 `.mobi` / `.epub`（不支持 DRM），例如：
+
+```bash
+la summarize ~/Downloads/某书.pdf
+# 或续聊：la summarize ~/Downloads/某书.pdf --resume
+```
+
+**预期：**
+
+1. 打印速读卡（常来自首段摘要）
+2. TTY 下进入**段列表 TUI**：↑↓ 浏览各段摘要；`Enter` 进入该段 `sum>` 深聊；`s` 开关后台预取；`q` 退出
+3. 在 `sum>` 内可用 `/next` `/goto N` 跳转；问「全文/对比前面…」时会检索已读段
+4. 退出后 `la summarize <同路径> --resume` 可恢复进度
+5. 脚本环境：`--no-ui --heuristic` 跳过 TUI 且不调用模型（CI 友好）
 
 ---
 
@@ -797,6 +816,7 @@ la aware --no-chat
 - [ ] **故事 8–9**：Shell / 写文件弹出确认；危险命令有「风险」提示或硬拦截  
 - [ ] **故事 10**：`LA audit` 能看到 Token 与费用；`--report out.html` 可导出 HTML  
 - [ ] **故事 6b**：`la summarize` 出速读卡；TTY 进 `sum>`；默认不入库
+- [ ] **故事 6b（长文档）**：长 PDF / mobi / epub 进入段 TUI；Enter 可深聊单段；`--resume` 可续聊
 - [ ] **故事 10b（OCR）**：`pip install 'la-localagent[ocr]'` + `la ocr screenshot.png` 能输出文字；`la summarize` 对图片报错并提示 `la ocr`
 - [ ] **故事 6c**：`la news sync` + `la news brief`（或 `--no-ui`）能看到带原文链接的简报
 - [ ] **故事 6d**：`la polish --no-copy` 输出识别 Brief + 主推/备选；不加 `--no-copy` 时主推可粘贴  

@@ -88,8 +88,17 @@ src/localagent/
 ├── mcp_cmd.py             # la mcp list|test|tools|serve
 ├── ingest/                # unified LA ingest engine (persist→Cold→Warm→Hot) + doc pipeline
 │   ├── ocr.py             # RapidOCR 封装：ocr_image / ocr_pdf（PyMuPDF 渲染）
-│   └── loader.py          # 扫描 PDF 文本层检测 → OCR 回退
-├── summarize/             # la summarize：短路径卡片 + DocumentChatREPL（sum>）；拒绝图片
+│   └── loader.py          # 统一 load_file；扫描 PDF OCR 回退；MOBI/EPUB（ingest/ebook.py）
+├── summarize/             # la summarize：短路径卡片 + 长文档分段 + DocumentChatREPL（sum>）
+│   ├── document.py        # 速读卡、annotate、分段入口
+│   ├── segment_reader.py  # 分段策略、段摘要、跨段 RAG 检测
+│   ├── browser.py         # 段列表 TUI（prompt_toolkit）
+│   ├── nav.py             # TUI 导航状态
+│   ├── segment_prefetch.py# 后台并行段摘要
+│   ├── segment_cache.py   # 段摘要磁盘缓存
+│   ├── repl.py            # sum> REPL、resume 重建
+│   ├── sessions.py        # --list / --resume 会话索引
+│   └── chat_bridge.py     # TUI Enter → 段深聊
 ├── news/                  # 新闻嗅探：RSS sync / brief TUI / read / schedule / notify
 ├── writing/               # la polish：场景润色 + 剪贴板
 ├── pending/               # 记忆写入确认门
@@ -129,7 +138,7 @@ data/
 | Warm 写入确认 | `LA_MEMORY_APPROVAL_REQUIRED`（默认开）：非交互提取入 `pending_queue.json`；`approve`/`reject`；`LA_MEMORY_APPROVAL_AUTO=1` 跳过（CI） |
 | 记忆引擎 | Mem0（主依赖）+ JSON fallback / 注册表 |
 | 知识检索 | Chroma + BM25 + RRF；文档与对话归档入 Cold |
-| 一键总结 | 短路径单次生成（1～最多 3 句 + 〔§/p.〕引用）；TTY 默认 `DocumentChatREPL`（`sum>`）；默认不入库；`SUMMARIZE_SUFFIXES` 不含图片 |
+| 一键总结 | 短路径（1～3 句 + 〔§/p.〕）+ **长文档分段**（段 TUI / prefetch / 段缓存 / 跨段 RAG）；TTY 默认 `DocumentChatREPL`（`sum>`）或段浏览器；`--list`/`--resume`；默认不入库；`SUMMARIZE_SUFFIXES` 含 mobi/epub，不含图片 |
 | 本地 OCR | `ingest/ocr.py` + `ocr_cmd.py`；RapidOCR（PP-OCRv6 / ONNX）；`la ocr` 旁路；扫描 PDF / ingest doc 内嵌 OCR；`pyproject.toml` `[ocr]` extra；`LA_OCR_*` 见 `env.example`；测试 `tests/test_ocr.py`（mock） |
 | 新闻嗅探 | BestBlogs RSS → SQLite；兴趣重排；`brief` TTY 用 prompt_toolkit 浏览器（↑↓ / o→webbrowser / r→精读+DocumentChatREPL）；launchd/cron 早 8 点 sync；chat 启动就绪通知 |
 | 一键润色 | `writing/polish.py` 旁路 Agent；场景/态度识别 → 主推+备选；默认 `clipboard.copy_text` |
@@ -141,7 +150,39 @@ data/
 | 召回 Rerank | `knowledge/rerank.py`；cross-encoder / embed / llm；`LA_MEMORY_RERANK_*`；`[rerank]` extra |
 | Agent 执行 | Context Engine JIT → intent_route → milestone planner \| ReAct；validation 链；session work 续跑；见 PRD §4.11 |
 
-### 4.1 本地 OCR 数据流
+### 4.1 Summarize 数据流概览
+
+```mermaid
+flowchart LR
+  Doc[local_doc] --> Load[load_file]
+  Load --> Skim[LLM_skim_card]
+  Skim --> Len{over_threshold}
+  Len -->|no| Repl[sum_REPL]
+  Len -->|yes| TUI[segment_browser_TUI]
+  TUI --> SegChat[sum_per_segment]
+  SegChat --> Cache[segment_cache]
+```
+
+### 4.1a 长文档分段数据流
+
+```mermaid
+flowchart TD
+  path["summarize_path"] --> load["load_file + annotate"]
+  load --> skim["skim card"]
+  skim --> check{"chars > SHORT_MAX?"}
+  check -->|no| repl["sum> full-doc chat"]
+  check -->|yes| seg["build_segments"]
+  seg --> cacheHit{"segment cache?"}
+  cacheHit -->|yes| tui["segment browser TUI"]
+  cacheHit -->|no| prefetch["segment_prefetch workers"]
+  prefetch --> tui
+  tui --> enter["Enter → chat_bridge → sum>"]
+  enter --> resume["sessions index + --resume"]
+```
+
+依赖：`ingest/ebook.py`（MOBI/EPUB）、`segment_reader.py`、`browser.py`、`segment_prefetch.py`、`segment_cache.py`。配置见 `env.example` 中 `LA_SUMMARIZE_*`。
+
+### 4.1b 本地 OCR 数据流（扫描 PDF）
 
 ```mermaid
 flowchart LR
@@ -149,7 +190,7 @@ flowchart LR
     Img[image_or_pdf] --> RapidOCR[RapidOCR_ONNX]
     RapidOCR --> TextOut[stdout_or_file]
   end
-  subgraph summarize [la_summarize]
+  subgraph summarizeOCR [la_summarize_scanned_pdf]
     Pdf[scanned_pdf] --> Detect{has_text_layer}
     Detect -->|no| RapidOCR2[RapidOCR]
     RapidOCR2 --> LLM[LLM_summary]

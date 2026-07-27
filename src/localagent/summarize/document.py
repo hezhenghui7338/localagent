@@ -290,6 +290,7 @@ def summarize_loaded(
     use_llm: bool = True,
     allow_long: bool = False,
     refresh_cache: bool = False,
+    retry_failed: bool = False,
 ) -> SummarizeResult:
     annotated = _annotate_for_cite(doc)
     char_count = len(annotated)
@@ -319,6 +320,7 @@ def summarize_loaded(
                 char_count=char_count,
                 use_llm=use_llm,
                 refresh_cache=refresh_cache,
+                retry_failed=retry_failed,
             )
             total = reading_progress.total
             warnings.append(f"文档约 {char_count} 字，已开启逐段阅读（1/{total}）")
@@ -332,6 +334,13 @@ def summarize_loaded(
                         path=md,
                     )
                 )
+                if cache_info.retry_reset_count:
+                    warnings.append(
+                        t(
+                            "summarize.retry_failed_reset",
+                            count=cache_info.retry_reset_count,
+                        )
+                    )
             annotated_for_card = reading_progress.current.text
         else:
             warnings.append(
@@ -429,6 +438,7 @@ def summarize_path(
     keep: bool = False,
     use_llm: bool = True,
     refresh_cache: bool = False,
+    retry_failed: bool = False,
 ) -> SummarizeResult:
     source = Path(path).expanduser().resolve()
     if not source.exists() or not source.is_file():
@@ -446,7 +456,13 @@ def summarize_path(
     if doc is None:
         raise SummarizeError(explain_load_failure(source))
 
-    result = summarize_loaded(doc, use_llm=use_llm, allow_long=True, refresh_cache=refresh_cache)
+    result = summarize_loaded(
+        doc,
+        use_llm=use_llm,
+        allow_long=True,
+        refresh_cache=refresh_cache,
+        retry_failed=retry_failed,
+    )
 
     try:
         from localagent.summarize.session_index import (
