@@ -223,9 +223,14 @@ la summarize report.xlsx --keep            # 总结后同时入库（长期召�
 la summarize --list                        # 最近文档对话
 la summarize ~/book.pdf                    # 同路径默认续聊（若已有会话）
 la summarize ~/book.pdf --force            # 跳过续聊，重新分段/摘要
+la summarize book.epub --deep-translate --no-chat   # 外文先译后速读（需 pip install 'la-localagent[translate]'）
+la summarize doc.pdf -p ollama -m qwen3:8b          # 指定本次摘要模型（不写配置）
 ```
 
+每段摘要末尾会标注实际使用的 provider/model，例如 `*摘要 via ollama/qwen3:8b*`（离线启发式则为 `*摘要 via 本地启发式*`）。
+
 - 支持：`.txt` / `.md` / `.markdown` / `.pdf` / `.xlsx` / `.mobi` / `.epub`（**不含图片**——图片请用 `la ocr`）
+- 外文文档：`--deep-translate` 在摘要前将原文译为目标语言（默认中文，`--translate-to` / `LA_SUMMARIZE_TRANSLATE_TARGET`）；需 `pip install 'la-localagent[translate]'`
 - 扫描 PDF（无文本层）在 summarize/ingest 内**自动 OCR** 后再速读或入库
 - 输出：最多三句话总结 + 带 〔§章节 | p.页〕索引的结构化要点
 - **默认不入库**；在 `sum>` 里 `/keep` 或启动时加 `--keep`
@@ -246,6 +251,7 @@ la summarize ~/book.pdf --force            # 跳过续聊，重新分段/摘要
 
 ```bash
 pip install 'la-localagent[ocr]'   # rapidocr + onnxruntime + pymupdf
+pip install 'la-localagent[translate]'   # deep-translator for la summarize --deep-translate
 # .env: LA_OCR_ENABLED=1（见 src/localagent/resources/env.example）
 
 la ocr screenshot.png              # 终端输出文字

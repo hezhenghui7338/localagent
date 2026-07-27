@@ -180,7 +180,9 @@ flowchart TD
   enter --> resume["sessions index + --resume"]
 ```
 
-依赖：`ingest/ebook.py`（MOBI/EPUB）、`segment_reader.py`、`browser.py`、`segment_prefetch.py`、`segment_cache.py`。配置见 `env.example` 中 `LA_SUMMARIZE_*`。
+依赖：`ingest/ebook.py`（MOBI/EPUB）、`ingest/chunker.py`（Chonkie RecursiveChunker 统一切割）、`segment_reader.py`、`browser.py`、`segment_prefetch.py`、`segment_cache.py`。配置见 `env.example` 中 `LA_SUMMARIZE_*` 与 `LA_RAG_CHUNK_*`；provider 级 `reading_target_chars` 见 `model_servers.yaml`。
+
+**切割策略（v2）**：`chunk_document(mode=reading|rag|section)` 统一入口。结构优先（`## [p.N]` / `## [§]` / Markdown `#`）→ Chonkie 递归段落/句子切分 → RAG 模式 `OverlapRefinery`。默认段大小：ollama **1000** 字、cursor **3500** 字；RAG **512/64**（可 env 覆盖）。
 
 ### 4.1b 本地 OCR 数据流（扫描 PDF）
 

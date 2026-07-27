@@ -37,6 +37,9 @@ class ModelServer:
     # cursor
     cwd: str = ""
     max_retries: int = 2
+    # summarize segment reading (0 = use provider default in chunker)
+    reading_target_chars: int = 0
+    reading_max_chars: int = 0
     extra: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:

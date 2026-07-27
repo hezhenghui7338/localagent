@@ -9,10 +9,12 @@ from typing import TYPE_CHECKING
 
 from localagent import config
 from localagent.context.compress.core import apply_context_budget
-from localagent.ingest.chunker import split_into_sections
+from localagent.ingest.chunker import ChunkMode, chunk_document, resolve_chunk_budget
 
 if TYPE_CHECKING:
     from localagent.summarize.document import SummarizeResult
+    from localagent.summarize.translate import TranslateConfig
+    from localagent.summarize.model_choice import SummarizeModelChoice, SegmentSource
 
 _PAGE_HEADING_RE = re.compile(r"(?m)^##\s+\[p\.(\d+)\]")
 _SECTION_HEADING_RE = re.compile(r"(?m)^##\s+\[(§[^\]]+)\]")
@@ -50,9 +52,12 @@ class ReadingProgress:
     segments: list[DocumentSegment]
     current_index: int = 0
     segment_summaries: list[str] = field(default_factory=list)
+    segment_sources: list["SegmentSource | None"] = field(default_factory=list)
     compressed_prior: str = ""
     segment_statuses: list[str] = field(default_factory=list)
     prefetch_enabled: bool = True
+    book_context: str = ""
+    book_context_done_count: int = -1
     _done_count: int = field(default=0, repr=False)
 
     @property
@@ -95,8 +100,10 @@ class ReadingProgress:
         self.segment_statuses[index] = status
         if status == "done" and prev_status != "done":
             self._done_count += 1
+            self.invalidate_book_context()
         elif prev_status == "done" and status != "done":
             self.sync_done_count()
+            self.invalidate_book_context()
 
     def init_statuses(self) -> None:
         self.segment_statuses = ["pending"] * self.total
@@ -130,13 +137,22 @@ class ReadingProgress:
             return self.segment_summaries[idx]
         return ""
 
+    def invalidate_book_context(self) -> None:
+        self.book_context = ""
+        self.book_context_done_count = -1
+
     def to_session_dict(self) -> dict:
         return {
             "current_index": self.current_index,
             "segment_summaries": list(self.segment_summaries),
+            "segment_sources": [
+                item.to_dict() if item is not None else None for item in self.segment_sources
+            ],
             "compressed_prior": self.compressed_prior,
             "segment_statuses": list(self.segment_statuses),
             "prefetch_enabled": self.prefetch_enabled,
+            "book_context": self.book_context,
+            "book_context_done_count": self.book_context_done_count,
         }
 
     @classmethod
@@ -148,6 +164,8 @@ class ReadingProgress:
         filename: str,
         provider: str = "auto",
     ) -> ReadingProgress:
+        from localagent.summarize.model_choice import SegmentSource
+
         budget = resolve_reading_budget(provider)
         segments = build_segments(
             annotated_text,
@@ -156,6 +174,14 @@ class ReadingProgress:
             filename=filename,
         )
         summaries = list(data.get("segment_summaries") or [])
+        raw_sources = data.get("segment_sources")
+        sources: list[SegmentSource | None] = []
+        if isinstance(raw_sources, list):
+            for item in raw_sources:
+                if item is None:
+                    sources.append(None)
+                else:
+                    sources.append(SegmentSource.from_dict(item))
         raw_statuses = data.get("segment_statuses")
         statuses: list[str] = []
         if isinstance(raw_statuses, list):
@@ -164,9 +190,12 @@ class ReadingProgress:
             segments=segments,
             current_index=max(0, min(int(data.get("current_index") or 0), max(len(segments) - 1, 0))),
             segment_summaries=summaries,
+            segment_sources=sources,
             compressed_prior=str(data.get("compressed_prior") or ""),
             segment_statuses=statuses,
             prefetch_enabled=bool(data.get("prefetch_enabled", True)),
+            book_context=str(data.get("book_context") or ""),
+            book_context_done_count=int(data.get("book_context_done_count") or -1),
         )
         if not progress.segment_statuses:
             progress.init_statuses()
@@ -182,7 +211,8 @@ class ReadingProgress:
 
 
 def resolve_reading_budget(provider: str = "auto") -> ReadingBudget:
-    """Derive segment sizes from model context window (chars heuristic)."""
+    """Derive segment sizes from provider-aware chunk budget."""
+    budget = resolve_chunk_budget(mode=ChunkMode.READING, provider=provider)
     num_ctx = config.OLLAMA_NUM_CTX
     resolved = config.normalize_provider_choice(provider)
     if resolved != "auto":
@@ -195,18 +225,13 @@ def resolve_reading_budget(provider: str = "auto") -> ReadingBudget:
             if server is not None:
                 num_ctx = server.num_ctx
                 break
-
     ctx_chars = max(num_ctx * 4, 4000)
-    segment_target = config.SUMMARIZE_SEGMENT_TARGET_CHARS or max(1500, int(ctx_chars * 0.25))
-    prior_budget = config.SUMMARIZE_PRIOR_BUDGET_CHARS or max(800, int(ctx_chars * 0.15))
-    threshold = config.SUMMARIZE_SEGMENT_THRESHOLD_CHARS
-    segment_max = max(segment_target, int(segment_target * 1.6))
     return ReadingBudget(
         ctx_chars=ctx_chars,
-        segment_target=segment_target,
-        segment_max=segment_max,
-        prior_budget=prior_budget,
-        threshold_chars=threshold,
+        segment_target=budget.target_chars,
+        segment_max=budget.hard_max,
+        prior_budget=budget.prior_budget,
+        threshold_chars=budget.threshold_chars,
     )
 
 
@@ -234,95 +259,37 @@ def _extract_cite_range(heading: str, text: str) -> str:
     return title or "§段"
 
 
-def _split_by_pdf_pages(text: str, *, target_chars: int, segment_max: int) -> list[tuple[str, str]]:
-    """Split PDF annotated text by page headings when no md sections exist."""
-    matches = list(_PAGE_HEADING_RE.finditer(text))
-    if len(matches) < 2:
-        return []
-
-    parts: list[tuple[str, str]] = []
-    for i, match in enumerate(matches):
-        start = match.start()
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
-        chunk = text[start:end].strip()
-        if not chunk:
-            continue
-        page_num = match.group(1)
-        heading = f"## [p.{page_num}]"
-        parts.append((heading, chunk))
-    return _merge_and_split_parts(parts, target_chars=target_chars, segment_max=segment_max)
-
-
-def _merge_and_split_parts(
-    parts: list[tuple[str, str]],
-    *,
-    target_chars: int,
-    segment_max: int,
-) -> list[tuple[str, str]]:
-    merged: list[tuple[str, str]] = []
-    min_merge = max(400, target_chars // 3)
-    i = 0
-    while i < len(parts):
-        heading, body = parts[i]
-        combined = body
-        headings = [heading]
-        j = i + 1
-        while j < len(parts) and len(combined) < min_merge:
-            combined = combined + "\n\n" + parts[j][1]
-            headings.append(parts[j][0])
-            j += 1
-        if len(headings) == 1:
-            title = headings[0]
-        else:
-            title = f"{headings[0]} … {headings[-1]}"
-        if len(combined) <= segment_max:
-            merged.append((title, combined))
-        else:
-            from localagent.ingest.chunker import _split_chunk_by_chars
-
-            for k, sub in enumerate(_split_chunk_by_chars(combined, target_chars, segment_max)):
-                sub_title = title if k == 0 else f"{title}（续{k + 1}）"
-                merged.append((sub_title, sub))
-        i = j
-    return merged
-
-
 def build_segments(
     annotated_text: str,
     *,
     target_chars: int,
     segment_max: int,
     filename: str = "",
+    provider: str = "auto",
 ) -> list[DocumentSegment]:
     """Split annotated document text into semantically coherent reading segments."""
+    from localagent.ingest.chunker import ChunkBudget
+
     text = (annotated_text or "").strip()
     if not text:
         return []
 
-    raw_parts: list[tuple[str, str]] = []
-    pdf_parts = _split_by_pdf_pages(text, target_chars=target_chars, segment_max=segment_max)
-    if pdf_parts:
-        raw_parts = pdf_parts
-    else:
-        sections = split_into_sections(text, filename=filename or "<doc>")
-        if not sections:
-            raw_parts = [("## [§全文]", text)]
-        else:
-            for section in sections:
-                heading = section.heading
-                if not heading.startswith("#"):
-                    marker = heading if heading.startswith("[") else f"[§{heading.lstrip('# ').strip()}]"
-                    heading = f"## {marker}" if not marker.startswith("##") else marker
-                body = section.text.strip()
-                if body.startswith(section.heading):
-                    lines = body.splitlines()
-                    body = "\n".join(lines[1:]).strip()
-                combined = f"{heading}\n{body}".strip() if body else heading
-                raw_parts.append((heading, combined))
-
-    merged = _merge_and_split_parts(raw_parts, target_chars=target_chars, segment_max=segment_max)
+    budget = ChunkBudget(
+        target_chars=target_chars,
+        hard_max=segment_max,
+        min_merge=max(400, target_chars // 3),
+    )
+    chunks = chunk_document(
+        text,
+        filename=filename or "<doc>",
+        mode=ChunkMode.READING,
+        provider=provider,
+        budget=budget,
+    )
     segments: list[DocumentSegment] = []
-    for idx, (heading, body) in enumerate(merged):
+    for idx, chunk in enumerate(chunks):
+        heading = chunk.heading
+        body = chunk.text
         cite = _extract_cite_range(heading, body)
         segments.append(
             DocumentSegment(
@@ -390,14 +357,20 @@ def compress_prior_summaries(
     return compressed
 
 
-def _llm_compress_prior(text: str, *, filename: str, budget: int) -> str | None:
+def _llm_compress_prior(
+    text: str,
+    *,
+    filename: str,
+    budget: int,
+    prompt_prefix: str | None = None,
+) -> str | None:
     try:
         from localagent.models.router import ChatMessage, get_model_router
     except Exception:
         return None
+    prefix = prompt_prefix or "将下列已读文档各段摘要压缩为 3～5 句滚动摘要，保留章节/页码索引标记"
     prompt = (
-        "将下列已读文档各段摘要压缩为 3～5 句滚动摘要，保留章节/页码索引标记，"
-        "只输出 Markdown 段落，不要前言。\n\n"
+        f"{prefix}，只输出 Markdown 段落，不要前言。\n\n"
         f"文件: {filename}\n\n{text[: budget * 2]}"
     )
     try:
@@ -443,7 +416,10 @@ def reset_segment_for_retry(progress: ReadingProgress, index: int) -> bool:
         return False
     while len(progress.segment_summaries) <= index:
         progress.segment_summaries.append("")
+    while len(progress.segment_sources) <= index:
+        progress.segment_sources.append(None)
     progress.segment_summaries[index] = ""
+    progress.segment_sources[index] = None
     progress.set_segment_status(index, "pending")
     return True
 
@@ -476,27 +452,60 @@ def can_manual_retry_segment(
     return False
 
 
+def set_segment_summary(
+    progress: ReadingProgress,
+    index: int,
+    markdown: str,
+    source: SegmentSource,
+) -> None:
+    while len(progress.segment_summaries) <= index:
+        progress.segment_summaries.append("")
+    while len(progress.segment_sources) <= index:
+        progress.segment_sources.append(None)
+    progress.segment_summaries[index] = markdown
+    progress.segment_sources[index] = source
+
+
 def summarize_segment(
     seg: DocumentSegment,
     *,
     filename: str,
     use_llm: bool = True,
-) -> str:
+    translate: TranslateConfig | None = None,
+    model_choice: SummarizeModelChoice | None = None,
+) -> tuple[str, SegmentSource]:
     """Generate a skim card for one document segment."""
     from localagent.summarize.document import (
         _heuristic_summary,
         _llm_summarize,
+        _prepare_for_summarize,
         ensure_citations,
     )
+    from localagent.summarize.model_choice import (
+        SummarizeModelChoice,
+        SegmentSource,
+        append_source_footer,
+    )
 
-    annotated = seg.text
+    prep, _, _ = _prepare_for_summarize(seg.text, translate)
     markdown: str | None = None
+    source = SegmentSource(via="heuristic")
     if use_llm:
-        markdown = _llm_summarize(annotated, filename=filename)
+        llm_text, llm_source = _llm_summarize(
+            prep,
+            filename=filename,
+            translate=None,
+            model_choice=model_choice,
+        )
+        if llm_text:
+            markdown = llm_text
+            source = llm_source or SegmentSource(via="llm")
     if not markdown:
-        markdown = _heuristic_summary(annotated, filename=filename)
+        markdown = _heuristic_summary(prep, filename=filename)
+        source = SegmentSource(via="heuristic")
     markdown, _warnings = ensure_citations(markdown)
-    return markdown
+    markdown = append_source_footer(markdown, source)
+    return markdown, source
 
 
 def needs_cross_segment_rag(user_input: str) -> bool:
@@ -514,10 +523,13 @@ def init_reading_progress(
     source_path: Path | None = None,
     char_count: int | None = None,
     provider: str = "auto",
+    model_choice: SummarizeModelChoice | None = None,
     use_llm: bool = True,
     refresh_cache: bool = False,
     retry_failed: bool = False,
+    translate: TranslateConfig | None = None,
 ) -> tuple[ReadingProgress, "SegmentCacheLoad | None"]:
+    from localagent.summarize.model_choice import SummarizeModelChoice
     from localagent.summarize.segment_cache import (
         SegmentCacheLoad,
         apply_cache_to_progress,
@@ -526,7 +538,8 @@ def init_reading_progress(
         save_segment_cache,
     )
 
-    budget = resolve_reading_budget(provider)
+    choice = model_choice or SummarizeModelChoice.from_cli(provider=provider)
+    budget = resolve_reading_budget(choice.provider)
     segments = build_segments(
         annotated_text,
         target_chars=budget.segment_target,
@@ -545,6 +558,8 @@ def init_reading_progress(
             total_segments=len(segments),
             char_count=count,
             budget=budget,
+            translate=translate,
+            model_choice=choice,
         )
         if cached is not None:
             progress = ReadingProgress(
@@ -570,6 +585,8 @@ def init_reading_progress(
                         filename=filename,
                         char_count=count,
                         budget=budget,
+                        translate=translate,
+                        model_choice=choice,
                     )
                     cache_info = SegmentCacheLoad(
                         loaded=True,
@@ -581,11 +598,18 @@ def init_reading_progress(
                     return progress, cache_info
             return progress, cache_info
 
-    first_summary = summarize_segment(segments[0], filename=filename, use_llm=use_llm)
+    first_summary, first_source = summarize_segment(
+        segments[0],
+        filename=filename,
+        use_llm=use_llm,
+        translate=translate,
+        model_choice=choice,
+    )
     progress = ReadingProgress(
         segments=segments,
         current_index=0,
         segment_summaries=[first_summary],
+        segment_sources=[first_source],
         compressed_prior="",
     )
     progress.init_statuses()
@@ -596,6 +620,8 @@ def init_reading_progress(
             filename=filename,
             char_count=count,
             budget=budget,
+            translate=translate,
+            model_choice=choice,
         )
     return progress, cache_info
 
@@ -616,29 +642,35 @@ def advance_segment(
     *,
     filename: str = "",
     provider: str = "auto",
+    model_choice: SummarizeModelChoice | None = None,
     use_llm: bool = True,
     sync_if_missing: bool = False,
+    translate: TranslateConfig | None = None,
 ) -> DocumentSegment | None:
     """Move to next segment; optionally sync-summarize when prefetch is off."""
+    from localagent.summarize.model_choice import SummarizeModelChoice
+
+    choice = model_choice or SummarizeModelChoice.from_cli(provider=provider)
     if progress.current_index >= len(progress.segments) - 1:
         return None
     next_idx = progress.current_index + 1
     if not progress.summary_ready(next_idx):
         if sync_if_missing:
-            while len(progress.segment_summaries) <= next_idx:
-                progress.segment_summaries.append("")
-            progress.segment_summaries[next_idx] = summarize_segment(
+            summary, source = summarize_segment(
                 progress.segments[next_idx],
                 filename=filename,
                 use_llm=use_llm,
+                translate=translate,
+                model_choice=choice,
             )
+            set_segment_summary(progress, next_idx, summary, source)
             while len(progress.segment_statuses) <= next_idx:
                 progress.segment_statuses.append("pending")
             progress.set_segment_status(next_idx, "done")
         else:
             return None
     progress.current_index = next_idx
-    refresh_compressed_prior(progress, provider=provider)
+    refresh_compressed_prior(progress, provider=choice.provider)
     return progress.current
 
 
@@ -648,27 +680,33 @@ def goto_segment(
     *,
     filename: str = "",
     provider: str = "auto",
+    model_choice: SummarizeModelChoice | None = None,
     use_llm: bool = True,
     sync_if_missing: bool = False,
+    translate: TranslateConfig | None = None,
 ) -> DocumentSegment | None:
     """Jump to segment index (0-based); returns None if not ready and not syncing."""
+    from localagent.summarize.model_choice import SummarizeModelChoice
+
+    choice = model_choice or SummarizeModelChoice.from_cli(provider=provider)
     target = max(0, min(index, len(progress.segments) - 1))
     if not progress.summary_ready(target):
         if sync_if_missing:
-            while len(progress.segment_summaries) <= target:
-                progress.segment_summaries.append("")
-            progress.segment_summaries[target] = summarize_segment(
+            summary, source = summarize_segment(
                 progress.segments[target],
                 filename=filename,
                 use_llm=use_llm,
+                translate=translate,
+                model_choice=choice,
             )
+            set_segment_summary(progress, target, summary, source)
             while len(progress.segment_statuses) <= target:
                 progress.segment_statuses.append("pending")
             progress.set_segment_status(target, "done")
         else:
             return None
     progress.current_index = target
-    refresh_compressed_prior(progress, provider=provider)
+    refresh_compressed_prior(progress, provider=choice.provider)
     return progress.current
 
 
@@ -727,6 +765,221 @@ def format_segment_context(
             body or "（无正文）",
         ]
     )
+    if retrieval_block.strip():
+        parts.extend(["", "## RAG 补充检索", retrieval_block.strip()])
+    return "\n".join(parts)
+
+
+def resolve_book_context_budget(provider: str = "auto") -> int:
+    """Character budget for full-book chat context."""
+    if config.SUMMARIZE_BOOK_CONTEXT_BUDGET_CHARS > 0:
+        return config.SUMMARIZE_BOOK_CONTEXT_BUDGET_CHARS
+    budget = resolve_reading_budget(provider)
+    return max(budget.prior_budget * 2, int(budget.ctx_chars * 0.25))
+
+
+def _book_llm_compress_enabled() -> bool:
+    if config.SUMMARIZE_BOOK_LLM_COMPRESS is not None:
+        return bool(config.SUMMARIZE_BOOK_LLM_COMPRESS)
+    return bool(config.SUMMARIZE_SEGMENT_LLM_COMPRESS)
+
+
+def _group_ready_indices_by_budget(
+    progress: ReadingProgress,
+    *,
+    group_budget: int,
+) -> list[list[int]]:
+    """Group consecutive ready segment indices by approximate char budget."""
+    groups: list[list[int]] = []
+    current: list[int] = []
+    current_chars = 0
+    for idx in range(progress.total):
+        if not progress.summary_ready(idx):
+            continue
+        summary = ""
+        if idx < len(progress.segment_summaries):
+            summary = progress.segment_summaries[idx]
+        chunk_len = len(_extract_summary_sections(summary) or summary.strip())
+        if current and current_chars + chunk_len > group_budget:
+            groups.append(current)
+            current = []
+            current_chars = 0
+        current.append(idx)
+        current_chars += chunk_len
+    if current:
+        groups.append(current)
+    return groups
+
+
+def _compress_summary_group(
+    progress: ReadingProgress,
+    indices: list[int],
+    *,
+    budget: int,
+    filename: str,
+    label: str,
+) -> str:
+    summaries = [
+        progress.segment_summaries[idx]
+        for idx in indices
+        if idx < len(progress.segment_summaries)
+    ]
+    segments = [progress.segments[idx] for idx in indices if idx < len(progress.segments)]
+    compressed = compress_prior_summaries(
+        summaries,
+        segments,
+        budget=budget,
+        filename=filename,
+    )
+    if _book_llm_compress_enabled() and len(compressed) >= budget:
+        llm = _llm_compress_prior(
+            compressed,
+            filename=filename,
+            budget=budget,
+            prompt_prefix=f"将下列文档「{label}」各段摘要压缩为 3～5 句概要",
+        )
+        if llm:
+            return llm
+    return compressed
+
+
+def build_book_context(
+    progress: ReadingProgress,
+    *,
+    budget: int | None = None,
+    filename: str = "",
+    provider: str = "auto",
+) -> str:
+    """Build hierarchical compressed context from all ready segment summaries."""
+    done = progress.sync_done_count()
+    if done <= 0:
+        return ""
+
+    if (
+        progress.book_context.strip()
+        and progress.book_context_done_count == done
+    ):
+        return progress.book_context
+
+    limit = budget if budget is not None else resolve_book_context_budget(provider)
+    ready_indices = [idx for idx in range(progress.total) if progress.summary_ready(idx)]
+    if not ready_indices:
+        return ""
+
+    summaries = [progress.segment_summaries[idx] for idx in ready_indices]
+    segments = [progress.segments[idx] for idx in ready_indices]
+
+    flat = compress_prior_summaries(
+        summaries,
+        segments,
+        budget=limit,
+        filename=filename,
+    )
+    need_hierarchical = (
+        len(ready_indices) >= config.SUMMARIZE_BOOK_GROUP_MIN
+        or len(flat) >= limit
+    )
+
+    if need_hierarchical:
+        group_budget = max(400, limit // 4)
+        groups = _group_ready_indices_by_budget(progress, group_budget=group_budget)
+        meta_parts: list[str] = []
+        per_group = max(200, limit // max(1, len(groups)))
+        for group_idx, group in enumerate(groups, start=1):
+            lo = group[0] + 1
+            hi = group[-1] + 1
+            label = f"第 {lo}-{hi} 段" if lo != hi else f"第 {lo} 段"
+            meta_parts.append(
+                _compress_summary_group(
+                    progress,
+                    group,
+                    budget=per_group,
+                    filename=filename,
+                    label=label,
+                )
+            )
+        outline_blob = "\n\n".join(
+            f"### 部分 {idx} · {part[:80].splitlines()[0] if part else ''}\n{part}"
+            for idx, part in enumerate(meta_parts, start=1)
+            if part.strip()
+        )
+        outline = apply_context_budget(
+            outline_blob,
+            budget=max(200, limit // 2),
+            label="全书概要",
+        )
+        if _book_llm_compress_enabled() and len(outline) >= limit // 2:
+            llm = _llm_compress_prior(
+                outline,
+                filename=filename,
+                budget=limit // 2,
+                prompt_prefix="将下列文档各部分概要进一步压缩为全书 5～8 句总览",
+            )
+            if llm:
+                outline = llm
+        index_part = compress_prior_summaries(
+            summaries,
+            segments,
+            budget=max(200, limit // 2),
+            filename=filename,
+        )
+        body = "\n\n".join(
+            [
+                "## 全书概要（分层压缩）",
+                outline.strip() or "（暂无）",
+                "",
+                "## 各段摘要索引",
+                index_part.strip() or "（暂无）",
+            ]
+        )
+    else:
+        body = flat
+
+    header = f"## 全书阅读进度\n已完成 {done}/{progress.total} 段摘要"
+    if done < progress.total:
+        header += f"（尚有 {progress.total - done} 段摘要生成中）"
+
+    result = f"{header}\n\n{body}".strip()
+    progress.book_context = result
+    progress.book_context_done_count = done
+    return result
+
+
+def format_book_context(
+    result: SummarizeResult,
+    progress: ReadingProgress,
+    *,
+    retrieval_block: str = "",
+    provider: str = "auto",
+) -> str:
+    """Build system-prompt block for full-book chat grounded on segment summaries."""
+    kept_line = (
+        f"已入库 → {result.keep_target}"
+        if result.kept and result.keep_target
+        else "未入库（默认；用户明确要求时可用会话内 /keep）"
+    )
+    rules = (
+        "规则: 你已在全书对话中，优先依据下方各段摘要回答全书/跨章问题；"
+        "细节不足时参考 RAG 补充块；禁止建议用户再运行 la summarize；"
+        "用户说入库时用 /keep；引用时用 〔§…|p.…〕；依据不足时如实说明，禁止编造。"
+    )
+    book_block = build_book_context(
+        progress,
+        filename=result.filename,
+        provider=provider,
+    )
+    parts = [
+        "[当前文档 · 全书对话（请优先各段摘要；引用时用 〔§…|p.…〕）]",
+        f"文件: {result.path}",
+        f"入库状态: {kept_line}",
+    ]
+    if result.session_source_key:
+        parts.append(f"会话索引: {result.session_source_key}")
+    parts.extend([rules, ""])
+    if book_block.strip():
+        parts.append(book_block.strip())
+    else:
+        parts.append("（暂无段摘要，请稍候后台摘要完成）")
     if retrieval_block.strip():
         parts.extend(["", "## RAG 补充检索", retrieval_block.strip()])
     return "\n".join(parts)

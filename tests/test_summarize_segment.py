@@ -244,3 +244,43 @@ def test_record_from_result_persists_segment_fields(tmp_path: Path, monkeypatch:
     assert loaded.cache_path
     _, md_path = cache_paths(path)
     assert loaded.cache_path == str(md_path)
+
+
+def test_summarize_segment_passes_model_choice(monkeypatch: pytest.MonkeyPatch):
+    from localagent.models.router import ChatResult
+    from localagent.summarize.model_choice import SummarizeModelChoice
+    from localagent.summarize.segment_reader import DocumentSegment, summarize_segment
+
+    calls: list[dict] = []
+
+    class FakeRouter:
+        def chat_with_meta(self, messages, **kwargs):
+            calls.append(kwargs)
+            return ChatResult(
+                text=(
+                    "## 总结（最多三句话）\n"
+                    "段摘要。\n\n"
+                    "## 结构化要点\n"
+                    "- **点**：内容 — 依据：原文 〔§一〕\n"
+                ),
+                provider="openrouter",
+                model="gpt-4o-mini",
+            )
+
+    monkeypatch.setattr(
+        "localagent.models.router.get_model_router",
+        lambda: FakeRouter(),
+    )
+    seg = DocumentSegment(
+        index=0,
+        heading="§一",
+        text="## [§一]\n段落内容。",
+        char_count=20,
+        cite_range="§一",
+    )
+    choice = SummarizeModelChoice(provider="openrouter", model="gpt-4o-mini")
+    markdown, source = summarize_segment(seg, filename="t.md", model_choice=choice)
+    assert calls[0]["prefer"] == "openrouter"
+    assert calls[0]["model"] == "gpt-4o-mini"
+    assert "*摘要 via openrouter/gpt-4o-mini*" in markdown
+    assert source.via == "llm"

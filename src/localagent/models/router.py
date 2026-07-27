@@ -26,6 +26,13 @@ class ChatMessage:
     content: str
 
 
+@dataclass(frozen=True)
+class ChatResult:
+    text: str
+    provider: str
+    model: str
+
+
 def _parse_profile_updates_reply(reply: str) -> list[dict]:
     """Parse LLM JSON for core_profile pin updates."""
     import re
@@ -116,10 +123,32 @@ class ModelRouter:
         *,
         temperature: float = 0.3,
         prefer: str | None = None,
+        model: str | None = None,
         on_token: Callable[[str], None] | None = None,
         usage_command: str = "chat",
         session_id: str | None = None,
     ) -> str:
+        return self.chat_with_meta(
+            messages,
+            temperature=temperature,
+            prefer=prefer,
+            model=model,
+            on_token=on_token,
+            usage_command=usage_command,
+            session_id=session_id,
+        ).text
+
+    def chat_with_meta(
+        self,
+        messages: list[ChatMessage],
+        *,
+        temperature: float = 0.3,
+        prefer: str | None = None,
+        model: str | None = None,
+        on_token: Callable[[str], None] | None = None,
+        usage_command: str = "chat",
+        session_id: str | None = None,
+    ) -> ChatResult:
         providers = self._provider_order(prefer)
         auto_mode = prefer is None or prefer == config.DEFAULT_MODEL_PROVIDER
         ollama_skipped = False
@@ -128,6 +157,7 @@ class ModelRouter:
                 ollama_skipped = True
             providers = [p for p in providers if p != "ollama"]
 
+        model_override = (model or "").strip() or None
         attempted: set[str] = set()
         last_error: Exception | None = None
         for provider in providers:
@@ -141,6 +171,7 @@ class ModelRouter:
                     usage_command=usage_command,
                     session_id=session_id,
                     auto_mode=auto_mode,
+                    model_override=model_override,
                 )
             except (httpx.TimeoutException, TimeoutError) as exc:
                 if provider == "ollama" and auto_mode:
@@ -168,6 +199,7 @@ class ModelRouter:
                     usage_command=usage_command,
                     session_id=session_id,
                     auto_mode=False,
+                    model_override=model_override,
                 )
             except Exception as exc:
                 logger.warning("ollama last-resort retry failed: %s", exc)
@@ -192,7 +224,8 @@ class ModelRouter:
         usage_command: str,
         session_id: str | None,
         auto_mode: bool,
-    ) -> str:
+        model_override: str | None = None,
+    ) -> ChatResult:
         server = self._server(provider)
         if not server:
             raise RuntimeError(f"unknown provider: {provider}")
@@ -200,14 +233,15 @@ class ModelRouter:
         if provider == "ollama":
             timeout = server.chat_timeout if auto_mode else server.timeout
             stream = on_token is not None and server.chat_stream
+            model = model_override or self.resolve_ollama_model()
             text, usage = self._chat_ollama(
                 server,
                 messages,
                 temperature=temperature,
                 on_token=on_token if stream else None,
                 timeout=timeout,
+                model=model,
             )
-            model = self.resolve_ollama_model()
             self.last_provider = provider
             self.last_model = model
             if auto_mode or timeout == server.timeout:
@@ -228,58 +262,63 @@ class ModelRouter:
                 command=usage_command,
                 session_id=session_id,
             )
-            return text
+            return ChatResult(text=text, provider=provider, model=model)
 
         if provider == "cursor":
-            text = self._chat_cursor(server, messages, temperature=temperature)
+            model = model_override or server.model
+            text = self._chat_cursor(
+                server, messages, temperature=temperature, model=model
+            )
             self.last_provider = provider
-            self.last_model = server.model
+            self.last_model = model
             logger.info(
                 "chat provider=%s model=%s command=%s auto=%s",
                 provider,
-                server.model,
+                model,
                 usage_command,
                 auto_mode,
             )
             log_usage(
                 provider,
-                server.model,
+                model,
                 command=usage_command,
                 prompt_tokens=sum(estimate_tokens(m.content) for m in messages),
                 completion_tokens=estimate_tokens(text),
                 session_id=session_id,
                 per_call=True,
             )
-            return text
+            return ChatResult(text=text, provider=provider, model=model)
 
         if not server.api_key:
             raise RuntimeError(f"{provider} api_key not set")
         stream = on_token is not None and server.chat_stream
+        model = model_override or server.model
         text, usage = self._chat_openai_compatible(
             server=server,
             messages=messages,
             temperature=temperature,
             on_token=on_token if stream else None,
+            model=model,
         )
         self.last_provider = provider
-        self.last_model = server.model
+        self.last_model = model
         logger.info(
             "chat provider=%s model=%s command=%s auto=%s",
             provider,
-            server.model,
+            model,
             usage_command,
             auto_mode,
         )
         self._record_usage(
             provider,
-            server.model,
+            model,
             usage=usage,
             messages=messages,
             response=text,
             command=usage_command,
             session_id=session_id,
         )
-        return text
+        return ChatResult(text=text, provider=provider, model=model)
 
     def is_ollama_available(self) -> bool:
         if self._ollama_available is not None:
@@ -570,10 +609,11 @@ class ModelRouter:
         *,
         temperature: float,
         stream: bool,
+        model: str | None = None,
     ) -> dict[str, Any]:
-        model = self.resolve_ollama_model()
+        resolved = model or self.resolve_ollama_model()
         payload: dict[str, Any] = {
-            "model": model,
+            "model": resolved,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "stream": stream,
             "keep_alive": server.keep_alive,
@@ -595,10 +635,17 @@ class ModelRouter:
         temperature: float,
         on_token: Callable[[str], None] | None = None,
         timeout: float | None = None,
+        model: str | None = None,
     ) -> tuple[str, dict[str, int]]:
-        model = self.resolve_ollama_model()
+        resolved = model or self.resolve_ollama_model()
         stream = on_token is not None
-        payload = self._ollama_chat_payload(server, messages, temperature=temperature, stream=stream)
+        payload = self._ollama_chat_payload(
+            server,
+            messages,
+            temperature=temperature,
+            stream=stream,
+            model=resolved,
+        )
         url = f"{server.base_url.rstrip('/')}/api/chat"
         request_timeout = timeout if timeout is not None else server.timeout
         usage: dict[str, int] = {}
@@ -609,7 +656,7 @@ class ModelRouter:
                 started = time.monotonic()
                 with client.stream("POST", url, json=payload) as resp:
                     if resp.status_code == 404:
-                        self._raise_ollama_model_error(resp, model)
+                        self._raise_ollama_model_error(resp, resolved)
                     resp.raise_for_status()
                     for line in resp.iter_lines():
                         if not parts and time.monotonic() - started > request_timeout:
@@ -630,7 +677,7 @@ class ModelRouter:
                 return "".join(parts), usage
 
             resp = client.post(url, json=payload)
-            self._raise_ollama_model_error(resp, model)
+            self._raise_ollama_model_error(resp, resolved)
             resp.raise_for_status()
             data = resp.json()
         usage = {
@@ -664,6 +711,7 @@ class ModelRouter:
         messages: list[ChatMessage],
         temperature: float,
         on_token: Callable[[str], None] | None = None,
+        model: str | None = None,
     ) -> tuple[str, dict[str, int]]:
         headers = {
             "Authorization": f"Bearer {server.api_key}",
@@ -671,8 +719,9 @@ class ModelRouter:
         }
         headers.update(openai_compatible_headers(server.provider))
         stream = on_token is not None
+        resolved = model or server.model
         payload: dict[str, Any] = {
-            "model": server.model,
+            "model": resolved,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "temperature": temperature,
             "stream": stream,
@@ -692,7 +741,7 @@ class ModelRouter:
                             pass
                         if resp.status_code == 404:
                             raise RuntimeError(
-                                f"{server.provider} model {server.model!r} unavailable: {detail}"
+                                f"{server.provider} model {resolved!r} unavailable: {detail}"
                             )
                         resp.raise_for_status()
                     for line in resp.iter_lines():
@@ -735,7 +784,7 @@ class ModelRouter:
                     detail = resp.json().get("error", {}).get("message", detail)
                 except Exception:
                     pass
-                raise RuntimeError(f"{server.provider} model {server.model!r} unavailable: {detail}")
+                raise RuntimeError(f"{server.provider} model {resolved!r} unavailable: {detail}")
             resp.raise_for_status()
             data = resp.json()
         usage_raw = data.get("usage") or {}
@@ -746,7 +795,14 @@ class ModelRouter:
         message = data["choices"][0]["message"]
         return message.get("content") or "", usage
 
-    def _chat_cursor(self, server: ModelServer, messages: list[ChatMessage], *, temperature: float) -> str:
+    def _chat_cursor(
+        self,
+        server: ModelServer,
+        messages: list[ChatMessage],
+        *,
+        temperature: float,
+        model: str | None = None,
+    ) -> str:
         del temperature  # Cursor SDK selects model behavior server-side.
         if not server.api_key:
             raise RuntimeError("cursor api_key not set")
@@ -758,6 +814,7 @@ class ModelRouter:
         prompt = _format_messages_for_cursor(messages)
         cwd = server.cwd or str(config.PROJECT_ROOT)
         max_retries = server.max_retries
+        resolved = model or server.model
         last_error: Exception | None = None
         for attempt in range(max_retries + 1):
             try:
@@ -765,7 +822,7 @@ class ModelRouter:
                     prompt,
                     AgentOptions(
                         api_key=server.api_key,
-                        model=server.model,
+                        model=resolved,
                         local=LocalAgentOptions(cwd=cwd),
                     ),
                 )

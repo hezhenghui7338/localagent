@@ -11,6 +11,18 @@ from localagent import config
 
 if TYPE_CHECKING:
     from localagent.summarize.segment_reader import ReadingProgress
+
+from localagent.summarize.model_choice import (
+    SegmentSource,
+    SummarizeModelChoice,
+    append_source_footer,
+)
+from localagent.summarize.translate import TranslateConfig
+from localagent.summarize.model_choice import (
+    SummarizeModelChoice,
+    SegmentSource,
+    append_source_footer,
+)
 from localagent.audit.security import is_sensitive_path, sensitive_path_reason
 from localagent.ingest.chunker import split_into_sections
 from localagent.ingest.loader import LoadedDoc, explain_load_failure, load_file
@@ -61,6 +73,13 @@ class SummarizeResult:
     ocr_confidence_avg: float | None = None
     segment_mode: bool = False
     reading_progress: ReadingProgress | None = None
+    translated: bool = False
+    translate_target: str = ""
+    translate: TranslateConfig | None = None
+    model_choice: SummarizeModelChoice | None = None
+    source: SegmentSource | None = None
+    model_choice: SummarizeModelChoice | None = None
+    source: SegmentSource | None = None
 
     def render(self) -> str:
         return self.markdown
@@ -265,24 +284,51 @@ def count_summary_sentences(markdown: str) -> int:
     return len(sentences)
 
 
-def _llm_summarize(annotated: str, *, filename: str) -> str | None:
+def _llm_summarize(
+    annotated: str,
+    *,
+    filename: str,
+    translate: TranslateConfig | None = None,
+    model_choice: SummarizeModelChoice | None = None,
+) -> tuple[str | None, SegmentSource | None]:
     try:
         from localagent.models.router import ChatMessage, get_model_router
     except Exception:
-        return None
+        return None, None
+    from localagent.summarize.translate import apply_translate_for_summarize
+
     clipped = annotated[: config.SUMMARIZE_LLM_INPUT_CHARS]
+    clipped, _, _ = apply_translate_for_summarize(clipped, translate)
+    choice = model_choice or SummarizeModelChoice()
     try:
-        reply = get_model_router().chat(
+        result = get_model_router().chat_with_meta(
             [ChatMessage(role="user", content=_prompt(clipped, filename=filename))],
             temperature=0.2,
+            prefer=choice.prefer,
+            model=choice.model_override,
             usage_command="summarize",
         )
     except Exception:
-        return None
-    text = _strip_fence(reply or "")
+        return None, None
+    text = _strip_fence(result.text or "")
     if not text or "##" not in text:
-        return None
-    return text
+        return None, None
+    source = SegmentSource(
+        provider=result.provider,
+        model=result.model,
+        via="llm",
+    )
+    return text, source
+
+
+def _prepare_for_summarize(
+    annotated: str,
+    translate: TranslateConfig | None,
+) -> tuple[str, list[str], bool]:
+    from localagent.summarize.translate import apply_translate_for_summarize
+
+    clipped = annotated[: config.SUMMARIZE_LLM_INPUT_CHARS]
+    return apply_translate_for_summarize(clipped, translate)
 
 
 def summarize_loaded(
@@ -292,7 +338,10 @@ def summarize_loaded(
     allow_long: bool = False,
     refresh_cache: bool = False,
     retry_failed: bool = False,
+    translate: TranslateConfig | None = None,
+    model_choice: SummarizeModelChoice | None = None,
 ) -> SummarizeResult:
+    choice = model_choice or SummarizeModelChoice()
     annotated = _annotate_for_cite(doc)
     char_count = len(annotated)
     warnings: list[str] = []
@@ -309,7 +358,7 @@ def summarize_loaded(
             should_use_segment_mode,
         )
 
-        if should_use_segment_mode(char_count):
+        if should_use_segment_mode(char_count, provider=choice.provider):
             segment_mode = True
             from localagent.i18n import t
 
@@ -319,9 +368,11 @@ def summarize_loaded(
                 filename=doc.filename,
                 source_path=source,
                 char_count=char_count,
+                model_choice=choice,
                 use_llm=use_llm,
                 refresh_cache=refresh_cache,
                 retry_failed=retry_failed,
+                translate=translate,
             )
             total = reading_progress.total
             warnings.append(f"文档约 {char_count} 字，已开启逐段阅读（1/{total}）")
@@ -369,17 +420,45 @@ def summarize_loaded(
     ocr_confidence_avg = float(ocr_conf_raw) if isinstance(ocr_conf_raw, (int, float)) else None
 
     used_llm = False
+    translated = False
+    translate_target = translate.target if translate and translate.enabled else ""
     markdown: str | None = None
+    doc_source: SegmentSource | None = None
     if segment_mode and reading_progress is not None:
         markdown = reading_progress.current_summary()
         used_llm = use_llm and "## 结构化要点" in (markdown or "")
+        if reading_progress.segment_sources:
+            idx = reading_progress.current_index
+            if 0 <= idx < len(reading_progress.segment_sources):
+                doc_source = reading_progress.segment_sources[idx]
+        if translate and translate.enabled:
+            from localagent.summarize.translate import needs_translation
+
+            translated = needs_translation(annotated_for_card, translate)
         if not markdown:
-            markdown = _heuristic_summary(annotated_for_card, filename=doc.filename)
+            prep, trans_warnings, translated = _prepare_for_summarize(
+                annotated_for_card, translate
+            )
+            warnings.extend(trans_warnings)
+            markdown = _heuristic_summary(prep, filename=doc.filename)
+            doc_source = SegmentSource(via="heuristic")
+            markdown = append_source_footer(markdown, doc_source)
             warnings.append("模型摘要不可用，已使用本地启发式摘要")
     elif use_llm:
-        markdown = _llm_summarize(annotated_for_card, filename=doc.filename)
-        if markdown:
+        prep, trans_warnings, translated = _prepare_for_summarize(
+            annotated_for_card, translate
+        )
+        warnings.extend(trans_warnings)
+        llm_text, llm_source = _llm_summarize(
+            prep,
+            filename=doc.filename,
+            translate=None,
+            model_choice=choice,
+        )
+        if llm_text:
             used_llm = True
+            doc_source = llm_source
+            markdown = llm_text
             # Soft retry once if points lack citations
             if "## 结构化要点" in markdown:
                 point_lines = []
@@ -394,21 +473,32 @@ def summarize_loaded(
                         point_lines.append(line)
                 missing = sum(1 for line in point_lines if not citation_ok(line))
                 if point_lines and missing >= max(1, len(point_lines) // 2):
-                    retry = _llm_summarize(
-                        annotated_for_card
+                    retry_text, retry_source = _llm_summarize(
+                        prep
                         + "\n\n【重试】上轮要点缺少 〔§…|p.…〕索引，请重写并确保每条都有索引。",
                         filename=doc.filename,
+                        translate=None,
+                        model_choice=choice,
                     )
-                    if retry:
-                        markdown = retry
+                    if retry_text:
+                        markdown = retry_text
+                        doc_source = retry_source
 
     if not markdown:
-        markdown = _heuristic_summary(annotated_for_card, filename=doc.filename)
+        prep, trans_warnings, was_translated = _prepare_for_summarize(
+            annotated_for_card, translate
+        )
+        warnings.extend(trans_warnings)
+        translated = translated or was_translated
+        markdown = _heuristic_summary(prep, filename=doc.filename)
+        doc_source = SegmentSource(via="heuristic")
         if not segment_mode:
             warnings.append("模型摘要不可用，已使用本地启发式摘要")
 
     markdown, cite_warnings = ensure_citations(markdown)
     warnings.extend(cite_warnings)
+    if doc_source is not None and not segment_mode:
+        markdown = append_source_footer(markdown, doc_source)
 
     page_count = doc.metadata.get("page_count")
     if isinstance(page_count, int):
@@ -430,6 +520,11 @@ def summarize_loaded(
         ocr_confidence_avg=ocr_confidence_avg,
         segment_mode=segment_mode,
         reading_progress=reading_progress,
+        translated=translated,
+        translate_target=translate_target,
+        translate=translate,
+        model_choice=choice,
+        source=doc_source,
     )
 
 
@@ -440,6 +535,8 @@ def summarize_path(
     use_llm: bool = True,
     refresh_cache: bool = False,
     retry_failed: bool = False,
+    translate: TranslateConfig | None = None,
+    model_choice: SummarizeModelChoice | None = None,
 ) -> SummarizeResult:
     source = Path(path).expanduser().resolve()
     if not source.exists() or not source.is_file():
@@ -463,6 +560,8 @@ def summarize_path(
         allow_long=True,
         refresh_cache=refresh_cache,
         retry_failed=retry_failed,
+        translate=translate,
+        model_choice=model_choice,
     )
 
     try:
@@ -487,16 +586,31 @@ def summarize_path(
     return result
 
 
-def summarize_document_tool(path: str, *, keep: bool = False, cwd: str | None = None) -> str:
+def summarize_document_tool(
+    path: str,
+    *,
+    keep: bool = False,
+    cwd: str | None = None,
+    deep_translate: bool = False,
+    translate_to: str | None = None,
+    translate_from: str | None = None,
+) -> str:
     """Agent tool entry: summarize a local document; default not kept."""
+    from localagent.summarize.translate import resolve_translate_config
+
     raw = (path or "").strip()
     if not raw:
         return "错误: 请提供 path。"
     candidate = Path(raw).expanduser()
     if not candidate.is_absolute() and cwd:
         candidate = Path(cwd).expanduser() / candidate
+    translate = resolve_translate_config(
+        deep_translate=deep_translate or None,
+        translate_to=translate_to,
+        translate_from=translate_from,
+    )
     try:
-        result = summarize_path(candidate, keep=keep, use_llm=True)
+        result = summarize_path(candidate, keep=keep, use_llm=True, translate=translate)
     except DocumentTooLongError as exc:
         return f"错误: {exc}\n提示: {KEEP_HINT}"
     except SummarizeError as exc:

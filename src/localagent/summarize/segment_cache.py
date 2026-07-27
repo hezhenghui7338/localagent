@@ -12,12 +12,14 @@ from typing import TYPE_CHECKING, Any
 from localagent import config
 from localagent.summarize.segment_reader import ReadingBudget, ReadingProgress
 from localagent.summarize.sessions import file_mtime
+from localagent.summarize.translate import TranslateConfig, translate_config_dict
 from localagent.tzutil import local_now
 
 if TYPE_CHECKING:
     from localagent.summarize.document import SummarizeResult
+    from localagent.summarize.model_choice import SummarizeModelChoice
 
-_CACHE_VERSION = 1
+_CACHE_VERSION = 3
 _LARGE_DOC_SEGMENTS = 500
 _FULL_MD_EVERY = 50
 
@@ -49,12 +51,22 @@ def cache_paths(source_path: Path) -> tuple[Path, Path]:
     return base / f"{key}.json", base / f"{key}.md"
 
 
-def segment_config_dict(budget: ReadingBudget) -> dict[str, int]:
-    return {
+def segment_config_dict(
+    budget: ReadingBudget,
+    translate: TranslateConfig | None = None,
+    model_choice: SummarizeModelChoice | None = None,
+) -> dict[str, str | int]:
+    from localagent.summarize.model_choice import SummarizeModelChoice
+
+    cfg: dict[str, str | int] = {
         "segment_target": budget.segment_target,
         "segment_max": budget.segment_max,
         "threshold_chars": budget.threshold_chars,
     }
+    cfg.update(translate_config_dict(translate))
+    choice = model_choice or SummarizeModelChoice()
+    cfg.update(choice.config_dict())
+    return cfg
 
 
 def effective_cache_throttle_sec(*, total_segments: int, base: float | None = None) -> float:
@@ -73,6 +85,41 @@ def _normalize_summaries(
     while len(out) < total:
         out.append("")
     return out[:total]
+
+
+def _normalize_sources(
+    sources: list[Any],
+    *,
+    total: int,
+) -> list[dict[str, str] | None]:
+    from localagent.summarize.model_choice import SegmentSource
+
+    out: list[dict[str, str] | None] = []
+    for item in sources or []:
+        if item is None:
+            out.append(None)
+        elif isinstance(item, dict):
+            out.append(
+                SegmentSource.from_dict(item).to_dict()
+                if SegmentSource.from_dict(item)
+                else None
+            )
+        else:
+            out.append(None)
+    while len(out) < total:
+        out.append(None)
+    return out[:total]
+
+
+def _sources_from_progress(progress: ReadingProgress) -> list[dict[str, str] | None]:
+    total = progress.total
+    out: list[dict[str, str] | None] = []
+    for idx in range(total):
+        source = None
+        if idx < len(progress.segment_sources):
+            source = progress.segment_sources[idx]
+        out.append(source.to_dict() if source is not None else None)
+    return out
 
 
 def _normalize_statuses(
@@ -138,6 +185,8 @@ def save_segment_cache(
     char_count: int,
     budget: ReadingBudget,
     full_md: bool = False,
+    translate: TranslateConfig | None = None,
+    model_choice: SummarizeModelChoice | None = None,
 ) -> Path:
     """Write JSON + Markdown cache atomically; returns Markdown path."""
     json_path, md_path = cache_paths(source_path)
@@ -148,6 +197,7 @@ def save_segment_cache(
         total=progress.total,
         summaries=summaries,
     )
+    sources = _sources_from_progress(progress)
     payload: dict[str, Any] = {
         "version": _CACHE_VERSION,
         "source_path": str(source_path.expanduser().resolve()),
@@ -155,9 +205,12 @@ def save_segment_cache(
         "char_count": int(char_count),
         "total_segments": progress.total,
         "segment_summaries": summaries,
+        "segment_sources": sources,
         "segment_statuses": statuses,
-        "segment_config": segment_config_dict(budget),
+        "segment_config": segment_config_dict(budget, translate, model_choice),
         "updated_at": updated_at,
+        "book_context": progress.book_context,
+        "book_context_done_count": progress.book_context_done_count,
     }
     json_path.parent.mkdir(parents=True, exist_ok=True)
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -181,6 +234,8 @@ def load_segment_cache(
     total_segments: int,
     char_count: int,
     budget: ReadingBudget,
+    translate: TranslateConfig | None = None,
+    model_choice: SummarizeModelChoice | None = None,
 ) -> dict[str, Any] | None:
     """Return cache payload when path/mtime/segment config still match."""
     json_path, _md_path = cache_paths(source_path)
@@ -190,7 +245,10 @@ def load_segment_cache(
         data = json.loads(json_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
-    if not isinstance(data, dict) or int(data.get("version") or 0) != _CACHE_VERSION:
+    if not isinstance(data, dict):
+        return None
+    version = int(data.get("version") or 0)
+    if version not in {_CACHE_VERSION, 2, 1}:
         return None
     if str(data.get("source_path") or "") != str(source_path.expanduser().resolve()):
         return None
@@ -203,27 +261,44 @@ def load_segment_cache(
     cached_cfg = data.get("segment_config")
     if not isinstance(cached_cfg, dict):
         return None
-    expected = segment_config_dict(budget)
+    expected = segment_config_dict(budget, translate, model_choice)
     for key, value in expected.items():
-        if int(cached_cfg.get(key) or 0) != value:
+        cached_val = cached_cfg.get(key)
+        if isinstance(value, str):
+            if str(cached_val or "") != value:
+                return None
+        elif int(cached_val or 0) != value:
             return None
     return data
 
 
 def apply_cache_to_progress(progress: ReadingProgress, data: dict[str, Any]) -> int:
     """Hydrate progress from cache; return number of ready segments."""
+    from localagent.summarize.model_choice import SegmentSource
+
     total = progress.total
     summaries = _normalize_summaries(
         [str(item) for item in (data.get("segment_summaries") or [])],
         total=total,
     )
+    raw_sources = data.get("segment_sources")
+    sources: list[SegmentSource | None] = []
+    if isinstance(raw_sources, list):
+        for item in raw_sources:
+            sources.append(SegmentSource.from_dict(item) if item is not None else None)
+    while len(sources) < total:
+        sources.append(None)
+    sources = sources[:total]
     statuses = _normalize_statuses(
         [str(item) for item in (data.get("segment_statuses") or [])],
         total=total,
         summaries=summaries,
     )
     progress.segment_summaries = summaries
+    progress.segment_sources = sources
     progress.segment_statuses = statuses
+    progress.book_context = str(data.get("book_context") or "")
+    progress.book_context_done_count = int(data.get("book_context_done_count") or -1)
     from localagent.summarize.segment_reader import normalize_stale_running_segments
 
     normalize_stale_running_segments(progress)
@@ -242,7 +317,16 @@ class ThrottledSegmentCacheWriter:
         )
         self._lock = threading.Lock()
         self._timer: threading.Timer | None = None
-        self._pending: tuple[Path, ReadingProgress, str, int, ReadingBudget, bool] | None = None
+        self._pending: tuple[
+            Path,
+            ReadingProgress,
+            str,
+            int,
+            ReadingBudget,
+            bool,
+            TranslateConfig | None,
+            SummarizeModelChoice | None,
+        ] | None = None
         self._last_full_md_done = 0
 
     def schedule(
@@ -254,9 +338,20 @@ class ThrottledSegmentCacheWriter:
         char_count: int,
         budget: ReadingBudget,
         full_md: bool = False,
+        translate: TranslateConfig | None = None,
+        model_choice: SummarizeModelChoice | None = None,
     ) -> None:
         with self._lock:
-            self._pending = (source_path, progress, filename, char_count, budget, full_md)
+            self._pending = (
+                source_path,
+                progress,
+                filename,
+                char_count,
+                budget,
+                full_md,
+                translate,
+                model_choice,
+            )
             if self._timer is not None:
                 self._timer.cancel()
             delay = effective_cache_throttle_sec(
@@ -270,8 +365,17 @@ class ThrottledSegmentCacheWriter:
     def flush(self, *, full_md: bool = False) -> Path | None:
         with self._lock:
             if self._pending is not None:
-                src, prog, name, count, budget, old_full = self._pending
-                self._pending = (src, prog, name, count, budget, full_md or old_full)
+                src, prog, name, count, budget, old_full, translate, model_choice = self._pending
+                self._pending = (
+                    src,
+                    prog,
+                    name,
+                    count,
+                    budget,
+                    full_md or old_full,
+                    translate,
+                    model_choice,
+                )
             return self._flush_locked(force_full_md=full_md)
 
     def _flush_locked(self, *, force_full_md: bool = False) -> Path | None:
@@ -283,7 +387,7 @@ class ThrottledSegmentCacheWriter:
             timer.cancel()
         if pending is None:
             return None
-        source_path, progress, filename, char_count, budget, want_full = pending
+        source_path, progress, filename, char_count, budget, want_full, translate, model_choice = pending
         done = progress.done_count()
         full_md = force_full_md or want_full
         if not full_md and progress.total > _LARGE_DOC_SEGMENTS:
@@ -298,6 +402,8 @@ class ThrottledSegmentCacheWriter:
             char_count=char_count,
             budget=budget,
             full_md=full_md,
+            translate=translate,
+            model_choice=model_choice,
         )
 
 
@@ -311,9 +417,13 @@ def schedule_segment_cache_save(
     progress = result.reading_progress
     if progress is None:
         return
+    from localagent.summarize.model_choice import SummarizeModelChoice
     from localagent.summarize.segment_reader import resolve_reading_budget
 
-    budget = resolve_reading_budget(provider)
+    choice = getattr(result, "model_choice", None) or SummarizeModelChoice.from_cli(
+        provider=provider
+    )
+    budget = resolve_reading_budget(choice.provider)
     writer.schedule(
         Path(result.path),
         progress,
@@ -321,4 +431,6 @@ def schedule_segment_cache_save(
         char_count=int(result.char_count or 0),
         budget=budget,
         full_md=full_md,
+        translate=getattr(result, "translate", None),
+        model_choice=choice,
     )

@@ -174,6 +174,22 @@ def test_throttled_writer_flushes(cache_home: Path):
     assert md_path.exists()
 
 
+def test_apply_cache_to_progress_restores_book_context(cache_home: Path):
+    progress = _progress(total=2)
+    progress.segment_summaries = []
+    progress.segment_statuses = []
+    data = {
+        "segment_summaries": ["a", "b"],
+        "segment_statuses": ["done", "pending"],
+        "book_context": "## 全书阅读进度\n已完成 1/2 段摘要",
+        "book_context_done_count": 1,
+    }
+    done = apply_cache_to_progress(progress, data)
+    assert done == 2
+    assert progress.book_context.startswith("## 全书阅读进度")
+    assert progress.book_context_done_count == 1
+
+
 def test_apply_cache_to_progress(cache_home: Path):
     progress = _progress(total=2)
     progress.segment_summaries = []

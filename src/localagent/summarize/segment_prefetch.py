@@ -11,14 +11,17 @@ from typing import TYPE_CHECKING, Callable
 from localagent import config
 from localagent.summarize.segment_reader import (
     ReadingProgress,
+    set_segment_summary,
     summarize_segment,
 )
 
 if TYPE_CHECKING:
     from localagent.summarize.document import SummarizeResult
+    from localagent.summarize.model_choice import SummarizeModelChoice
 
 SegmentUpdateCallback = Callable[[int, str], None]
 PersistCallback = Callable[[], None]
+CompleteCallback = Callable[[], None]
 
 
 @dataclass
@@ -40,19 +43,29 @@ class SegmentPrefetchWorker:
         result: SummarizeResult,
         *,
         provider: str = "auto",
+        model_choice: SummarizeModelChoice | None = None,
         use_llm: bool = True,
         max_workers: int | None = None,
         on_update: SegmentUpdateCallback | None = None,
         on_persist: PersistCallback | None = None,
+        on_complete: CompleteCallback | None = None,
+        translate=None,
     ) -> None:
+        from localagent.summarize.model_choice import SummarizeModelChoice
+
         self.result = result
-        self.provider = provider
+        self.model_choice = model_choice or getattr(result, "model_choice", None)
+        if self.model_choice is None:
+            self.model_choice = SummarizeModelChoice.from_cli(provider=provider)
+        self.provider = self.model_choice.provider
         self.use_llm = use_llm
+        self.translate = translate if translate is not None else getattr(result, "translate", None)
         self.max_workers = max(
             1, int(max_workers or config.SUMMARIZE_SEGMENT_PREFETCH_WORKERS)
         )
         self.on_update = on_update
         self.on_persist = on_persist
+        self.on_complete = on_complete
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -171,11 +184,15 @@ class SegmentPrefetchWorker:
         if progress is None:
             return None
         try:
-            return summarize_segment(
+            summary, source = summarize_segment(
                 progress.segments[index],
                 filename=self.result.filename,
                 use_llm=self.use_llm,
+                translate=self.translate,
+                model_choice=self.model_choice,
             )
+            set_segment_summary(progress, index, summary, source)
+            return summary
         except Exception:
             return None
 
@@ -260,6 +277,8 @@ class SegmentPrefetchWorker:
             self.on_update(index, summary)
         if self.on_persist:
             self.on_persist()
+        if progress.done_count() >= progress.total and self.on_complete:
+            self.on_complete()
 
     @staticmethod
     def _next_pending_index(
@@ -289,11 +308,13 @@ def attach_prefetch_worker(
     result: SummarizeResult,
     *,
     provider: str = "auto",
+    model_choice: SummarizeModelChoice | None = None,
     use_llm: bool = True,
     enabled: bool = True,
     max_workers: int | None = None,
     on_update: SegmentUpdateCallback | None = None,
     on_persist: PersistCallback | None = None,
+    on_complete: CompleteCallback | None = None,
 ) -> SegmentPrefetchWorker | None:
     """Create and optionally start a prefetch worker for segment-mode results."""
     if not result.segment_mode or result.reading_progress is None:
@@ -301,10 +322,12 @@ def attach_prefetch_worker(
     worker = SegmentPrefetchWorker(
         result,
         provider=provider,
+        model_choice=model_choice,
         use_llm=use_llm,
         max_workers=max_workers,
         on_update=on_update,
         on_persist=on_persist,
+        on_complete=on_complete,
     )
     if enabled:
         worker.start()

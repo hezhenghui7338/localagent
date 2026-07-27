@@ -305,6 +305,7 @@ def _summarize_args(tmp_path: Path, **overrides):
         "keep": False,
         "heuristic": True,
         "provider": "auto",
+        "model": None,
         "out": None,
         "list": False,
         "limit": 20,
@@ -390,7 +391,16 @@ def test_cmd_summarize_force_skips_resume_and_refreshes_cache(
         lambda *a, **k: resume_calls.append((a, k)) or 0,
     )
 
-    def _fake_summarize(source, *, keep, use_llm, refresh_cache, retry_failed):
+    def _fake_summarize(
+        source,
+        *,
+        keep,
+        use_llm,
+        refresh_cache,
+        retry_failed,
+        translate=None,
+        model_choice=None,
+    ):
         from localagent.summarize.document import SummarizeResult
 
         summarize_calls.append((source, refresh_cache, retry_failed))
@@ -508,3 +518,46 @@ def test_cmd_summarize_no_chat_batch(tmp_path: Path):
     text = out.read_text(encoding="utf-8")
     assert "brief.md" in text or "产品概述" in text
     assert "第二份" in text or "b.md" in text
+
+
+def test_heuristic_summarize_appends_source_footer(tmp_path: Path):
+    path = _md_doc(tmp_path)
+    result = summarize_path(path, keep=False, use_llm=False)
+    assert "*摘要 via 本地启发式*" in result.markdown
+    assert result.source is not None
+    assert result.source.via == "heuristic"
+
+
+def test_llm_summarize_passes_model_choice(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from localagent.models.router import ChatResult
+    from localagent.summarize.model_choice import SummarizeModelChoice
+
+    path = _md_doc(tmp_path)
+    calls: list[dict] = []
+
+    class FakeRouter:
+        def chat_with_meta(self, messages, **kwargs):
+            calls.append(kwargs)
+            return ChatResult(
+                text=(
+                    "## 总结（最多三句话）\n"
+                    "一句话。\n\n"
+                    "## 结构化要点\n"
+                    "- **点**：内容 — 依据：原文 〔§安装〕\n"
+                ),
+                provider="ollama",
+                model="qwen3:8b",
+            )
+
+    monkeypatch.setattr(
+        "localagent.models.router.get_model_router",
+        lambda: FakeRouter(),
+    )
+    choice = SummarizeModelChoice(provider="ollama", model="qwen3:8b")
+    result = summarize_path(path, keep=False, use_llm=True, model_choice=choice)
+    assert calls
+    assert calls[0]["prefer"] == "ollama"
+    assert calls[0]["model"] == "qwen3:8b"
+    assert "*摘要 via ollama/qwen3:8b*" in result.markdown
+    assert result.source is not None
+    assert result.source.via == "llm"

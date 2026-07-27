@@ -11,6 +11,7 @@ from typing import Any
 from localagent import config
 from localagent.i18n import t
 from localagent.summarize.document import SummarizeResult
+from localagent.summarize.model_choice import SummarizeModelChoice
 from localagent.summarize.nav import SegmentNavState
 from localagent.summarize.segment_cache import (
     ThrottledSegmentCacheWriter,
@@ -177,20 +178,28 @@ def run_segment_browser(
     result: SummarizeResult,
     *,
     provider: str = "auto",
+    model_choice: SummarizeModelChoice | None = None,
     summarize_session_id: str | None = None,
     conversation_session_id: str | None = None,
     no_prefetch: bool = False,
     use_llm: bool = True,
+    book_chat_entered: bool = False,
 ) -> int:
     """Interactive segment list; Enter opens deep chat for ready segments."""
     progress = result.reading_progress
     if progress is None:
         return 1
 
+    from localagent.i18n import t
     from localagent.persist.conversations import new_session_id
 
     sid = summarize_session_id or new_session_id()
     conv_id = conversation_session_id or sid
+    choice = model_choice or getattr(result, "model_choice", None)
+    if choice is None:
+        choice = SummarizeModelChoice.from_cli(provider=provider)
+    result.model_choice = choice
+    book_entered_ref = [book_chat_entered]
     state = SegmentNavState(
         progress=progress,
         filename=result.filename,
@@ -206,6 +215,7 @@ def run_segment_browser(
                 result,
                 session_id=sid,
                 conversation_session_id=conv_id,
+                book_chat_entered=book_entered_ref[0],
             )
         )
 
@@ -222,6 +232,17 @@ def run_segment_browser(
             result.markdown = summary.strip()
         ui_state.mark_dirty()
 
+    def _on_prefetch_complete() -> None:
+        ui_state.mark_dirty()
+        if (
+            not book_entered_ref[0]
+            and progress.done_count() >= progress.total
+            and progress.total > 0
+        ):
+            auto_book_trigger[0] = True
+
+    auto_book_trigger = [False]
+
     from localagent.summarize.segment_reader import normalize_stale_running_segments
 
     normalize_stale_running_segments(progress)
@@ -229,11 +250,12 @@ def run_segment_browser(
     prefetch_on = config.SUMMARIZE_SEGMENT_PREFETCH and not no_prefetch
     worker = attach_prefetch_worker(
         result,
-        provider=provider,
+        model_choice=choice,
         use_llm=use_llm,
         enabled=prefetch_on,
         on_update=_on_update,
         on_persist=lambda: _persist_cache(full_md=False),
+        on_complete=_on_prefetch_complete,
     )
     if worker is not None:
         worker.ensure_work_scheduled()
@@ -260,6 +282,8 @@ def run_segment_browser(
                     use_llm=use_llm,
                     on_persist=lambda: _persist_cache(full_md=False),
                     on_update=_on_update,
+                    book_chat_entered_ref=book_entered_ref,
+                    auto_book_trigger=auto_book_trigger,
                 )
             except KeyboardInterrupt:
                 print()
@@ -271,6 +295,32 @@ def run_segment_browser(
             if action == "quit":
                 print(t("summarize.browser_quit"))
                 return 0
+
+            if action in {"book_auto", "book_manual"}:
+                if progress.done_count() <= 0:
+                    state.message = t("summarize.book_no_summaries")
+                    continue
+                from localagent.summarize.chat_bridge import run_book_chat
+
+                if action == "book_auto":
+                    print()
+                    print(t("summarize.book_auto_enter"))
+                else:
+                    print()
+                    print(t("summarize.book_enter_manual"))
+                run_book_chat(
+                    result,
+                    provider=provider,
+                    summarize_session_id=sid,
+                    conversation_session_id=conv_id,
+                )
+                book_entered_ref[0] = True
+                print()
+                print(t("summarize.browser_back"))
+                state.message = t("summarize.book_chat_done")
+                cache_writer.flush(full_md=True)
+                _persist_session()
+                continue
 
             if action == "chat":
                 if not progress.summary_ready(state.index):
@@ -316,6 +366,8 @@ def _run_one_session(
     use_llm: bool = True,
     on_persist: Any | None = None,
     on_update: Any | None = None,
+    book_chat_entered_ref: list[bool] | None = None,
+    auto_book_trigger: list[bool] | None = None,
 ) -> str:
     from prompt_toolkit.application import Application
     from prompt_toolkit.data_structures import Point
@@ -397,6 +449,23 @@ def _run_one_session(
             prefetch_on = ui_state.prefetch_enabled
             active = ui_state.active_workers
             worker_alive = ui_state.worker_alive
+        if (
+            auto_book_trigger is not None
+            and auto_book_trigger[0]
+            and book_chat_entered_ref is not None
+            and not book_chat_entered_ref[0]
+            and done >= state.total
+            and state.total > 0
+            and active == 0
+        ):
+            auto_book_trigger[0] = False
+            result_holder["action"] = "book_auto"
+            try:
+                from prompt_toolkit.application import get_app
+
+                get_app().exit()
+            except Exception:
+                pass
         text = render_segment_browser_text(
             state,
             prefetch_enabled=prefetch_on,
@@ -620,6 +689,7 @@ def _run_one_session(
                         progress.segments[idx],
                         filename=result.filename,
                         use_llm=use_llm,
+                        translate=getattr(result, "translate", None),
                     )
                 except Exception:
                     summary = ""
@@ -656,6 +726,14 @@ def _run_one_session(
             )
         ui_state.mark_dirty()
         event.app.invalidate()
+
+    @kb.add("b", filter=~in_goto_mode)
+    def _book_chat(event: Any) -> None:
+        if state.progress.done_count() <= 0:
+            state.message = t("summarize.book_no_summaries")
+            event.app.invalidate()
+            return
+        _exit(event, "book_manual")
 
     @kb.add("?", filter=~in_goto_mode)
     def _help(event: Any) -> None:

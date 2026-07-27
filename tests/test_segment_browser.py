@@ -71,3 +71,4 @@ def test_render_shows_goto_message():
     rendered = render_segment_browser_text(state, prefetch_enabled=True, done_count=1)
     assert "跳转到段号 (1-4): 2" in rendered
     assert "g 跳转段" in rendered
+    assert "b 全书对话" in rendered

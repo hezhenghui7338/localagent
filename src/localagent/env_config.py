@@ -95,6 +95,8 @@ _SERVER_FIELD_LABELS: dict[str, str] = {
     "chat_stream": "chat_stream",
     "cwd": "cwd",
     "max_retries": "max_retries",
+    "reading_target_chars": "reading_target_chars",
+    "reading_max_chars": "reading_max_chars",
 }
 
 

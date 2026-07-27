@@ -223,9 +223,14 @@ la summarize report.xlsx --keep            # also archive to KB
 la summarize --list                        # recent doc chats
 la summarize ~/book.pdf                    # auto-resumes when a session exists
 la summarize ~/book.pdf --force            # skip resume; re-segment/re-summarize
+la summarize book.epub --deep-translate --no-chat   # translate foreign text before digest (needs pip install 'la-localagent[translate]')
+la summarize doc.pdf -p ollama -m qwen3:8b          # session-only model for digest (not saved to config)
 ```
 
+Each segment footer records the provider/model used, e.g. `*Summary via ollama/qwen3:8b*` (or `*Summary via local heuristic*` when offline).
+
 - Formats: `.txt` / `.md` / `.markdown` / `.pdf` / `.xlsx` / `.mobi` / `.epub` (**not images** — use `la ocr`)
+- Foreign-language docs: `--deep-translate` translates source before digest (default target `zh`; `--translate-to` / `LA_SUMMARIZE_TRANSLATE_TARGET`); requires `pip install 'la-localagent[translate]'`
 - Scanned PDFs (no text layer) are **auto-OCR'd** inside summarize/ingest before digest/archive
 - Output: up to three sentences + key points with 〔§section | p.page〕 cites
 - **Not kept by default**; `/keep` in `sum>` or pass `--keep`
@@ -246,6 +251,7 @@ For menus, tables, scans — when you need **copyable source text**, not an LLM 
 
 ```bash
 pip install 'la-localagent[ocr]'   # rapidocr + onnxruntime + pymupdf
+pip install 'la-localagent[translate]'   # deep-translator for la summarize --deep-translate
 # .env: LA_OCR_ENABLED=1 (see src/localagent/resources/env.example)
 
 la ocr screenshot.png              # print text to terminal

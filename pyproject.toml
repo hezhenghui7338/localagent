@@ -24,7 +24,8 @@ classifiers = [
 dependencies = [
     "openpyxl>=3.1.0",
     "rank-bm25>=0.2.2",
-    "numpy>=1.26.0",
+    "numpy>=2.0.0,<3",
+    "chonkie>=1.7.0",
     "httpx>=0.27.0",
     "feedparser>=6.0.0",
     "trafilatura>=2.0.0",
@@ -74,6 +75,10 @@ ocr = [
     "rapidocr>=3.9.0",
     "onnxruntime>=1.18.0",
     "pymupdf>=1.24.0",
+]
+# Optional deep-translate for la summarize --deep-translate (Google Translate via deep-translator).
+translate = [
+    "deep-translator>=1.11.0",
 ]
 
 [project.urls]

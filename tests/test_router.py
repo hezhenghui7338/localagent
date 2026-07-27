@@ -8,11 +8,16 @@ import pytest
 
 from localagent.models.router import (
     ChatMessage,
+    ChatResult,
     ModelRouter,
     _format_messages_for_cursor,
     reset_model_router,
 )
 from localagent import config
+
+
+def _chat_result(text: str, *, provider: str = "openrouter", model: str = "test-model") -> ChatResult:
+    return ChatResult(text=text, provider=provider, model=model)
 
 
 @pytest.fixture(autouse=True)
@@ -268,7 +273,7 @@ def test_chat_auto_falls_back_when_ollama_times_out(monkeypatch):
         if provider == "openrouter":
             router.last_provider = "openrouter"
             router.last_model = config.OPENROUTER_MODEL
-            return "cloud reply"
+            return _chat_result("cloud reply", provider="openrouter", model=config.OPENROUTER_MODEL)
         raise RuntimeError(f"unexpected provider {provider}")
 
     monkeypatch.setattr(router, "_chat_with_provider", fake_chat_with_provider)
@@ -294,7 +299,7 @@ def test_chat_auto_skips_ollama_after_slow_mark(monkeypatch):
         if provider == "openrouter":
             router.last_provider = "openrouter"
             router.last_model = config.OPENROUTER_MODEL
-            return "ok"
+            return _chat_result("ok", provider="openrouter", model=config.OPENROUTER_MODEL)
         raise RuntimeError(f"unexpected provider {provider}")
 
     monkeypatch.setattr(router, "_chat_with_provider", fake_chat_with_provider)
@@ -393,7 +398,7 @@ def test_chat_retries_ollama_after_cloud_failures_when_ollama_slow(monkeypatch):
             router.last_provider = "ollama"
             router.last_model = config.OLLAMA_MODEL
             router._ollama_slow = False
-            return "local ok"
+            return _chat_result("local ok", provider="ollama", model=config.OLLAMA_MODEL)
         raise RuntimeError(f"unexpected provider {provider}")
 
     monkeypatch.setattr(router, "_chat_with_provider", fake_chat_with_provider)
@@ -438,7 +443,7 @@ def test_chat_falls_back_to_ollama_when_cursor_fails(monkeypatch):
         if provider == "ollama":
             router.last_provider = "ollama"
             router.last_model = config.OLLAMA_MODEL
-            return "ollama fallback"
+            return _chat_result("ollama fallback", provider="ollama", model=config.OLLAMA_MODEL)
         raise RuntimeError(f"unexpected provider {provider}")
 
     monkeypatch.setattr(router, "_chat_with_provider", fake_chat_with_provider)
@@ -475,3 +480,27 @@ def test_format_last_source():
     assert router.format_last_source() == "openrouter/anthropic/claude-sonnet-4"
     router.last_model = None
     assert router.format_last_source() == "openrouter"
+
+
+def test_chat_with_meta_returns_provider_and_model(monkeypatch):
+    from localagent.model_servers import ModelServer
+
+    router = ModelRouter()
+    server = ModelServer(provider="openai", api_key="k", model="gpt-4o-mini")
+
+    def fake_chat_with_provider(provider, messages, **kwargs):
+        model_override = kwargs.get("model_override")
+        model = model_override or server.model
+        return ChatResult(text="hello", provider=provider, model=model)
+
+    monkeypatch.setattr(router, "_server", lambda p: server if p == "openai" else None)
+    monkeypatch.setattr(router, "_chat_with_provider", fake_chat_with_provider)
+
+    result = router.chat_with_meta(
+        [ChatMessage(role="user", content="hi")],
+        prefer="openai",
+        model="gpt-4o",
+    )
+    assert result.text == "hello"
+    assert result.provider == "openai"
+    assert result.model == "gpt-4o"
