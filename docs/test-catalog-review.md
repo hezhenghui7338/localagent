@@ -1,10 +1,10 @@
 # LocalAgent 测试用例审查目录
 
-> 更新于 **2026-07-18** · E2E 离线约 **130+** 条（含 journeys/pending/websearch/safety/graph/**perf**）· 默认 `pytest` 含 STM · **pytest-xdist** `-n auto` 并行 · CI 另跑 `e2e-offline`（perf 串行）
+> 更新于 **2026-07-25** · E2E 离线约 **130+** 条（含 journeys/summarize/news/aware/**perf**）· 默认 `pytest` 含 STM · **pytest-xdist** `-n auto` 并行 · CI 另跑 `e2e-offline` + **`prd-smoke`**（矩阵 / LoCoMo tiny / eval smoke）
 >
 > 建议审查顺序：Config/Models → Memory → Agent/Tools → Ingest/Tasks → CLI/UX → Audit → E2E → Benchmark
 >
-> **验收真源**：[`docs/PRD.md`](PRD.md) §6 + [`examples/product-tour.zh-CN.md`](../examples/product-tour.zh-CN.md) 验收清单（本目录为用例索引，非完整验收矩阵）。
+> **验收真源**：[`docs/acceptance-matrix.yaml`](acceptance-matrix.yaml)（SSOT）· [`docs/PRD.md`](PRD.md) §6 · [`examples/product-tour.zh-CN.md`](../examples/product-tour.zh-CN.md) 验收清单（本目录为用例索引；PRD 映射段由 `python -m benchmarks.prd.report_matrix --sync-catalog` 生成）。
 
 ## 分类概览
 
@@ -21,23 +21,44 @@
 
 ## PRD §6 ↔ E2E 映射（三支柱）
 
+> **自动生成** — 源文件 [`docs/acceptance-matrix.yaml`](../docs/acceptance-matrix.yaml)；运行 `python -m benchmarks.prd.report_matrix --sync-catalog` 刷新本段。
+
 | 验收项 | 主要自动化 | 状态 |
 |--------|------------|------|
-| **§6.1 Local First** 安装/配置/chat | `test_la_ops` version/config/setup/chat help；banner 三板斧 `test_ui` | ✅ offline |
-| **§6.2 Memory Forever** 跨会话 Warm | `test_la_journeys.test_journey_cross_session_warm_recall`；live chat 召回 | ✅ / live |
-| §6.2 pending 确认门 | `test_la_pending` | ✅ |
-| §6.2 Cold 先于 Warm | `test_la_journeys` chatgpt/chat cold；收紧的 ingest 断言 | ✅ |
-| §6.2 rag 不写 Warm | `test_journey_rag_does_not_create_warm` | ✅ |
-| §6.2 reset 清 Cold 对话块 | `test_journey_reset_chatgpt_clears_cold_archive` | ✅ |
-| **§6.3 Actions** websearch / 不入库 | `test_la_websearch` | ✅ |
-| §6.3 危险硬拦 / 审批 / 幻觉 | `test_la_safety` | ✅ |
-| §6.3 无意图预检 | `test_e2e_safety_no_intent_precheck_before_tools` | ✅ |
-| §6.3 Action receipt / approve-once | `test_approval`（receipt · SessionApprovalGate · session_preapproved） | ✅ |
-| §6.3 Daily Actions / `la status` | `test_daily_status` | ✅ |
-| §6.3 audit HTML | `test_journey_audit_report_html` | ✅ |
-| 可选 Neo4j `memory://` | `test_la_graph` | ✅ P2 |
-| Observe / STM | unit + `test_stm_benchmark`（非 CLI e2e） | ✅ CI |
-
+| **§6.1** pipx 安装后 la --version 正确 | `test_e2e_version` | ✅ |
+| **§6.1** 源码 dev 安装可跑测试 | `tests/test_env_config.py` | ✅ |
+| **§6.1** la config 可配置多 provider | `test_e2e_config_list` | ✅ |
+| **§6.1** la setup / la chat help 可引导 | `test_e2e_setup_skip` | ✅ |
+| **§6.2** Hot/Warm 跨会话可召回 | `test_journey_cross_session_warm_recall` | ✅ |
+| **§6.2** pending 确认门可用 | `test_e2e_pending_approve_writes_warm` | ✅ |
+| **§6.2** Cold 先于 Warm；ingest chatgpt/chat 可 rag 命 | `test_journey_chatgpt_cold_before_warm` | ✅ |
+| **§6.2** ingest doc 仅索引 Cold，不产生 Warm | `test_journey_rag_does_not_create_warm` | ✅ |
+| **§6.2** reset chatgpt 清除 Cold 归档 | `test_journey_reset_chatgpt_clears_cold_archive` | ✅ |
+| **§6.2** 对话持久化到 data/conversations/ | `tests/test_chat.py` | ✅ |
+| **§6.2** cross-encoder rerank 可选且 graceful 回退 | `tests/test_cold_rerank.py` | ✅ |
+| **§6.2** STM 路由/召回门槛 | `tests/test_stm_benchmark.py` | ✅ |
+| **§6.2** LoCoMo 长期记忆 recall 回归 | `python -m benchmarks.locomo.ci_smoke` | ✅ |
+| **§6.3** 联网搜索默认 ddgs；不写 Warm | `test_e2e_websearch_without_tavily_key_does_not_w` | ✅ |
+| **§6.3** 危险命令硬拦截 | `test_e2e_safety_blocks_rm_rf_root` | ✅ |
+| **§6.3** 工具确认门与无审批拒绝 | `test_e2e_safety_denies_without_approval_callback` | ✅ |
+| **§6.3** 声称写入未调用 write_file 时重试/报错 | `test_e2e_safety_write_hallucination_retries` | ✅ |
+| **§6.3** 不向用户做意图预检追问 | `test_e2e_safety_no_intent_precheck_before_tools` | ✅ |
+| **§6.3** LA workspace 摘要与托管待办 | `test_e2e_workspace_summary` | ✅ |
+| **§6.3** LA audit token/费用与 HTML 报告 | `test_journey_audit_report_html` | ✅ |
+| **§6.3** la summarize 速读卡；启发式含 〔§/p.〕；默认不入库 | `test_journey_summarize_default_not_kept` | ✅ |
+| **§6.3** la ocr 输出原文；未安装时有清晰错误 | `tests/test_ocr.py` | ✅ |
+| **§6.3** la news sync/brief 含原文链接 | `test_journey_news_sync_and_brief` | ✅ |
+| **§6.3** la polish 识别 Brief + 主推/备选 | `test_journey_polish_heuristic_report` | ✅ |
+| **§6.3** Aware opt-in；suggestion 不自动写 Cold/kb | `test_journey_aware_grant_tick_no_auto_kb` | ✅ |
+| **§6.3** Action receipt 含工具与路径摘要 | `test_action_receipt_helpers` | ✅ |
+| **§6.3** Session approve-once 同类安全操作少确认 | `tests/test_approval.py` | ✅ |
+| **§6.3** Daily Actions + la status 数据层摘要 | `test_perf_daily_status` | ✅ |
+| **§6.3** Turn status 行与 trace/audit 可观测 | `tests/test_agent_runtime.py` | ✅ |
+| **§6.3** Milestone planner 多步 receipt ✓/○ | `test_e2e_planner_milestone_multi_step` | ✅ |
+| **§6.3** 同 session 继续/下一步续跑 milestone | `test_e2e_planner_session_resume` | ✅ |
+| **§6.3** MCP 配置后 la mcp list 可见 | `test_e2e_mcp_list_disabled` | ✅ |
+| **§6.3** chat 内「记住 xxx」直写记忆 | `test_explicit_remember_writes_memory_and_pins_pr` | ✅ |
+| **§6.3** 场景化 eval（hard + LLM judge） | `python -m benchmarks.eval run --tier smoke` | ✅ |
 ## E2E 核心命令覆盖（目标 ≥3）
 
 子进程真实调用 `python -m localagent.cli`（`tests/e2e/`，marker: `e2e` / `e2e_live`）。
@@ -69,6 +90,10 @@
 | `config` | 5 | ✅ |
 | `setup` | 3 | ✅ |
 | `chat` | 9+ | ✅ |
+| `summarize` | 3+ | ✅ |
+| `news` | 2+ | ✅ |
+| `polish` | 2+ | ✅ |
+| `aware` | 3+ | ✅ |
 
 **E2E 文件分工**
 
@@ -79,7 +104,7 @@
 | `e2e/test_la_rag.py` | Cold：add / ingest / search / status / reset / rebuild |
 | `e2e/test_la_ops.py` | chat / config / workspace / audit / setup / tasks 运维 |
 | `e2e/test_la_completion.py` | Tab 补全 |
-| `e2e/test_la_journeys.py` | PRD 旅程：跨会话 / Cold-first / rag 边界 / reset Cold / audit HTML |
+| `e2e/test_la_journeys.py` | PRD 旅程：Memory / Actions（summarize / news / polish / aware / audit HTML 等） |
 | `e2e/test_la_pending.py` | pending / approve / reject 确认门 |
 | `e2e/test_la_websearch.py` | websearch CLI + 不入库 |
 | `e2e/test_la_safety.py` | 护栏 / 审批 / 幻觉 / 无意图预检 |
@@ -127,13 +152,15 @@ LA_E2E_BUDGETS=0 pytest tests/e2e/test_la_perf.py -m e2e -n0  # 关闭预算断�
 | `perf_summarize_heuristic` | `summarize --no-chat --heuristic` | 10 |
 | `perf_audit_report` | `audit --report` | 10 |
 | `perf_rag_add_small` | `rag add` 小文件 | 15 |
-| `perf_polish_offline` | `polish` | skip（无稳定离线改写路径） |
+| `perf_polish_offline` | `polish --heuristic --no-copy` | 15 |
+| `perf_news_sync` | `news sync --url`（fixture RSS） | 15 |
+| `perf_aware_tick` | `aware tick --heuristic` | 15 |
 | `perf_memory_reindex` | `memory reindex` | 20 |
 | `perf_rag_rebuild` | `rag rebuild` | 20 |
 | `perf_rag_bg_task` | `wait_for_task` 完成 | 30 |
 | `perf_memory_ingest_chat` | `memory ingest chat` | 30 |
 
-**不做硬失败**：live / 真模型对话、`reflect`、外网 `websearch`、`news sync`、`setup` 拉模型。
+**不做硬失败**：live / 真模型对话、`reflect`、外网 `websearch`、`setup` 拉模型。
 
 ## Config/Models
 

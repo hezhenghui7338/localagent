@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from localagent.i18n import t
+from localagent.tzutil import to_local_dt
 
 _SKIP_DIR_NAMES = frozenset(
     {
@@ -225,8 +226,9 @@ def recent_files(
     results: list[dict[str, Any]] = []
     for mtime, path in found[:limit]:
         rel = path.relative_to(root).as_posix()
-        modified = datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
-        results.append({"path": rel, "modified": modified})
+        modified = to_local_dt(datetime.fromtimestamp(mtime, tz=timezone.utc))
+        modified_str = modified.strftime("%Y-%m-%d %H:%M") if modified else ""
+        results.append({"path": rel, "modified": modified_str})
     return results
 
 

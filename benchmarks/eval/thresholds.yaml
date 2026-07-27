@@ -1,0 +1,6 @@
+# Per-scenario pass thresholds (optional overrides)
+defaults:
+  hard_required: true
+  soft_min_score: 4
+
+scenarios: {}

@@ -13,6 +13,7 @@ from localagent.news.profile import load_news_profile, save_news_profile
 from localagent.news.read import read_article
 from localagent.news.schedule import disable_schedule, enable_schedule, schedule_status
 from localagent.news.store import NewsStore, load_sync_state
+from localagent.tzutil import local_today
 from localagent.news.sync import sync_news
 
 
@@ -45,7 +46,7 @@ def _open_brief(args: argparse.Namespace, *, no_ui: bool | None = None) -> int:
 
     from localagent.news.browser import run_news_browser, should_enter_news_browser
 
-    day = getattr(args, "date", None) or date.today().isoformat()
+    day = getattr(args, "date", None) or local_today().isoformat()
     limit = getattr(args, "limit", None)
     plain = bool(getattr(args, "plain", False))
     if no_ui is None:

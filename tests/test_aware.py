@@ -111,7 +111,50 @@ def test_timewin_period_and_span(monkeypatch: pytest.MonkeyPatch) -> None:
     assert format_period_span(start, end).startswith(period_label(start))
 
 
-def test_infer_query_window() -> None:
+def test_timewin_utc_display_shanghai(monkeypatch: pytest.MonkeyPatch) -> None:
+    from localagent.i18n import reset_lang_cache
+    from localagent.tzutil import reset_tz_cache
+
+    monkeypatch.setenv("LA_LANG", "zh")
+    monkeypatch.setenv("LA_TZ", "Asia/Shanghai")
+    reset_lang_cache()
+    reset_tz_cache()
+    start = "2026-07-25T09:48:00+00:00"
+    end = "2026-07-25T11:50:00+00:00"
+    span = format_period_span(start, end)
+    assert "17:48" in span
+    assert "19:50" in span
+    assert "上午" not in span
+    assert period_label(start) in {"下午", "傍晚", "晚上"}
+
+
+def test_stamp_episode_utc_signals_shanghai(monkeypatch: pytest.MonkeyPatch) -> None:
+    from localagent.aware.episode import AwareEpisode, stamp_episode_time_signals
+    from localagent.tzutil import reset_tz_cache
+
+    monkeypatch.setenv("LA_TZ", "Asia/Shanghai")
+    reset_tz_cache()
+    ep = AwareEpisode(
+        id="utc1",
+        scene="browser",
+        start="2026-07-25T09:48:00+00:00",
+        end="2026-07-25T11:50:00+00:00",
+        duration_min=135,
+        source="apps",
+        title="Google Chrome",
+        signals={"engagement": "engage"},
+    )
+    stamp_episode_time_signals(ep)
+    assert ep.signals.get("local_day") == "2026-07-25"
+    assert ep.signals.get("period") == "afternoon"
+    assert ep.signals.get("tz_offset_min") == 480
+
+
+def test_infer_query_window(monkeypatch) -> None:
+    monkeypatch.setenv("LA_TZ", "Asia/Shanghai")
+    from localagent.tzutil import reset_tz_cache
+
+    reset_tz_cache()
     from localagent.aware.timewin import infer_query_window, period_key
 
     now = infer_query_window("你知道我现在在听什么歌吗")
@@ -135,7 +178,11 @@ def test_infer_query_window() -> None:
     assert period_key("2026-07-18T22:00:00+08:00") == "night"
 
 
-def test_episode_time_signals_and_rollup(aware_home: Path) -> None:
+def test_episode_time_signals_and_rollup(aware_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from localagent.tzutil import reset_tz_cache
+
+    monkeypatch.setenv("LA_TZ", "Asia/Shanghai")
+    reset_tz_cache()
     from localagent.aware.episode import (
         AwareEpisode,
         append_episodes,
@@ -488,6 +535,10 @@ def test_aware_cli_detail_flag() -> None:
     assert no_chat.no_chat is True
     tick_nc = p.parse_args(["aware", "tick", "--no-chat"])
     assert tick_nc.no_chat is True
+    heur = p.parse_args(["aware", "--no-chat", "--heuristic"])
+    assert heur.heuristic is True
+    tick_heur = p.parse_args(["aware", "tick", "--no-chat", "--heuristic"])
+    assert tick_heur.heuristic is True
 
 
 def test_build_episodes_from_fs_and_terminal(aware_home: Path) -> None:

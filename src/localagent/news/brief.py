@@ -9,6 +9,7 @@ from localagent.news.links import hyperlink
 from localagent.news.profile import NewsProfile, load_news_profile
 from localagent.news.rank import RankedArticle, rank_articles
 from localagent.news.store import Article, NewsStore
+from localagent.tzutil import local_today
 
 
 def _truncate_chars(text: str, limit: int) -> str:
@@ -112,7 +113,7 @@ def format_brief(
     brief_date: str | None = None,
     plain_links: bool = False,
 ) -> str:
-    day = brief_date or date.today().isoformat()
+    day = brief_date or local_today().isoformat()
     lines = [
         t("news.brief_title", day=day),
         "",
@@ -156,7 +157,7 @@ def build_brief(
 ) -> tuple[str, list[RankedArticle]]:
     store = store or NewsStore()
     profile = profile or load_news_profile()
-    day = since_date or date.today().isoformat()
+    day = since_date or local_today().isoformat()
     # Pull a wider pool then rank down
     pool_limit = max(80, (limit or profile.daily_brief_size) * 4)
     articles = store.list_recent(since_date=day, limit=pool_limit)

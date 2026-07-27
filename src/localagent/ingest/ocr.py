@@ -41,21 +41,41 @@ class OcrDocumentResult:
         return len(self.pages)
 
 
-def ocr_install_hint() -> str:
-    return (
-        f"启用本地 OCR：pip install '{_OCR_EXTRA}' 并在 .env 设置 LA_OCR_ENABLED=1"
-    )
+def ocr_install_hint(*, enabled: bool | None = None) -> str:
+    ocr_on = config.OCR_ENABLED if enabled is None else enabled
+    install = f"pip install '{_OCR_EXTRA}'"
+    if ocr_on:
+        return f"请安装 OCR 可选依赖（rapidocr、onnxruntime、pymupdf）：{install}"
+    return f"启用本地 OCR：{install} 并在 .env 设置 LA_OCR_ENABLED=1"
+
+
+def _ensure_fitz() -> None:
+    try:
+        import fitz  # noqa: F401
+    except ImportError as exc:
+        raise RuntimeError(
+            f"PyMuPDF missing ({exc}). {ocr_install_hint()}"
+        ) from exc
 
 
 def ocr_available() -> bool:
     """Return True when OCR is enabled and optional deps import cleanly."""
+    return ocr_dependency_warning() is None and config.OCR_ENABLED
+
+
+def ocr_dependency_warning() -> str | None:
+    """Return a user-facing warning when OCR is enabled but deps are incomplete."""
     if not config.OCR_ENABLED:
-        return False
+        return None
     try:
         _ensure_engine()
-    except RuntimeError:
-        return False
-    return True
+    except RuntimeError as exc:
+        return str(exc)
+    try:
+        _ensure_fitz()
+    except RuntimeError as exc:
+        return str(exc)
+    return None
 
 
 def _tier_model_type():
@@ -174,12 +194,8 @@ def ocr_pdf(
     if not path.is_file():
         raise RuntimeError(f"PDF not found: {path}")
 
-    try:
-        import fitz
-    except ImportError as exc:
-        raise RuntimeError(
-            f"PyMuPDF missing ({exc}). {ocr_install_hint()}"
-        ) from exc
+    _ensure_fitz()
+    import fitz
 
     render_dpi = dpi if dpi is not None else config.OCR_PDF_DPI
     engine = _ensure_engine()

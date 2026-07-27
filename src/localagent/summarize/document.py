@@ -5,7 +5,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
 from localagent import config
+
+if TYPE_CHECKING:
+    from localagent.summarize.segment_reader import ReadingProgress
 from localagent.audit.security import is_sensitive_path, sensitive_path_reason
 from localagent.ingest.chunker import split_into_sections
 from localagent.ingest.loader import LoadedDoc, explain_load_failure, load_file
@@ -54,6 +59,8 @@ class SummarizeResult:
     ocr_used: bool = False
     ocr_pages: int | None = None
     ocr_confidence_avg: float | None = None
+    segment_mode: bool = False
+    reading_progress: ReadingProgress | None = None
 
     def render(self) -> str:
         return self.markdown
@@ -73,7 +80,7 @@ def _suffix_ok(path: Path) -> bool:
 def _summarize_reject_reason(path: Path) -> str | None:
     suffix = path.suffix.lower()
     if suffix in config.IMAGE_SUFFIXES:
-        return f"图片请使用 la ocr {path}；summarize 仅支持文档（.txt / .md / .pdf / .xlsx）"
+        return f"图片请使用 la ocr {path}；summarize 仅支持文档（.txt / .md / .pdf / .xlsx / .mobi / .epub）"
     if not _suffix_ok(path):
         supported = ", ".join(sorted(config.SUMMARIZE_SUFFIXES))
         return f"不支持的文件类型 {suffix!r}；支持: {supported}"
@@ -282,6 +289,7 @@ def summarize_loaded(
     *,
     use_llm: bool = True,
     allow_long: bool = False,
+    refresh_cache: bool = False,
 ) -> SummarizeResult:
     annotated = _annotate_for_cite(doc)
     char_count = len(annotated)
@@ -291,17 +299,59 @@ def summarize_loaded(
             f"文档约 {char_count} 字，超出短总结上限（{config.SUMMARIZE_SHORT_MAX_CHARS}）。"
             "请拆成章节后重试，或提高 LA_SUMMARIZE_SHORT_MAX_CHARS。"
         )
+    segment_mode = False
+    reading_progress = None
     if char_count > config.SUMMARIZE_SHORT_MAX_CHARS and allow_long:
-        warnings.append(
-            f"文档约 {char_count} 字，速读卡基于截断输入；深聊将按片段检索全文"
+        from localagent.summarize.segment_reader import (
+            init_reading_progress,
+            should_use_segment_mode,
         )
-        annotated_for_card = annotated[: config.SUMMARIZE_LLM_INPUT_CHARS]
+
+        if should_use_segment_mode(char_count):
+            segment_mode = True
+            from localagent.i18n import t
+
+            source = Path(doc.source).expanduser().resolve()
+            reading_progress, cache_info = init_reading_progress(
+                annotated,
+                filename=doc.filename,
+                source_path=source,
+                char_count=char_count,
+                use_llm=use_llm,
+                refresh_cache=refresh_cache,
+            )
+            total = reading_progress.total
+            warnings.append(f"文档约 {char_count} 字，已开启逐段阅读（1/{total}）")
+            if cache_info and cache_info.loaded:
+                md = str(cache_info.md_path or "")
+                warnings.append(
+                    t(
+                        "summarize.cache_loaded",
+                        done=cache_info.done_count,
+                        total=cache_info.total,
+                        path=md,
+                    )
+                )
+            annotated_for_card = reading_progress.current.text
+        else:
+            warnings.append(
+                f"文档约 {char_count} 字，速读卡基于截断输入；深聊将按片段检索全文"
+            )
+            annotated_for_card = annotated[: config.SUMMARIZE_LLM_INPUT_CHARS]
     else:
         annotated_for_card = annotated
 
     ocr_warnings = doc.metadata.get("ocr_warnings")
     if isinstance(ocr_warnings, list):
         warnings.extend(str(item) for item in ocr_warnings if str(item).strip())
+    from localagent.ingest.encoding import encoding_quality_warning
+
+    enc_warning = encoding_quality_warning(
+        doc.text or "",
+        confidence=str(doc.metadata.get("encoding_confidence") or "high"),
+    )
+    if enc_warning:
+        warnings.append(enc_warning)
     ocr_used = bool(doc.metadata.get("ocr_used"))
     ocr_pages_raw = doc.metadata.get("ocr_pages")
     ocr_pages = int(ocr_pages_raw) if isinstance(ocr_pages_raw, int) else None
@@ -310,7 +360,13 @@ def summarize_loaded(
 
     used_llm = False
     markdown: str | None = None
-    if use_llm:
+    if segment_mode and reading_progress is not None:
+        markdown = reading_progress.current_summary()
+        used_llm = use_llm and "## 结构化要点" in (markdown or "")
+        if not markdown:
+            markdown = _heuristic_summary(annotated_for_card, filename=doc.filename)
+            warnings.append("模型摘要不可用，已使用本地启发式摘要")
+    elif use_llm:
         markdown = _llm_summarize(annotated_for_card, filename=doc.filename)
         if markdown:
             used_llm = True
@@ -338,7 +394,8 @@ def summarize_loaded(
 
     if not markdown:
         markdown = _heuristic_summary(annotated_for_card, filename=doc.filename)
-        warnings.append("模型摘要不可用，已使用本地启发式摘要")
+        if not segment_mode:
+            warnings.append("模型摘要不可用，已使用本地启发式摘要")
 
     markdown, cite_warnings = ensure_citations(markdown)
     warnings.extend(cite_warnings)
@@ -361,6 +418,8 @@ def summarize_loaded(
         ocr_used=ocr_used,
         ocr_pages=ocr_pages,
         ocr_confidence_avg=ocr_confidence_avg,
+        segment_mode=segment_mode,
+        reading_progress=reading_progress,
     )
 
 
@@ -369,6 +428,7 @@ def summarize_path(
     *,
     keep: bool = False,
     use_llm: bool = True,
+    refresh_cache: bool = False,
 ) -> SummarizeResult:
     source = Path(path).expanduser().resolve()
     if not source.exists() or not source.is_file():
@@ -386,7 +446,7 @@ def summarize_path(
     if doc is None:
         raise SummarizeError(explain_load_failure(source))
 
-    result = summarize_loaded(doc, use_llm=use_llm, allow_long=True)
+    result = summarize_loaded(doc, use_llm=use_llm, allow_long=True, refresh_cache=refresh_cache)
 
     try:
         from localagent.summarize.session_index import (
@@ -428,6 +488,9 @@ def summarize_document_tool(path: str, *, keep: bool = False, cwd: str | None = 
         return f"错误: 总结失败: {exc}"
 
     parts = [result.markdown.rstrip(), ""]
+    if result.segment_mode and result.reading_progress is not None:
+        total = result.reading_progress.total
+        parts.append(f"（文档共 {total} 段；交互阅读请用 la summarize 进入 sum>，/next 继续）")
     if result.warnings:
         parts.append("（" + "；".join(result.warnings) + "）")
     if result.kept:

@@ -36,3 +36,6 @@ benchmarks/data/runs/
 .wrangler
 .dev.vars*
 !.dev.vars.example
+
+# Version eval reports (CI artifacts; generate locally via la eval report)
+reports/

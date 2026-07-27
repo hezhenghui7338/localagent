@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-from datetime import date
 from typing import Any
 
 from localagent.context.prompts import system_prompt_template
 from localagent.memory.core_profile import load_core_profile
 from localagent.tools import TOOL_DEFINITIONS
 from localagent.tools.web_search import today_label
+from localagent.tzutil import local_today
 
 
 def build_system_prompt(
@@ -31,7 +31,7 @@ def build_system_prompt(
         ensure_ascii=False,
         indent=2,
     )
-    today = date.today()
+    today = local_today()
     today_text = f"{today_label(today)}（{today.isoformat()}）"
     profile = load_core_profile().format_for_prompt()
     prompt = (

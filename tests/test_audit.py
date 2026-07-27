@@ -44,6 +44,24 @@ def test_memory_health_counts(isolated_data):
     assert health.memory_facts == 0
 
 
+def test_memory_health_notes_ocr_dependency_gap(isolated_data, monkeypatch):
+    import builtins
+
+    monkeypatch.setattr("localagent.config.OCR_ENABLED", True)
+    monkeypatch.setattr("localagent.ingest.ocr._ensure_engine", lambda: object())
+    real_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "fitz":
+            raise ImportError("No module named 'fitz'")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    health = collect_memory_health()
+    assert any("PyMuPDF missing" in note for note in health.notes)
+
+
 def test_generate_report(isolated_data, monkeypatch):
     monkeypatch.setenv("LA_LANG", "zh")
     reset_lang_cache()

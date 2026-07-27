@@ -1,0 +1,9 @@
+{
+  "overall": {
+    "n": 3,
+    "hit@1": 0.3333,
+    "hit@5": 1.0,
+    "hit@8": 1.0
+  },
+  "sample_id": "conv-tiny"
+}

@@ -1,0 +1,55 @@
+name: Nightly Eval
+
+on:
+  schedule:
+    - cron: "0 17 * * *" # 01:00 UTC+8
+  workflow_dispatch:
+
+jobs:
+  nightly-full:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install (dev)
+        run: uv sync --extra dev
+      - name: PRD matrix full report
+        run: uv run python -m benchmarks.prd.report_matrix --out reports/nightly-prd-matrix.md
+      - name: LoCoMo tiny smoke
+        run: uv run python -m benchmarks.locomo.ci_smoke
+        env:
+          LA_MEMORY_BACKEND: json
+          LA_MEM0_EMBEDDER_PROVIDER: hash
+          LA_INGEST_USE_LLM: "0"
+          LA_NEO4J: "0"
+          LA_MEMORY_GRAPH: "0"
+          LA_MEMORY_RERANK: "0"
+      - name: Scenario eval (full, judge skipped in CI)
+        run: uv run python -m benchmarks.eval run --tier full --report reports/nightly-eval.json
+        env:
+          LA_EVAL_SKIP_JUDGE: "1"
+          LA_MEMORY_BACKEND: json
+          LA_MEM0_EMBEDDER_PROVIDER: hash
+          LA_INGEST_USE_LLM: "0"
+      - name: Action planner benchmark (offline contract)
+        run: uv run python benchmarks/action/run.py || true
+        continue-on-error: true
+      - name: Unified eval report
+        run: uv run python -m benchmarks.report --tier nightly --out reports/nightly-eval.html --format html
+        env:
+          LA_EVAL_SKIP_JUDGE: "1"
+          LA_MEMORY_BACKEND: json
+          LA_MEM0_EMBEDDER_PROVIDER: hash
+          LA_INGEST_USE_LLM: "0"
+          LA_NEO4J: "0"
+          LA_MEMORY_GRAPH: "0"
+          LA_MEMORY_RERANK: "0"
+      - name: Upload nightly eval artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-eval-report
+          path: reports/
+          if-no-files-found: error

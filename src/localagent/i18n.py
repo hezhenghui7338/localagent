@@ -862,6 +862,70 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
             "[summarize] 本地 Ollama 响应过慢，已自动切换 {provider}"
         ),
         "summarize.read_fail": "无法读取文件: {path}",
+        "summarize.segment_mode_on": (
+            "[summarize] 逐段阅读 {current}/{total} · 当前段: {heading} · 约 {chars} 字"
+        ),
+        "summarize.segment_header": (
+            "[summarize] 第 {current}/{total} 段 · {heading} · 约 {chars} 字"
+        ),
+        "summarize.segment_next_hint": (
+            "[summarize] 输入 /next 或「继续」读下一段；直接提问则围绕当前段回答。"
+        ),
+        "summarize.segment_compressed": "[summarize] 已读段摘要已压缩进上下文。",
+        "summarize.segment_loading": "加载下一段…",
+        "summarize.segment_at_end": "[summarize] 已是最后一段。",
+        "summarize.segment_at_start": "[summarize] 已是第一段。",
+        "summarize.segment_goto_usage": "[summarize] 用法: /goto N（N 为 1 到总段数）",
+        "summarize.segment_progress": (
+            "[summarize] 进度 {current}/{total} · {heading} · 索引 {cite}"
+        ),
+        "summarize.segment_read_count": "[summarize] 已完整阅读 {n} 段（不含当前段）",
+        "summarize.segment_remaining": "[summarize] 剩余 {n} 段未读",
+        "summarize.help_segment": "  /segment         重新显示当前段速读卡",
+        "summarize.help_next": "  /next, /n        读下一段（或输入「继续」）",
+        "summarize.help_prev": "  /prev, /p        回到上一段",
+        "summarize.help_goto": "  /goto N, /g N    跳转到第 N 段",
+        "summarize.help_progress": "  /progress        显示逐段阅读进度",
+        "summarize.segment_not_ready": "[summarize] 该段摘要尚未就绪，请稍候",
+        "summarize.browser_header": (
+            "[summarize] 逐段阅读 · {filename} · {done}/{total} 已摘要"
+        ),
+        "summarize.browser_help": (
+            "[/] 切换段 · ↑↓ 滚动详情 · Enter/r 深聊 · s 暂停摘要 · q 退出 · ? 帮助"
+        ),
+        "summarize.browser_scroll_hint": "PageDown/Space 翻页 · [/] 切换段",
+        "summarize.browser_detail_above": "（上方还有 {n} 行）",
+        "summarize.browser_detail_more": "（下方还有 {n} 行 · PageDown 继续）",
+        "summarize.cache_loaded": (
+            "[summarize] 已从缓存加载 {done}/{total} 段摘要 · cache: {path}"
+        ),
+        "summarize.cache_path": "[summarize] 段摘要缓存: {path}",
+        "summarize.cache_refresh": "[summarize] 已忽略段摘要缓存，重新摘要",
+        "summarize.browser_enter": (
+            "[summarize] 进入逐段阅读浏览器（↑↓ 浏览，Enter 深聊）"
+        ),
+        "summarize.browser_back": "[summarize] 返回段列表",
+        "summarize.browser_pending": "摘要待生成…",
+        "summarize.browser_running": "摘要生成中…",
+        "summarize.browser_failed": "摘要生成失败",
+        "summarize.browser_empty": "（无分段）",
+        "summarize.browser_empty_summary": "（暂无速读卡）",
+        "summarize.browser_chat_blocked": "本段摘要尚未就绪，请稍候",
+        "summarize.browser_reading": (
+            "[summarize] 深聊第 {current}/{total} 段 · {heading}"
+        ),
+        "summarize.browser_quit": "[summarize] 已退出逐段阅读",
+        "summarize.browser_chat_done": "深聊结束 · 继续 ↑↓ 浏览",
+        "summarize.browser_icon_done": "✓",
+        "summarize.browser_icon_running": "⟳",
+        "summarize.browser_icon_pending": "·",
+        "summarize.browser_icon_failed": "✗",
+        "summarize.browser_chars_suffix": "字",
+        "summarize.prefetch_status": "后台摘要: 运行中 · {done}/{total} 完成 · {active} 路进行中",
+        "summarize.prefetch_stopped": "后台摘要: 已暂停 · {done}/{total} 完成",
+        "summarize.prefetch_unavailable": "后台摘要不可用",
+        "summarize.prefetch_started_msg": "已恢复后台摘要",
+        "summarize.prefetch_stopped_msg": "已暂停后台摘要",
         "polish.scene": "场景={label}",
         "polish.audience": "读者={audience}",
         "polish.attitude": "态度={attitude}",
@@ -873,6 +937,7 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "polish.tag_alt": "【备选·{label}】",
         "polish.tag_changes": "【改动】",
         "polish.default_changes": "微调措辞与语气",
+        "polish.heuristic_changes": "启发式微调措辞（离线/测试）",
         "polish.unspecified": "未指定",
         "polish.status_model": "调用模型…",
         "polish.status_detect": "识别场景与态度…",
@@ -1859,6 +1924,70 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
             "[summarize] Local Ollama was slow; auto-switched to {provider}"
         ),
         "summarize.read_fail": "Cannot read file: {path}",
+        "summarize.segment_mode_on": (
+            "[summarize] Segmented read {current}/{total} · segment: {heading} · ~{chars} chars"
+        ),
+        "summarize.segment_header": (
+            "[summarize] Segment {current}/{total} · {heading} · ~{chars} chars"
+        ),
+        "summarize.segment_next_hint": (
+            "[summarize] Type /next or 继续 for the next segment; ask to focus on this segment."
+        ),
+        "summarize.segment_compressed": "[summarize] Prior segments compressed into context.",
+        "summarize.segment_loading": "Loading next segment…",
+        "summarize.segment_at_end": "[summarize] Already at the last segment.",
+        "summarize.segment_at_start": "[summarize] Already at the first segment.",
+        "summarize.segment_goto_usage": "[summarize] Usage: /goto N (N from 1 to total segments)",
+        "summarize.segment_progress": (
+            "[summarize] Progress {current}/{total} · {heading} · cite {cite}"
+        ),
+        "summarize.segment_read_count": "[summarize] Fully read {n} prior segment(s) (excluding current)",
+        "summarize.segment_remaining": "[summarize] {n} segment(s) remaining",
+        "summarize.help_segment": "  /segment         Show current segment brief again",
+        "summarize.help_next": "  /next, /n        Read next segment (or type 继续)",
+        "summarize.help_prev": "  /prev, /p        Go to previous segment",
+        "summarize.help_goto": "  /goto N, /g N    Jump to segment N",
+        "summarize.help_progress": "  /progress        Show segmented read progress",
+        "summarize.segment_not_ready": "[summarize] Segment summary not ready yet; please wait",
+        "summarize.browser_header": (
+            "[summarize] Segmented read · {filename} · {done}/{total} summarized"
+        ),
+        "summarize.browser_help": (
+            "[/] change segment · ↑↓ scroll detail · Enter/r chat · s toggle prefetch · q quit · ? help"
+        ),
+        "summarize.browser_scroll_hint": "PageDown/Space page · [/] change segment",
+        "summarize.browser_detail_above": "({n} lines above)",
+        "summarize.browser_detail_more": "({n} lines below · PageDown for more)",
+        "summarize.cache_loaded": (
+            "[summarize] Loaded {done}/{total} cached segment summaries · cache: {path}"
+        ),
+        "summarize.cache_path": "[summarize] Segment summary cache: {path}",
+        "summarize.cache_refresh": "[summarize] Ignoring segment cache; regenerating",
+        "summarize.browser_enter": (
+            "[summarize] Entering segment browser (↑↓ browse, Enter to chat)"
+        ),
+        "summarize.browser_back": "[summarize] Back to segment list",
+        "summarize.browser_pending": "Summary pending…",
+        "summarize.browser_running": "Summarizing…",
+        "summarize.browser_failed": "Summary failed",
+        "summarize.browser_empty": "(no segments)",
+        "summarize.browser_empty_summary": "(no brief yet)",
+        "summarize.browser_chat_blocked": "Segment summary not ready yet; please wait",
+        "summarize.browser_reading": (
+            "[summarize] Deep chat segment {current}/{total} · {heading}"
+        ),
+        "summarize.browser_quit": "[summarize] Left segment browser",
+        "summarize.browser_chat_done": "Chat ended · continue with ↑↓",
+        "summarize.browser_icon_done": "✓",
+        "summarize.browser_icon_running": "⟳",
+        "summarize.browser_icon_pending": "·",
+        "summarize.browser_icon_failed": "✗",
+        "summarize.browser_chars_suffix": " chars",
+        "summarize.prefetch_status": "Prefetch: running · {done}/{total} done · {active} active",
+        "summarize.prefetch_stopped": "Prefetch: paused · {done}/{total} done",
+        "summarize.prefetch_unavailable": "Background prefetch unavailable",
+        "summarize.prefetch_started_msg": "Background prefetch resumed",
+        "summarize.prefetch_stopped_msg": "Background prefetch paused",
         "polish.scene": "scene={label}",
         "polish.audience": "audience={audience}",
         "polish.attitude": "tone={attitude}",
@@ -1870,6 +1999,7 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "polish.tag_alt": "[Alt·{label}]",
         "polish.tag_changes": "[Changes]",
         "polish.default_changes": "Minor wording and tone tweaks",
+        "polish.heuristic_changes": "Heuristic wording tweak (offline/testing)",
         "polish.unspecified": "unspecified",
         "polish.status_model": "Calling model…",
         "polish.status_detect": "Detecting scene and tone…",

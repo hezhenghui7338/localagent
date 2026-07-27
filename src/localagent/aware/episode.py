@@ -1161,19 +1161,26 @@ def maybe_enqueue_active_hours_wellness() -> str | None:
     from localagent.aware.suggestion import enqueue, load_suggestions
 
     threshold = int(getattr(config, "AWARE_ACTIVE_HOURS_WELLNESS", 10) or 10)
-    start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    from localagent.tzutil import local_now, to_local_dt
+
+    local_midnight = local_now().replace(hour=0, minute=0, second=0, microsecond=0)
+    start = local_midnight.astimezone(timezone.utc)
     events = load_events(since=start, limit=2000)
     hours: set[int] = set()
     for e in events:
         dt = _parse_ts(e.ts)
         if dt:
-            hours.add(dt.astimezone().hour)
+            local = to_local_dt(dt)
+            if local:
+                hours.add(local.hour)
     # Also count episode hours
     for ep in load_episodes(since=start, limit=200):
         for key in (ep.start, ep.end):
             dt = _parse_ts(key)
             if dt:
-                hours.add(dt.astimezone().hour)
+                local = to_local_dt(dt)
+                if local:
+                    hours.add(local.hour)
     n = len(hours)
     if n < threshold:
         return None

@@ -11,8 +11,8 @@ echo "==> 数据目录: $LA_DATA_DIR"
 rm -rf "$LA_DATA_DIR"
 
 echo ""
-echo "==> 0/6 清空隔离 bank（不影响日常 data/）"
-LA memory reset --keep-knowledge
+echo "==> 0/6 初始化隔离 bank（rm -rf 已清空目录；reset 确保 Warm 后端就绪）"
+LA memory reset
 
 echo ""
 echo "==> 1/6 记忆后端诊断"
@@ -20,12 +20,12 @@ LA memory status
 
 echo ""
 echo "==> 2/6 写入决策演变链（6 条记忆）"
-LA memory add "2026年3月，开发者决定用 Python 重写个人助手，项目代号 LocalAgent"
-LA memory add "2026年5月，架构评审后放弃 SQLite，改用 Mem0 作为 Warm 层记忆引擎"
-LA memory add "2026年6月，团队曾考虑回退到 JSON 存储，因为外部记忆引擎过重"
-LA memory add "2026年7月，最终决定采用 Mem0：更轻、更快，reflect 由 search + 本地 LLM 模拟"
-LA memory add "技术偏好：所有个人数据必须留在 Mac 本地，不上传云端"
-LA memory add "LocalAgent 默认模型是 qwen3.5:4b，通过 Ollama 本地运行"
+LA ingest text "2026年3月，开发者决定用 Python 重写个人助手，项目代号 LocalAgent"
+LA ingest text "2026年5月，架构评审后放弃 SQLite，改用 Mem0 作为 Warm 层记忆引擎"
+LA ingest text "2026年6月，团队曾考虑回退到 JSON 存储，因为外部记忆引擎过重"
+LA ingest text "2026年7月，最终决定采用 Mem0：更轻、更快，reflect 由 search + 本地 LLM 模拟"
+LA ingest text "技术偏好：所有个人数据必须留在 Mac 本地，不上传云端"
+LA ingest text "LocalAgent 默认模型是 qwen3.5:4b，通过 Ollama 本地运行"
 
 echo ""
 echo "==> 3/6 语义 recall"

@@ -11,6 +11,7 @@ import httpx
 
 from localagent import config
 from localagent.audit.usage import log_usage
+from localagent.tzutil import local_today
 
 WEB_SEARCH_PROVIDERS = frozenset({"auto", "ddgs", "tavily", "searxng"})
 
@@ -131,13 +132,13 @@ def query_recency_mode(query: str) -> RecencyMode | None:
 
 def today_label(today: date | None = None) -> str:
     """Human-readable today stamp used in prompts and search output."""
-    d = today or date.today()
+    d = today or local_today()
     return f"{d.year}年{d.month}月{d.day}日"
 
 
 def query_target_date(query: str, *, today: date | None = None) -> date:
     """Calendar day the user is asking about (today, or tomorrow when markers match)."""
-    d = today or date.today()
+    d = today or local_today()
     if _has_any(query, _TOMORROW_MARKERS):
         return d + timedelta(days=1)
     return d
@@ -227,7 +228,7 @@ def augment_web_query(query: str, *, today: date | None = None) -> str:
     q = query.strip()
     if not q:
         return q
-    d = today or date.today()
+    d = today or local_today()
 
     if is_weather_query(q):
         target = query_target_date(q, today=d)
@@ -341,7 +342,7 @@ def extract_dates_from_text(text: str) -> list[date]:
     for match in _EN_MDY.finditer(text):
         month = _EN_MONTHS[match.group(1).lower()]
         day = int(match.group(2))
-        year = int(match.group(3)) if match.group(3) else date.today().year
+        year = int(match.group(3)) if match.group(3) else local_today().year
         _add(_safe_date(year, month, day))
     for match in _EN_Y_MON.finditer(text):
         month = _EN_MONTHS[match.group(2).lower()]
@@ -483,7 +484,7 @@ def format_search_output(
     today: date | None = None,
 ) -> str:
     """Normalize provider payloads into the agent-facing text block with freshness audit."""
-    as_of = today or date.today()
+    as_of = today or local_today()
     # Freshness is judged against the day the user asked about (e.g. 明天 → tomorrow).
     target = query_target_date(query, today=as_of) if query else as_of
     mode = query_recency_mode(query) if query else None

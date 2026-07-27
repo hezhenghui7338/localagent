@@ -66,6 +66,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
     if source == "all":
         source = None
     detail = bool(getattr(args, "detail", False))
+    use_llm = not bool(getattr(args, "heuristic", False))
     since_raw = getattr(args, "since", None)
     since: str | None = None
     mode = "now"
@@ -77,11 +78,20 @@ def _cmd_view(args: argparse.Namespace) -> int:
             return 1
         mode = "window"
         print(
-            format_view(mode="window", since=since, source=source, detail=detail),
+            format_view(
+                mode="window",
+                since=since,
+                source=source,
+                detail=detail,
+                use_llm=use_llm,
+            ),
             end="",
         )
     else:
-        print(format_view(mode="now", source=source, detail=detail), end="")
+        print(
+            format_view(mode="now", source=source, detail=detail, use_llm=use_llm),
+            end="",
+        )
 
     from localagent.aware.repl import run_aware_chat, should_enter_aware_chat
 
@@ -291,6 +301,7 @@ def _cmd_schedule(args: argparse.Namespace) -> int:
 def _cmd_tick(args: argparse.Namespace) -> int:
     source = getattr(args, "source", None) or None
     detail = bool(getattr(args, "detail", False))
+    use_llm = not bool(getattr(args, "heuristic", False))
     result = run_tick()
     if result.skipped:
         print(t("aware.tick_skipped", reason=result.skipped))
@@ -307,6 +318,7 @@ def _cmd_tick(args: argparse.Namespace) -> int:
             source=source,
             delta_events=result.events,
             detail=detail,
+            use_llm=use_llm,
         ),
         end="",
     )

@@ -1,0 +1,12 @@
+id: memory_cross_session_full
+setup:
+  commands:
+    - ["ingest", "text", "用户叫林晓，2026年7月在深圳定了产品路线。"]
+    - ["memory", "search", "林晓"]
+assertions:
+  hard:
+    - type: memory_search_hits
+      marker: "深圳"
+  soft:
+    - criterion: "检索结果准确引用已存储事实，无编造新地点或姓名"
+      min_score: 4

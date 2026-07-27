@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
+
 from localagent.i18n import reset_lang_cache
 from localagent.tone import (
     evening_active,
@@ -13,9 +15,19 @@ from localagent.tone import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _pin_la_tz(monkeypatch: pytest.MonkeyPatch) -> None:
+    from localagent.tzutil import reset_tz_cache
+
+    monkeypatch.setenv("LA_TZ", "Asia/Shanghai")
+    reset_tz_cache()
+
+
 def _local(hour: int, *, minute: int = 0) -> datetime:
-    """Build a timezone-aware datetime at the given local hour today."""
-    tz = datetime.now().astimezone().tzinfo or timezone.utc
+    """Build a timezone-aware datetime at the given LA_TZ wall-clock hour today."""
+    from localagent.tzutil import resolve_local_tz
+
+    tz = resolve_local_tz()
     now = datetime.now(tz)
     return now.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
@@ -75,6 +87,19 @@ def test_postscript_chat_zh_when_late(monkeypatch):
     assert "早点休息哦" in block
     assert "不要加" in block
     assert evening_postscript_block(surface="chat", now=_local(10)) == ""
+
+
+def test_evening_late_uses_la_tz(monkeypatch):
+    from localagent.tzutil import reset_tz_cache
+
+    monkeypatch.setenv("LA_TZ", "Asia/Shanghai")
+    reset_tz_cache()
+    monkeypatch.setattr("localagent.config.TONE_EVENING_START", 23)
+    monkeypatch.setattr("localagent.config.TONE_EVENING_END", 6)
+    utc_23_sh = datetime(2026, 7, 25, 15, 0, tzinfo=timezone.utc)
+    assert evening_late(utc_23_sh) is True
+    utc_10_sh = datetime(2026, 7, 25, 2, 0, tzinfo=timezone.utc)
+    assert evening_late(utc_10_sh) is False
 
 
 def test_postscript_aware_en_when_late(monkeypatch):

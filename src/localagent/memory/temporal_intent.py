@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any, Literal
 
 from localagent.memory.core_profile import CoreProfile
+from localagent.tzutil import local_now
 
 IntentKind = Literal["none", "as_of_now", "range", "when_event", "duration"]
 
@@ -119,9 +120,9 @@ _MONTH_NAME_TO_NUM = {
 
 def _parse_reference(reference_date: str | datetime | None) -> datetime:
     if reference_date is None:
-        return datetime.now()
+        return local_now().replace(tzinfo=None)
     if isinstance(reference_date, datetime):
-        return reference_date
+        return reference_date.replace(tzinfo=None) if reference_date.tzinfo else reference_date
     text = str(reference_date).strip()
     try:
         return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
@@ -130,7 +131,7 @@ def _parse_reference(reference_date: str | datetime | None) -> datetime:
     try:
         return datetime.strptime(text[:10], "%Y-%m-%d")
     except ValueError:
-        return datetime.now()
+        return local_now().replace(tzinfo=None)
 
 
 def _set_range(

@@ -7,6 +7,7 @@ from typing import Literal
 
 from localagent import config
 from localagent.i18n import t
+from localagent.tzutil import local_now, to_local_dt
 
 Surface = Literal["chat", "aware"]
 
@@ -21,11 +22,9 @@ def evening_enabled() -> bool:
 
 def evening_late(now: datetime | None = None) -> bool:
     """True when local clock is in the late-night window (crosses midnight)."""
-    dt = now if now is not None else datetime.now().astimezone()
-    if dt.tzinfo is None:
-        dt = dt.astimezone()
-    else:
-        dt = dt.astimezone()
+    dt = to_local_dt(now) if now is not None else local_now()
+    if dt is None:
+        dt = local_now()
     hour = dt.hour
     start = int(getattr(config, "TONE_EVENING_START", 23) or 23) % 24
     end = int(getattr(config, "TONE_EVENING_END", 6) or 6) % 24

@@ -71,3 +71,40 @@ jobs:
           LA_MEM0_EMBEDDER_PROVIDER: hash
           LA_INGEST_USE_LLM: "0"
           LA_PROFILE_PIN_LLM: "0"
+
+  prd-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install (dev)
+        run: uv sync --extra dev
+      - name: PRD acceptance matrix (critical)
+        run: uv run python -m benchmarks.prd.report_matrix --fail-on-critical --out reports/prd-matrix.md
+        env:
+          LA_SKIP_OLLAMA_SETUP: "1"
+      - name: LoCoMo tiny smoke
+        run: uv run python -m benchmarks.locomo.ci_smoke
+        env:
+          LA_MEMORY_BACKEND: json
+          LA_MEM0_EMBEDDER_PROVIDER: hash
+          LA_INGEST_USE_LLM: "0"
+          LA_NEO4J: "0"
+          LA_MEMORY_GRAPH: "0"
+          LA_MEMORY_RERANK: "0"
+      - name: Scenario eval (smoke)
+        run: uv run python -m benchmarks.eval run --tier smoke
+        env:
+          LA_EVAL_SKIP_JUDGE: "1"
+          LA_MEMORY_BACKEND: json
+          LA_MEM0_EMBEDDER_PROVIDER: hash
+          LA_INGEST_USE_LLM: "0"
+      - name: Upload PRD matrix report
+        uses: actions/upload-artifact@v4
+        with:
+          name: prd-matrix-report
+          path: reports/prd-matrix.md
+          if-no-files-found: error

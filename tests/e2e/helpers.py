@@ -6,13 +6,40 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Iterator
 
 import httpx
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+JOURNEY_NEWS_MARKER = "LocalAgentE2ENewsJourney2026"
+
+SAMPLE_RSS_XML = f"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>BestBlogs AI</title>
+    <item>
+      <title>{JOURNEY_NEWS_MARKER}</title>
+      <link>https://example.com/journey-news</link>
+      <description>一句话：LocalAgent journey RSS fixture。评分 88</description>
+      <author>Alice</author>
+      <pubDate>Thu, 16 Jul 2026 10:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>RAG 评测新基准</title>
+      <link>https://example.com/rag-bench/</link>
+      <description>介绍 RTEB 与检索质量。</description>
+      <pubDate>Wed, 15 Jul 2026 09:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>
+"""
 
 # Offline e2e duration budgets (seconds), longest-prefix match on argv.
 # Hang protection remains ``timeout=``; budgets are opt-in via ``budget=``.
@@ -39,6 +66,8 @@ DURATION_BUDGETS: dict[tuple[str, ...], float] = {
     ("ingest", "doc"): 15.0,
     ("ingest", "doc", "-b"): 8.0,  # enqueue only; completion uses BACKGROUND_TASK_BUDGET
     ("polish",): 15.0,
+    ("news", "sync"): 15.0,
+    ("aware", "tick"): 15.0,
     ("memory", "reindex"): 20.0,
     ("ingest", "rebuild"): 20.0,
     ("ingest",): 30.0,
@@ -213,6 +242,102 @@ def write_kb_doc(tmp_path: Path, name: str, body: str) -> Path:
     path = tmp_path / name
     path.write_text(body, encoding="utf-8")
     return path
+
+
+def kb_entries(data_dir: Path) -> set[str]:
+    """Return filenames currently under ``data/kb/``."""
+    kb = data_dir / "kb"
+    if not kb.is_dir():
+        return set()
+    return {p.name for p in kb.iterdir()}
+
+
+@contextmanager
+def rss_fixture_server(feed_xml: str = SAMPLE_RSS_XML) -> Iterator[str]:
+    """Serve ``feed_xml`` on a local HTTP port; yield the feed URL."""
+    body = feed_xml.encode("utf-8")
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            if self.path not in ("/feed.xml", "/"):
+                self.send_response(404)
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/rss+xml; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, _format: str, *_args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        host, port = server.server_address
+        yield f"http://{host}:{port}/feed.xml"
+    finally:
+        server.shutdown()
+        thread.join(timeout=2.0)
+
+
+def write_aware_watch(env: dict[str, str], watch_dir: Path) -> None:
+    """Grant fs on a single isolated watch root (avoid scanning ~/Downloads in e2e)."""
+    watch_dir.mkdir(parents=True, exist_ok=True)
+    data_dir = Path(env["LA_DATA_DIR"])
+    aware_dir = data_dir / "aware"
+    aware_dir.mkdir(parents=True, exist_ok=True)
+    watch = str(watch_dir.resolve())
+    profile_path = aware_dir / "profile.json"
+    profile_path.write_text(
+        json.dumps(
+            {
+                "sources": {
+                    "fs": {
+                        "granted": True,
+                        "granted_at": "2026-07-16T10:00:00+00:00",
+                        "paths": [watch],
+                        "repos": [],
+                        "history_files": [],
+                        "note": "",
+                    }
+                },
+                "schedule_enabled": False,
+                "interval_minutes": 15,
+                "last_tick_at": "",
+                "updated_at": "2026-07-16T10:00:00+00:00",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    cursors_path = aware_dir / "cursors.json"
+    if not cursors_path.is_file():
+        cursors_path.write_text("{}", encoding="utf-8")
+
+
+def seed_aware_suggestion(data_dir: Path, *, suggested_cmd: str, item_id: str = "sug-e2e") -> None:
+    """Write a single aware suggestion for whitelist/deny e2e checks."""
+    aware = data_dir / "aware"
+    aware.mkdir(parents=True, exist_ok=True)
+    path = aware / "suggestions.json"
+    payload = {
+        "items": [
+            {
+                "id": item_id,
+                "source": "e2e",
+                "title": "e2e suggestion",
+                "rationale": "journey test",
+                "suggested_cmd": suggested_cmd,
+                "created_at": "2026-07-16T10:00:00+00:00",
+                "risk": "high",
+                "data": {},
+            }
+        ]
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
 
 def write_chat_session(

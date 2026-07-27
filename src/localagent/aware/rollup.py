@@ -12,6 +12,7 @@ from typing import Any
 from localagent import config
 from localagent.aware.timewin import period_key, to_local
 from localagent.aware.types import utc_now
+from localagent.tzutil import local_today, to_local_dt
 
 
 @dataclass
@@ -167,7 +168,7 @@ def build_rollup_for_local_day(local_day: str) -> DailyRollup | None:
 
 def refresh_recent_rollups(*, days: int = 2) -> list[str]:
     """Rebuild rollups for today and the previous ``days-1`` local days."""
-    today = datetime.now().astimezone().date()
+    today = local_today()
     written: list[str] = []
     for i in range(max(1, days)):
         day = (today - timedelta(days=i)).isoformat()
@@ -187,8 +188,8 @@ def format_rollup_context_lines(
     """Markdown lines for historical injection (aggregate only)."""
     since_day = None
     if since is not None:
-        local = since.astimezone() if since.tzinfo else since.replace(tzinfo=timezone.utc)
-        since_day = local.astimezone().date().isoformat()
+        local = to_local_dt(since)
+        since_day = local.date().isoformat() if local else None
     rows = load_rollups(since_day=since_day, limit=limit)
     if not rows:
         return []

@@ -13,6 +13,7 @@ from localagent.memory.core_profile import load_core_profile
 from localagent.memory.store import get_memory_store
 from localagent.memory.temporal import memory_effective_time
 from localagent.memory.temporal_intent import TemporalIntent, parse_temporal_intent
+from localagent.tzutil import local_now
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]+")
 _TOKEN_RE = re.compile(r"[\u4e00-\u9fff]+|[A-Za-z0-9]+")
@@ -229,7 +230,7 @@ def _recency_score(effective_at: str) -> float:
     created = _parse_day(effective_at)
     if created is None:
         return 0.5
-    now = datetime.now()
+    now = local_now().replace(tzinfo=None)
     days = max(0.0, (now - created).total_seconds() / 86400.0)
     half_life = max(config.RECENCY_HALFLIFE_DAYS, 1.0)
     return math.pow(0.5, days / half_life)

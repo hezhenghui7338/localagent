@@ -12,11 +12,16 @@ from pathlib import Path
 import pytest
 
 from helpers import (
+    JOURNEY_NEWS_MARKER,
     PROJECT_ROOT,
+    kb_entries,
     minimal_chatgpt_export,
+    rss_fixture_server,
     run_la,
+    seed_aware_suggestion,
     seed_memory,
     warm_count,
+    write_aware_watch,
     write_chat_session,
     write_kb_doc,
 )
@@ -25,6 +30,13 @@ pytestmark = pytest.mark.e2e
 
 COLD_MARKER = "LocalAgentE2EColdMarker2026"
 CHAT_MARKER = "LocalAgentE2EChatArchiveMarker2026"
+JOURNEY_SUM_MARKER = "JOURNEY_SUM_2026"
+JOURNEY_KEEP_MARKER = "JOURNEY_KEEP_2026"
+
+
+def _journey_llm_guard(la_env: dict[str, str]) -> dict[str, str]:
+    """Short-circuit accidental LLM calls in offline journeys."""
+    return {**la_env, "LA_OLLAMA_CHAT_TIMEOUT": "1"}
 
 
 def test_journey_cross_session_warm_recall(la_env):
@@ -199,3 +211,132 @@ print(json.dumps({"stats": stats, "name": profile.name}, ensure_ascii=False))
     payload = json.loads(proc.stdout.strip().splitlines()[-1])
     assert payload["stats"]["files"] >= 1
     assert payload["name"] == "陈测试"
+
+
+def test_journey_summarize_default_not_kept(la_env, la_data_dir: Path, tmp_path: Path):
+    """Story 11: la summarize --heuristic default does not write kb/."""
+    doc = write_kb_doc(
+        tmp_path,
+        "journey.md",
+        f"# 产品概述\n\n含关键词 {JOURNEY_SUM_MARKER}。\n\n"
+        "## 安装\n\n使用 pipx 安装后运行 la setup。\n",
+    )
+    kb_before = kb_entries(la_data_dir)
+    result = run_la(
+        ["summarize", str(doc), "--no-chat", "--heuristic"],
+        env=la_env,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    out = result.stdout
+    assert JOURNEY_SUM_MARKER in out
+    assert "## 总结" in out or "## 结构化要点" in out
+    assert "§" in out or "〔" in out
+    assert kb_entries(la_data_dir) == kb_before
+
+
+def test_journey_summarize_keep_rag_searchable(la_env, tmp_path: Path):
+    """Story 11: --keep indexes summarize output into kb/ and rag search hits."""
+    doc = write_kb_doc(
+        tmp_path,
+        "keep-journey.md",
+        f"# 周报\n\n本周完成 {JOURNEY_KEEP_MARKER} 相关规划。\n\n"
+        "## 下一步\n\n补全 journey E2E。\n",
+    )
+    kept = run_la(
+        ["summarize", str(doc), "--no-chat", "--heuristic", "--keep"],
+        env=la_env,
+        timeout=60,
+    )
+    assert kept.returncode == 0, kept.stdout + kept.stderr
+    search = run_la(["rag", "search", JOURNEY_KEEP_MARKER], env=la_env, timeout=60)
+    assert search.returncode == 0
+    assert JOURNEY_KEEP_MARKER in search.stdout
+    assert "未找到" not in search.stdout
+
+
+def test_journey_news_sync_and_brief(la_env):
+    """Story 12: news sync from fixture RSS then brief --no-ui lists links."""
+    with rss_fixture_server() as feed_url:
+        sync = run_la(
+            ["news", "sync", "--url", feed_url, "--no-ui"],
+            env=la_env,
+            timeout=60,
+        )
+        assert sync.returncode == 0, sync.stdout + sync.stderr
+        assert "fetched=" in sync.stdout.lower() or "拉取" in sync.stdout or "同步" in sync.stdout
+
+        brief = run_la(
+            ["news", "brief", "--no-ui", "--plain", "--limit", "5"],
+            env=la_env,
+            timeout=60,
+        )
+        assert brief.returncode == 0, brief.stdout + brief.stderr
+        assert JOURNEY_NEWS_MARKER in brief.stdout
+        assert "https://example.com/journey-news" in brief.stdout
+
+    sched = run_la(["news", "schedule", "status"], env=la_env)
+    assert sched.returncode == 0
+
+
+def test_journey_polish_heuristic_report(la_env):
+    """Story 13: la polish --heuristic prints Brief + primary/alts without LLM."""
+    env = _journey_llm_guard(la_env)
+    draft = "您好，上次说的方案这周能给一下吗？我们这边有点着急。"
+    result = run_la(
+        ["polish", "--no-copy", "--heuristic", "--scene", "email", draft],
+        env=env,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    out = result.stdout
+    assert "【识别】" in out
+    assert "【主推】" in out
+    assert "【备选" in out
+    assert "all model providers failed" not in out
+
+
+@pytest.mark.xdist_group("serial")
+def test_journey_aware_grant_tick_no_auto_kb(
+    la_env, la_data_dir: Path, tmp_path: Path
+):
+    """Story 13b: grant fs → tick → suggestions; never auto-write kb/."""
+    env = _journey_llm_guard(la_env)
+    watch = tmp_path / "watch"
+    write_aware_watch(env, watch)
+
+    prime = run_la(["aware", "tick", "--no-chat", "--heuristic"], env=env, timeout=60)
+    assert prime.returncode == 0, prime.stdout + prime.stderr
+    assert "跳过" not in prime.stdout
+
+    kb_before = kb_entries(la_data_dir)
+    (watch / "note.md").write_text("hello journey\n", encoding="utf-8")
+    (watch / "doc.pdf").write_bytes(b"%PDF-1.4")
+
+    tick = run_la(["aware", "tick", "--no-chat", "--heuristic"], env=env, timeout=60)
+    assert tick.returncode == 0, tick.stdout + tick.stderr
+    assert kb_entries(la_data_dir) == kb_before
+    tick_out = tick.stdout + tick.stderr
+    assert "ingest doc" in tick_out.lower() or "suggestion" in tick_out.lower()
+
+    sug = run_la(["aware", "suggestion"], env=env, timeout=30)
+    assert sug.returncode == 0, sug.stdout + sug.stderr
+    assert "la ingest doc" in sug.stdout or "LA ingest doc" in sug.stdout
+
+    seed_aware_suggestion(la_data_dir, suggested_cmd="rm -rf /", item_id="sug-deny-e2e")
+    deny = run_la(["aware", "suggestion", "approve", "sug-deny-e2e"], env=env, timeout=30)
+    assert deny.returncode == 1
+    assert "rm -rf" in deny.stdout or "拒绝" in deny.stdout or "deny" in deny.stdout.lower()
+    assert kb_entries(la_data_dir) == kb_before
+
+
+def test_journey_aware_ungranted_skips_collection(la_env):
+    """Story 13b: without grant, tick does not collect events."""
+    result = run_la(
+        ["aware", "tick", "--no-chat", "--heuristic"],
+        env=_journey_llm_guard(la_env),
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    combined = result.stdout + result.stderr
+    assert "跳过" in combined or "skip" in combined.lower() or "未授权" in combined

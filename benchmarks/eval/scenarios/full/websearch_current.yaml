@@ -1,0 +1,8 @@
+id: websearch_contract_full
+setup:
+  commands:
+    - ["websearch", "--help"]
+assertions:
+  hard:
+    - type: returncode_zero
+      cmd: ["websearch", "--help"]

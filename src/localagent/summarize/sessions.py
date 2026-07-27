@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from localagent import config
+from localagent.tzutil import local_now
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    return local_now().isoformat(timespec="seconds")
 
 
 @dataclass
@@ -29,9 +30,24 @@ class SummarizeSessionRecord:
     page_count: int | None = None
     kept: bool = False
     keep_target: str | None = None
+    segment_mode: bool = False
+    current_segment_index: int = 0
+    segment_summaries: list[str] = field(default_factory=list)
+    compressed_prior: str = ""
+    segment_statuses: list[str] = field(default_factory=list)
+    prefetch_enabled: bool = True
+    cache_path: str = ""
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SummarizeSessionRecord:
+        raw_summaries = data.get("segment_summaries")
+        summaries: list[str] = []
+        if isinstance(raw_summaries, list):
+            summaries = [str(item) for item in raw_summaries]
+        raw_statuses = data.get("segment_statuses")
+        statuses: list[str] = []
+        if isinstance(raw_statuses, list):
+            statuses = [str(item) for item in raw_statuses]
         return cls(
             id=str(data.get("id") or ""),
             path=str(data.get("path") or ""),
@@ -46,6 +62,13 @@ class SummarizeSessionRecord:
             page_count=data.get("page_count") if data.get("page_count") is not None else None,
             kept=bool(data.get("kept")),
             keep_target=str(data["keep_target"]) if data.get("keep_target") else None,
+            segment_mode=bool(data.get("segment_mode")),
+            current_segment_index=int(data.get("current_segment_index") or 0),
+            segment_summaries=summaries,
+            compressed_prior=str(data.get("compressed_prior") or ""),
+            segment_statuses=statuses,
+            prefetch_enabled=bool(data.get("prefetch_enabled", True)),
+            cache_path=str(data.get("cache_path") or ""),
         )
 
 
@@ -143,6 +166,23 @@ def record_from_result(
     conversation_session_id: str | None = None,
 ) -> SummarizeSessionRecord:
     path = Path(result.path)
+    progress = getattr(result, "reading_progress", None)
+    segment_mode = bool(getattr(result, "segment_mode", False))
+    current_index = 0
+    summaries: list[str] = []
+    compressed_prior = ""
+    statuses: list[str] = []
+    prefetch_enabled = True
+    cache_path = ""
+    if progress is not None:
+        segment_mode = True
+        current_index = int(getattr(progress, "current_index", 0) or 0)
+        compressed_prior = str(getattr(progress, "compressed_prior", "") or "")
+        prefetch_enabled = bool(getattr(progress, "prefetch_enabled", True))
+        from localagent.summarize.segment_cache import cache_paths
+
+        _, md_path = cache_paths(path)
+        cache_path = str(md_path)
     return SummarizeSessionRecord(
         id=session_id,
         path=str(path.resolve()),
@@ -155,4 +195,11 @@ def record_from_result(
         page_count=result.page_count,
         kept=bool(result.kept),
         keep_target=str(result.keep_target) if result.keep_target else None,
+        segment_mode=segment_mode,
+        current_segment_index=current_index,
+        segment_summaries=summaries,
+        compressed_prior=compressed_prior,
+        segment_statuses=statuses,
+        prefetch_enabled=prefetch_enabled,
+        cache_path=cache_path,
     )

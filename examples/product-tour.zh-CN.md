@@ -36,14 +36,14 @@ export LA_DATA_DIR=/tmp/la-product-tour
 **输入：**
 
 ```bash
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.6.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.7.0"
 la --version
 ```
 
 **预期输出：**
 
 ```text
-la-localagent 0.6.0
+la-localagent 0.7.0
 ```
 
 ### 1.2 开发者安装
@@ -131,7 +131,7 @@ la chat --provider ollama
 **预期输出（示意）：**
 
 ```text
-LocalAgent v0.6.0 …
+LocalAgent v0.7.0 …
 │ qwen3.5:4b · ollama …
 > 用一句话介绍你自己，并说明你的数据存在哪里。
 [chat] 思考中…
@@ -787,7 +787,7 @@ la aware --no-chat
 
 ## 验收清单
 
-对照 [PRD §6](../docs/PRD.md) 验收，你应能勾选：
+对照 [PRD §6](../docs/PRD.md) 验收，你应能勾选。发版前可先生成机器评估报告：`la eval report --tier release --out /tmp/la-eval.html`（见 [acceptance-matrix.yaml](../docs/acceptance-matrix.yaml)）。
 
 - [ ] **故事 1–3**：用户或开发者安装 + 纯本地 / 自有 API 配置后，`la chat` Hello World  
 - [ ] **故事 4**：换 `--session-id` 仍能答出姓名 / 偏好 / 5 月会议（Hot / Warm）  
