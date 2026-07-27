@@ -706,22 +706,26 @@ def rebuild_result_from_disk(
             filename=path.name,
             provider=provider,
         )
-        if not any(item.strip() for item in reading_progress.segment_summaries):
-            from localagent.summarize.segment_cache import (
-                apply_cache_to_progress,
-                load_segment_cache,
-            )
-            from localagent.summarize.segment_reader import resolve_reading_budget
+        saved_index = reading_progress.current_index
+        from localagent.summarize.segment_cache import (
+            apply_cache_to_progress,
+            load_segment_cache,
+        )
+        from localagent.summarize.segment_reader import resolve_reading_budget
 
-            budget = resolve_reading_budget(provider)
-            cached = load_segment_cache(
-                path,
-                total_segments=reading_progress.total,
-                char_count=char_count or len(annotated),
-                budget=budget,
+        budget = resolve_reading_budget(provider)
+        cached = load_segment_cache(
+            path,
+            total_segments=reading_progress.total,
+            char_count=char_count or len(annotated),
+            budget=budget,
+        )
+        if cached is not None:
+            apply_cache_to_progress(reading_progress, cached)
+            reading_progress.current_index = max(
+                0,
+                min(saved_index, max(reading_progress.total - 1, 0)),
             )
-            if cached is not None:
-                apply_cache_to_progress(reading_progress, cached)
         if reading_progress.segment_summaries:
             idx = reading_progress.current_index
             if 0 <= idx < len(reading_progress.segment_summaries):

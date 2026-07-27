@@ -46,6 +46,9 @@
 | **§6.3** LA workspace 摘要与托管待办 | `test_e2e_workspace_summary` | ✅ |
 | **§6.3** LA audit token/费用与 HTML 报告 | `test_journey_audit_report_html` | ✅ |
 | **§6.3** la summarize 速读卡；启发式含 〔§/p.〕；默认不入库 | `test_journey_summarize_default_not_kept` | ✅ |
+| **§6.3** 长文档分段模式；段 TUI / prefetch / 缓存 | `tests/test_summarize_segment.py` | ✅ |
+| **§6.3** MOBI/EPUB 加载（无 DRM） | `tests/test_ingest_mobi.py` | ✅ |
+| **§6.3** 文档对话 --list / --resume 可续聊 | `tests/test_summarize.py` | ✅ |
 | **§6.3** la ocr 输出原文；未安装时有清晰错误 | `tests/test_ocr.py` | ✅ |
 | **§6.3** la news sync/brief 含原文链接 | `test_journey_news_sync_and_brief` | ✅ |
 | **§6.3** la polish 识别 Brief + 主推/备选 | `test_journey_polish_heuristic_report` | ✅ |

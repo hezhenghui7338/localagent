@@ -47,6 +47,15 @@ class SegmentNavState:
         self.index = max(0, min(index, self.total - 1))
         self.message = ""
 
+    def goto_one_based(self, segment_no: int) -> bool:
+        """Jump to 1-based segment number; returns False if out of range."""
+        if self.empty:
+            return False
+        if segment_no < 1 or segment_no > self.total:
+            return False
+        self.set_index(segment_no - 1)
+        return True
+
     def window_slice(self) -> tuple[int, int]:
         if self.empty:
             return 0, 0
@@ -89,9 +98,21 @@ class SegmentNavState:
             return (summary or "").strip() or t("summarize.browser_empty_summary")
         status = self.progress.segment_status_at(self.index)
         if status == "running":
+            from localagent.summarize.segment_reader import is_stale_running
+
+            if is_stale_running(self.progress, self.index):
+                return (
+                    t("summarize.browser_running")
+                    + "\n\n"
+                    + t("summarize.browser_retry_hint")
+                )
             return t("summarize.browser_running")
         if status == "failed":
-            return t("summarize.browser_failed")
+            return (
+                t("summarize.browser_failed")
+                + "\n\n"
+                + t("summarize.browser_retry_hint")
+            )
         return t("summarize.browser_pending")
 
     def detail_text_window(self, *, scroll: int = 0, max_lines: int = 0) -> str:
@@ -118,7 +139,22 @@ class SegmentNavState:
         done: int,
         total: int,
         active: int = 0,
+        worker_alive: bool = False,
     ) -> str:
         if not enabled:
-            return t("summarize.prefetch_stopped", done=done, total=total, active=active)
-        return t("summarize.prefetch_status", done=done, total=total, active=active)
+            return t("summarize.prefetch_stopped", done=done, total=total)
+        if active > 0:
+            return t(
+                "summarize.prefetch_status",
+                done=done,
+                total=total,
+                active=active,
+            )
+        if done < total:
+            return t(
+                "summarize.prefetch_stalled",
+                done=done,
+                total=total,
+                waiting=max(0, total - done),
+            )
+        return t("summarize.prefetch_complete", done=done, total=total)

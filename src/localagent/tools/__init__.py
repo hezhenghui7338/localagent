@@ -10,6 +10,7 @@ from typing import Any
 from collections.abc import Callable
 
 from localagent.memory.backend import get_memory_backend
+from localagent import config
 from localagent.tools.web_search import (
     augment_web_query,
     derive_search_params,
@@ -557,7 +558,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "summarize_document",
         "description": (
-            "原子速读本地文档（txt/md/pdf/xlsx）：最多三句话 + 带章节/页索引的结构化要点。"
+            f"原子速读本地文档（{config.format_summarize_suffixes()}）：最多三句话 + 带章节/页索引的结构化要点。"
             "默认不入库；仅当用户明确要求收藏/入库时才传 keep=true。"
             "需要多轮追问时，引导用户运行 `la summarize <path>` 进入文档对话（sum>），不要假装已进入会话。"
             "不要在总结后主动追问是否入库；若用户问为何搜不到/没入库，说明默认不入库并告知 "

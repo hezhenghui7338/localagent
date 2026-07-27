@@ -618,24 +618,29 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "news.browser_header": "今日简报 · {day} · {pos}",
         "news.browser_empty": "（暂无条目）",
         "news.browser_help": (
-            "键位: ↑↓/jk 切换  PgUp/PgDn/空格 滚动  o/Enter 打开浏览器\n"
-            "      s 速读  r 精读并深聊  b 收藏  x 跳过  c 复制链接  ? 帮助  q/Esc 退出"
+            "[/] 切换 · ↑↓ 滚动详情 · g 跳转 · Enter 深聊 · o 打开 · b 收藏 · x 跳过 · c 复制 · q 退出 · ? 帮助"
         ),
+        "news.browser_scroll_hint": "PageDown/Space 翻页 · [/] 切换",
+        "news.browser_detail_above": "（上方还有 {n} 行）",
+        "news.browser_detail_more": "（下方还有 {n} 行 · PageDown 继续）",
+        "news.browser_goto_prompt": "跳转到条号 (1-{total}): {input}",
+        "news.browser_goto_done": "已跳转到第 {current}/{total} 条",
+        "news.browser_goto_invalid": "条号无效，请输入 1 到 {total} 之间的数字",
+        "news.browser_goto_cancelled": "已取消跳转",
         "news.browser_opened": "已在浏览器打开",
         "news.browser_open_fail": "打开浏览器失败，可按 c 复制链接",
-        "news.browser_skim_shown": "已显示速读卡 · 再按 ↑↓ 返回摘要",
         "news.browser_copied": "已复制原文链接到剪贴板",
         "news.browser_copy_fail": "复制失败: {url}",
         "news.browser_no_items": "[news] 暂无条目。先运行 `la news sync`。",
         "news.browser_enter": (
-            "[news] 进入交互简报（↑↓ 切换 · PgDn/空格 滚动 · o 打开 · r 精读深聊 · q 退出）"
+            "[news] 进入交互简报（[/] 切换 · ↑↓ 滚动 · Enter 深聊 · o 打开 · q 退出）"
         ),
         "news.browser_list_empty": "[news] 列表已空。",
         "news.browser_quit": "[news] 已退出简报浏览器",
         "news.browser_reading": "[news] 精读: {title}",
         "news.browser_read_fail": "精读失败: {error}",
         "news.browser_back": "[news] 已返回简报浏览器",
-        "news.browser_chat_done": "深聊结束 · 继续 ↑↓ 浏览",
+        "news.browser_chat_done": "深聊结束 · 继续 [/] 浏览",
         "news.browser_fetching": "抓取并总结原文…",
         # --- memory ---
         "memory.pending_empty": "[memory pending] 队列为空",
@@ -779,7 +784,11 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "workspace.diag_summary_empty": "诊断扫描: 无命中（未入队）",
         "summarize.no_sessions": "[summarize] 暂无文档对话会话",
         "summarize.resume_hint": (
-            "[summarize] 续聊: la summarize <path> --resume  或  la summarize --id <id>"
+            "[summarize] 续聊: la summarize <path>  或  la summarize --id <id>；"
+            "强制重来: la summarize <path> --force"
+        ),
+        "summarize.force_fresh": (
+            "[summarize] --force：忽略既有会话，重新分段/摘要"
         ),
         "summarize.session_not_found": "[summarize] error: 未找到会话 {id}",
         "summarize.session_file_missing": "[summarize] error: 会话文件不存在: {path}",
@@ -831,7 +840,7 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "summarize.help_help": "  /help, /h        显示本帮助",
         "summarize.help_provider": "  /provider, /p    切换模型路径",
         "summarize.help_quit": (
-            "  /q, /quit, /exit 结束文档对话（可 la summarize <path> --resume 续聊）"
+            "  /q, /quit, /exit 结束文档对话（可 la summarize <path> 续聊）"
         ),
         "summarize.help_ask": "直接输入问题即可围绕该文档深入追问。",
         "summarize.entered": (
@@ -846,7 +855,7 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "summarize.not_kept_repl": "[summarize] 未收藏。会话内输入 /keep 可收藏到知识库。",
         "summarize.kept_path": "[summarize] 已收藏: {target}",
         "summarize.cancel_once": "\n[summarize] 已取消；再按一次 Ctrl+C 退出，或继续提问",
-        "summarize.ended": "[summarize] 文档对话结束（可用 la summarize <path> --resume 续聊）",
+        "summarize.ended": "[summarize] 文档对话结束（可用 la summarize <path> 续聊）",
         "summarize.status_kept": "已收藏 → {target}",
         "summarize.status_not_kept": "未收藏（默认；/keep 写入知识库）",
         "summarize.status_file": "[summarize] 文件: {path}",
@@ -890,8 +899,11 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "summarize.browser_header": (
             "[summarize] 逐段阅读 · {filename} · {done}/{total} 已摘要"
         ),
+        "summarize.browser_header_with_failed": (
+            "[summarize] 逐段阅读 · {filename} · {done}/{total} 已摘要 · {failed} 失败"
+        ),
         "summarize.browser_help": (
-            "[/] 切换段 · ↑↓ 滚动详情 · Enter/r 深聊 · s 暂停摘要 · q 退出 · ? 帮助"
+            "[/] 切换段 · ↑↓ 滚动详情 · g 跳转段 · Enter 深聊 · r 重新摘要 · s 暂停摘要 · q 退出 · ? 帮助"
         ),
         "summarize.browser_scroll_hint": "PageDown/Space 翻页 · [/] 切换段",
         "summarize.browser_detail_above": "（上方还有 {n} 行）",
@@ -902,12 +914,23 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "summarize.cache_path": "[summarize] 段摘要缓存: {path}",
         "summarize.cache_refresh": "[summarize] 已忽略段摘要缓存，重新摘要",
         "summarize.browser_enter": (
-            "[summarize] 进入逐段阅读浏览器（↑↓ 浏览，Enter 深聊）"
+            "[summarize] 进入逐段阅读浏览器（↑↓ 浏览，g 跳转段，Enter 深聊，r 重新摘要）"
         ),
         "summarize.browser_back": "[summarize] 返回段列表",
         "summarize.browser_pending": "摘要待生成…",
         "summarize.browser_running": "摘要生成中…",
         "summarize.browser_failed": "摘要生成失败",
+        "summarize.browser_retry_hint": "按 r 重新摘要当前段",
+        "summarize.browser_retry_started": "已开始重新摘要当前段",
+        "summarize.browser_retry_running": "当前段摘要生成中，请稍候",
+        "summarize.browser_retry_done": "当前段摘要已重新生成",
+        "summarize.browser_goto_prompt": "跳转到段号 (1-{total}): {input}",
+        "summarize.browser_goto_done": "已跳转到第 {current}/{total} 段",
+        "summarize.browser_goto_invalid": "段号无效，请输入 1 到 {total} 之间的数字",
+        "summarize.browser_goto_cancelled": "已取消跳转",
+        "summarize.retry_failed_reset": (
+            "[summarize] 已重置 {count} 个失败/中断段，正在重新摘要"
+        ),
         "summarize.browser_empty": "（无分段）",
         "summarize.browser_empty_summary": "（暂无速读卡）",
         "summarize.browser_chat_blocked": "本段摘要尚未就绪，请稍候",
@@ -922,6 +945,10 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "summarize.browser_icon_failed": "✗",
         "summarize.browser_chars_suffix": "字",
         "summarize.prefetch_status": "后台摘要: 运行中 · {done}/{total} 完成 · {active} 路进行中",
+        "summarize.prefetch_stalled": (
+            "后台摘要: 已启用 · {done}/{total} 完成 · {waiting} 段待调度（按 r 重试）"
+        ),
+        "summarize.prefetch_complete": "后台摘要: 已完成 · {done}/{total}",
         "summarize.prefetch_stopped": "后台摘要: 已暂停 · {done}/{total} 完成",
         "summarize.prefetch_unavailable": "后台摘要不可用",
         "summarize.prefetch_started_msg": "已恢复后台摘要",
@@ -1639,24 +1666,29 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "news.browser_header": "Brief · {day} · {pos}",
         "news.browser_empty": "(no items)",
         "news.browser_help": (
-            "Keys: ↑↓/jk switch  PgUp/PgDn/Space scroll  o/Enter open browser\n"
-            "      s skim  r deep-read+chat  b bookmark  x skip  c copy link  ? help  q/Esc quit"
+            "[/] switch · ↑↓ scroll detail · g jump · Enter deep-read · o open · b bookmark · x skip · c copy · q quit · ? help"
         ),
+        "news.browser_scroll_hint": "PageDown/Space page · [/] switch",
+        "news.browser_detail_above": "({n} lines above)",
+        "news.browser_detail_more": "({n} lines below · PageDown for more)",
+        "news.browser_goto_prompt": "Go to item (1-{total}): {input}",
+        "news.browser_goto_done": "Jumped to item {current}/{total}",
+        "news.browser_goto_invalid": "Invalid item; enter a number from 1 to {total}",
+        "news.browser_goto_cancelled": "Jump cancelled",
         "news.browser_opened": "Opened in browser",
         "news.browser_open_fail": "Failed to open browser; press c to copy link",
-        "news.browser_skim_shown": "Showing skim card · press ↑↓ to return to summary",
         "news.browser_copied": "Copied source URL to clipboard",
         "news.browser_copy_fail": "Copy failed: {url}",
         "news.browser_no_items": "[news] No items yet. Run `la news sync` first.",
         "news.browser_enter": (
-            "[news] Interactive brief (↑↓ switch · PgDn/Space scroll · o open · r deep-read · q quit)"
+            "[news] Interactive brief ([/] switch · ↑↓ scroll · Enter deep-read · o open · q quit)"
         ),
         "news.browser_list_empty": "[news] List is empty.",
         "news.browser_quit": "[news] Left brief browser",
         "news.browser_reading": "[news] Deep-read: {title}",
         "news.browser_read_fail": "Deep-read failed: {error}",
         "news.browser_back": "[news] Back to brief browser",
-        "news.browser_chat_done": "Chat ended · continue with ↑↓",
+        "news.browser_chat_done": "Chat ended · continue with [/]",
         "news.browser_fetching": "Fetching and summarizing article…",
         # --- memory ---
         "memory.pending_empty": "[memory pending] Queue is empty",
@@ -1817,7 +1849,8 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "workspace.diag_summary_empty": "Diagnostic scan: no hits (not enqueued)",
         "summarize.no_sessions": "[summarize] No document-chat sessions yet",
         "summarize.resume_hint": (
-            "[summarize] Resume: la summarize <path> --resume  or  la summarize --id <id>"
+            "[summarize] Resume: la summarize <path>  or  la summarize --id <id> "
+            "(add --force to start fresh)"
         ),
         "summarize.session_not_found": "[summarize] error: session not found {id}",
         "summarize.session_file_missing": (
@@ -1831,6 +1864,9 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         ),
         "summarize.no_existing": (
             "[summarize] No existing session; starting a new document chat"
+        ),
+        "summarize.force_fresh": (
+            "[summarize] --force: ignoring existing session; re-segmenting/re-summarizing"
         ),
         "summarize.file": "[summarize] File: {path}",
         "summarize.interrupted": "\n[summarize] Interrupted",
@@ -1884,7 +1920,7 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "summarize.help_provider": "  /provider, /p    Switch model path",
         "summarize.help_quit": (
             "  /q, /quit, /exit End document chat "
-            "(resume with la summarize <path> --resume)"
+            "(resume with la summarize <path>)"
         ),
         "summarize.help_ask": "Type a question to dig into this document.",
         "summarize.entered": (
@@ -1907,7 +1943,7 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         ),
         "summarize.ended": (
             "[summarize] Document chat ended "
-            "(resume with la summarize <path> --resume)"
+            "(resume with la summarize <path>)"
         ),
         "summarize.status_kept": "Kept → {target}",
         "summarize.status_not_kept": "Not kept (default; /keep saves to knowledge base)",
@@ -1952,8 +1988,11 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "summarize.browser_header": (
             "[summarize] Segmented read · {filename} · {done}/{total} summarized"
         ),
+        "summarize.browser_header_with_failed": (
+            "[summarize] Segmented read · {filename} · {done}/{total} summarized · {failed} failed"
+        ),
         "summarize.browser_help": (
-            "[/] change segment · ↑↓ scroll detail · Enter/r chat · s toggle prefetch · q quit · ? help"
+            "[/] change segment · ↑↓ scroll detail · g goto segment · Enter chat · r retry summary · s toggle prefetch · q quit · ? help"
         ),
         "summarize.browser_scroll_hint": "PageDown/Space page · [/] change segment",
         "summarize.browser_detail_above": "({n} lines above)",
@@ -1964,12 +2003,23 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "summarize.cache_path": "[summarize] Segment summary cache: {path}",
         "summarize.cache_refresh": "[summarize] Ignoring segment cache; regenerating",
         "summarize.browser_enter": (
-            "[summarize] Entering segment browser (↑↓ browse, Enter to chat)"
+            "[summarize] Entering segment browser (↑↓ browse, g goto segment, Enter to chat, r to retry)"
         ),
         "summarize.browser_back": "[summarize] Back to segment list",
         "summarize.browser_pending": "Summary pending…",
         "summarize.browser_running": "Summarizing…",
         "summarize.browser_failed": "Summary failed",
+        "summarize.browser_retry_hint": "Press r to retry summarizing this segment",
+        "summarize.browser_retry_started": "Retrying summary for current segment",
+        "summarize.browser_retry_running": "Segment summary in progress; please wait",
+        "summarize.browser_retry_done": "Segment summary regenerated",
+        "summarize.browser_goto_prompt": "Go to segment (1-{total}): {input}",
+        "summarize.browser_goto_done": "Jumped to segment {current}/{total}",
+        "summarize.browser_goto_invalid": "Invalid segment; enter a number from 1 to {total}",
+        "summarize.browser_goto_cancelled": "Jump cancelled",
+        "summarize.retry_failed_reset": (
+            "[summarize] Reset {count} failed/interrupted segment(s); retrying"
+        ),
         "summarize.browser_empty": "(no segments)",
         "summarize.browser_empty_summary": "(no brief yet)",
         "summarize.browser_chat_blocked": "Segment summary not ready yet; please wait",
@@ -1984,6 +2034,10 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "summarize.browser_icon_failed": "✗",
         "summarize.browser_chars_suffix": " chars",
         "summarize.prefetch_status": "Prefetch: running · {done}/{total} done · {active} active",
+        "summarize.prefetch_stalled": (
+            "Prefetch: enabled · {done}/{total} done · {waiting} waiting (press r to retry)"
+        ),
+        "summarize.prefetch_complete": "Prefetch: complete · {done}/{total}",
         "summarize.prefetch_stopped": "Prefetch: paused · {done}/{total} done",
         "summarize.prefetch_unavailable": "Background prefetch unavailable",
         "summarize.prefetch_started_msg": "Background prefetch resumed",

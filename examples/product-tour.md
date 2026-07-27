@@ -718,11 +718,30 @@ Interactive bits (web search, shell approval, file write) still need §6 / §7 /
 
 ## 10. One-click summarize (story 6b)
 
+Local docs (PDF / Markdown / spreadsheets / **MOBI / EPUB ebooks**) — 3-minute digest + document dialogue.
+
+### 10a Short doc (digest + dialogue)
+
 ```bash
 la summarize examples/sample-project-notes.md
 ```
 
 Expect a digest card (≤3 sentences + 〔§…〕 cites), then a `sum>` document dialogue on TTY. `/keep` to archive; `--no-chat` for card-only.
+
+### 10b Long doc (segmented reading)
+
+```bash
+la summarize ~/Downloads/long-book.pdf
+# or resume: la summarize ~/Downloads/long-book.pdf --resume
+```
+
+Expect:
+
+1. Digest card (often from the first segment)
+2. On TTY, a **segment browser TUI**: ↑↓ browse segment digests; `Enter` opens that segment in `sum>`; `s` toggles prefetch; `q` quit
+3. In `sum>`: `/next` `/goto N`; cross-segment questions retrieve read segments
+4. `la summarize <same path> --resume` restores progress
+5. Scripts: `--no-ui --heuristic` skips TUI and skips the model (CI-friendly)
 
 ---
 
@@ -787,6 +806,7 @@ Map to [PRD §6](../docs/PRD.md) acceptance — you should be able to check:
 - [ ] **Stories 8–9**: Shell / write prompts for approval; dangerous ops warn or hard-block  
 - [ ] **Story 10**: `LA audit` shows tokens & cost; `--report out.html` exports HTML  
 - [ ] **Story 6b**: `la summarize` shows digest; TTY enters `sum>`; not kept by default  
+- [ ] **Story 6b (long doc)**: long PDF / mobi / epub → segment TUI; Enter opens segment chat; `--resume` works  
 - [ ] **Story 10b (OCR)**: `pip install 'la-localagent[ocr]'` + `la ocr screenshot.png` prints text; `la summarize` on images errors and points to `la ocr`  
 - [ ] **Story 6c**: `la news sync` + `la news brief` (or `--no-ui`) shows items with source URLs  
 - [ ] **Story 6d**: `la polish --no-copy` shows Brief + primary/alternates; without `--no-copy`, primary is paste-ready  

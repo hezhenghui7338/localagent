@@ -71,7 +71,7 @@ la
 | 跨会话被记住 | Hot / Warm / Cold + Mem0；ChatGPT 历史可 `LA ingest chatgpt` · [产品体验 §3–4](examples/product-tour.zh-CN.md) |
 | 文档进知识库并检索原文 | `LA ingest doc` / `rag search` · [产品体验 §5](examples/product-tour.zh-CN.md) |
 | **OCR 取字**（截图/扫描件原文） | `la ocr <path>`；本地 RapidOCR，无 API；需 `pip install 'la-localagent[ocr]'` |
-| **一键总结**文档（默认进 `sum>` 深聊） | `la summarize <path>`；`.txt/.md/.pdf/.xlsx`（**不含图片**）；扫描 PDF 内嵌 OCR；`/keep` 或 `--keep` 入库；仅速读加 `--no-chat` |
+| **一键总结**文档（默认进 `sum>` 深聊） | `la summarize <path>`；`.txt/.md/.markdown/.pdf/.xlsx/.mobi/.epub`（**不含图片**）；长书自动逐段阅读；同路径默认续聊；`--force` 强制重分段；扫描 PDF 内嵌 OCR；`/keep` 或 `--keep` 入库；仅速读加 `--no-chat` |
 | **新闻嗅探** / 今日简报 | `la news sync` → `la news brief`（TTY ↑↓ / `o` 打开 / `r` 精读深聊）；`la news schedule on` |
 | **Aware**（本机感知，需授权） | `la aware` · [Aware](#4-aware本机感知需授权) · grant → tick → suggestion → `aware>` · 相关时注入 `la chat` |
 | **一键润色**文案（默认复制主推） | `la polish` / `/polish` · `--scene` / `--tone` / `--no-copy` |
@@ -217,15 +217,28 @@ LA chat --provider ollama
 
 ```bash
 la summarize ~/Documents/方案.pdf          # 速读卡 → 进入 sum> 文档对话
+la summarize book.mobi                     # 电子书（MOBI/EPUB，不支持 DRM）
 la summarize notes.md --no-chat            # 只要卡片，不进对话（可多文件）
 la summarize report.xlsx --keep            # 总结后同时入库（长期召回）
+la summarize --list                        # 最近文档对话
+la summarize ~/book.pdf                    # 同路径默认续聊（若已有会话）
+la summarize ~/book.pdf --force            # 跳过续聊，重新分段/摘要
 ```
 
-- 支持：`.txt` / `.md` / `.pdf` / `.xlsx`（**不含图片**——图片请用 `la ocr`）
+- 支持：`.txt` / `.md` / `.markdown` / `.pdf` / `.xlsx` / `.mobi` / `.epub`（**不含图片**——图片请用 `la ocr`）
 - 扫描 PDF（无文本层）在 summarize/ingest 内**自动 OCR** 后再速读或入库
 - 输出：最多三句话总结 + 带 〔§章节 | p.页〕索引的结构化要点
 - **默认不入库**；在 `sum>` 里 `/keep` 或启动时加 `--keep`
 - 在 `sum>` 里直接提问即可围绕该文件深入讨论（`/summary` 重看卡片，`/exit` 结束）
+
+**长文档逐段阅读**（annotated 字数超过 `LA_SUMMARIZE_SHORT_MAX_CHARS`，默认 12000）：
+
+- TTY 下先进入**段列表 TUI**：↑↓ / `j` `k` 浏览各段摘要；`Enter` / `r` 进入该段 `sum>` 深聊；`s` 开关后台预取；`q` 退出
+- 后台并行摘要各段（`LA_SUMMARIZE_SEGMENT_PREFETCH`，默认开）；段摘要缓存于 `data/summarize_sessions/cache/`
+- 在 `sum>` 内：`/next` `/prev` `/goto N` `/progress`；跨段问题（「全文」「对比前面…」）自动检索已读段
+- 脚本/CI：`--no-ui` 跳过 TUI 直接用 `sum>`；`--no-prefetch` 关闭后台预取；`--refresh-segments` 忽略段缓存；`--force` 跳过续聊并重新分段/摘要
+
+**会话续聊**：`--list` 列出最近文档对话；`la summarize <path>` 默认同路径续聊；`--id SESSION_ID` 按 id 续聊；`--force` 强制重来（文件未改时可复用段摘要）。
 
 #### 2. 本地 OCR `la ocr` —— 从截图/扫描件取原文
 
@@ -306,7 +319,7 @@ la aware --detail --since 3h                 # 分源明细
 | --- | -------------------- | --------------------------------------- |
 | 1   | 单条记忆写入与召回            | `LA ingest text` → `LA memory search`                  |
 | 2   | Markdown 知识库导入与召回   | `LA ingest doc` → `LA rag search` |
-| 3   | **一键总结**本地文档         | `la summarize <path>` → `sum>` 深聊 |
+| 3   | **一键总结**本地文档（含长书逐段） | `la summarize <path>` → 速读卡 → `sum>` 或段 TUI 深聊 |
 | 4   | **新闻嗅探**今日简报         | `la news sync` → `la news brief` |
 | 5   | **一键润色**邮件/朋友圈草稿    | `la polish "草稿"` / `/polish` |
 | 6   | **Aware**——今天下午改了啥   | `la aware grant …` → `tick` → `la aware` |
@@ -443,7 +456,11 @@ source .venv/bin/activate   # 或: source ~/.zshrc
 | `LA_LANG`                               | UI 与模型回答语言：`auto`（跟随系统 locale，默认）/ `en` / `zh` |
 | `LA_NEWS_RSS_URL`                       | 新闻嗅探 RSS（默认按当前语言选 BestBlogs AI 精选）              |
 | `LA_NEWS_AUTO_SYNC` / `_HOUR`           | 早间自动 sync 意图与时刻（配合 `la news schedule on`）       |
-| `LA_SUMMARIZE_SHORT_MAX_CHARS`          | 一键总结短路径字数上限（默认 12000）                            |
+| `LA_SUMMARIZE_SHORT_MAX_CHARS`          | 一键总结短路径字数上限（默认 12000）；超出且允许长文则进入逐段阅读 |
+| `LA_SUMMARIZE_SEGMENT_THRESHOLD_CHARS`  | 分段模式阈值（默认同 `LA_SUMMARIZE_LLM_INPUT_CHARS`） |
+| `LA_SUMMARIZE_SEGMENT_PREFETCH`         | 后台并行段摘要（默认 1）；`--no-prefetch` 关闭 |
+| `LA_SUMMARIZE_SEGMENT_PREFETCH_WORKERS` | 段摘要并发路数（默认 8） |
+| `LA_DOC_SESSION_RETRIEVE_TOP_K`         | 长文/跨段深聊每轮检索片段数（默认 8） |
 | `LA_LOG_LEVEL`                          | 诊断日志级别：`INFO`（默认）/ `DEBUG` / `WARNING` …           |
 
 ## 命令

@@ -5,200 +5,790 @@
   "hold_tail_sec": 2.5,
   "demos": {
     "setup.en": [
-      { "kind": "prompt", "text": "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.7.0\"", "type": true },
-      { "kind": "prompt", "text": "$ la --version", "type": true },
-      { "kind": "out", "text": "la-localagent 0.7.0" },
-      { "kind": "gap" },
-      { "kind": "prompt", "text": "$ la setup -y", "type": true },
-      { "kind": "out", "text": "[setup] Ollama detected" },
-      { "kind": "out", "text": "[setup] model ready: qwen3.5:4b" },
-      { "kind": "dim", "text": "No account · on-device compute by default" },
-      { "kind": "gap" },
-      { "kind": "prompt", "text": "$ la chat --provider ollama", "type": true },
-      { "kind": "you", "text": "you> In one sentence, introduce yourself and say where your data lives.", "type": true },
-      { "kind": "meta", "text": "[chat] generating…" },
-      { "kind": "assistant", "text": "I’m LocalAgent running on your machine: chat, memory, and audit data stay in the local data directory — identity data is not uploaded to the cloud." },
-      { "kind": "dim", "text": "[via ollama/qwen3.5:4b]" },
-      { "kind": "gap" },
-      { "kind": "prompt", "text": "$ la audit", "type": true },
-      { "kind": "out", "text": "## Tokens & service cost" },
-      { "kind": "out", "text": "provider: ollama" },
-      { "kind": "accent", "text": "estimated cost: $0.00" },
-      { "kind": "dim", "text": "Ready to chat · zero bill by default" }
+      {
+        "kind": "prompt",
+        "text": "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.7.0\"",
+        "type": true
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la --version",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "la-localagent 0.7.0"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la setup -y",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "[setup] Ollama detected"
+      },
+      {
+        "kind": "out",
+        "text": "[setup] model ready: qwen3.5:4b"
+      },
+      {
+        "kind": "dim",
+        "text": "No account · on-device compute by default"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la chat --provider ollama",
+        "type": true
+      },
+      {
+        "kind": "you",
+        "text": "you> In one sentence, introduce yourself and say where your data lives.",
+        "type": true
+      },
+      {
+        "kind": "meta",
+        "text": "[chat] generating…"
+      },
+      {
+        "kind": "assistant",
+        "text": "I’m LocalAgent running on your machine: chat, memory, and audit data stay in the local data directory — identity data is not uploaded to the cloud."
+      },
+      {
+        "kind": "dim",
+        "text": "[via ollama/qwen3.5:4b]"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la audit",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "## Tokens & service cost"
+      },
+      {
+        "kind": "out",
+        "text": "provider: ollama"
+      },
+      {
+        "kind": "accent",
+        "text": "estimated cost: $0.00"
+      },
+      {
+        "kind": "dim",
+        "text": "Ready to chat · zero bill by default"
+      }
     ],
     "setup.zh": [
-      { "kind": "prompt", "text": "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.7.0\"", "type": true },
-      { "kind": "prompt", "text": "$ la --version", "type": true },
-      { "kind": "out", "text": "la-localagent 0.7.0" },
-      { "kind": "gap" },
-      { "kind": "prompt", "text": "$ la setup -y", "type": true },
-      { "kind": "out", "text": "[setup] Ollama detected" },
-      { "kind": "out", "text": "[setup] model ready: qwen3.5:4b" },
-      { "kind": "dim", "text": "无需账号 · 默认本机算力" },
-      { "kind": "gap" },
-      { "kind": "prompt", "text": "$ la chat --provider ollama", "type": true },
-      { "kind": "you", "text": "you> 用一句话介绍自己，并说明数据存在哪。", "type": true },
-      { "kind": "meta", "text": "[chat] generating…" },
-      { "kind": "assistant", "text": "我是运行在你机器上的 LocalAgent：对话、记忆与审计都留在本机数据目录——身份数据不会上传到云端。" },
-      { "kind": "dim", "text": "[via ollama/qwen3.5:4b]" },
-      { "kind": "gap" },
-      { "kind": "prompt", "text": "$ la audit", "type": true },
-      { "kind": "out", "text": "## Tokens & service cost" },
-      { "kind": "out", "text": "provider: ollama" },
-      { "kind": "accent", "text": "estimated cost: $0.00" },
-      { "kind": "dim", "text": "装上就能聊 · 默认可零账单" }
+      {
+        "kind": "prompt",
+        "text": "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.7.0\"",
+        "type": true
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la --version",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "la-localagent 0.7.0"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la setup -y",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "[setup] Ollama detected"
+      },
+      {
+        "kind": "out",
+        "text": "[setup] model ready: qwen3.5:4b"
+      },
+      {
+        "kind": "dim",
+        "text": "无需账号 · 默认本机算力"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la chat --provider ollama",
+        "type": true
+      },
+      {
+        "kind": "you",
+        "text": "you> 用一句话介绍自己，并说明数据存在哪。",
+        "type": true
+      },
+      {
+        "kind": "meta",
+        "text": "[chat] generating…"
+      },
+      {
+        "kind": "assistant",
+        "text": "我是运行在你机器上的 LocalAgent：对话、记忆与审计都留在本机数据目录——身份数据不会上传到云端。"
+      },
+      {
+        "kind": "dim",
+        "text": "[via ollama/qwen3.5:4b]"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la audit",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "## Tokens & service cost"
+      },
+      {
+        "kind": "out",
+        "text": "provider: ollama"
+      },
+      {
+        "kind": "accent",
+        "text": "estimated cost: $0.00"
+      },
+      {
+        "kind": "dim",
+        "text": "装上就能聊 · 默认可零账单"
+      }
     ],
     "memory.en": [
-      { "kind": "label", "text": "Session A" },
-      { "kind": "prompt", "text": "$ la chat --session-id tour-a", "type": true },
-      { "kind": "you", "text": "you> Remember: next week I’ll demo LocalAgent’s memory layers to the team.", "type": true },
-      { "kind": "assistant", "text": "assistant> Got it — noted that you’ll demo the memory layers next week." },
-      { "kind": "gap" },
-      { "kind": "you", "text": "you> /q", "type": true },
-      { "kind": "dim", "text": "Session ended. Memory kept in on-device Warm / Hot." },
-      { "kind": "gap" },
-      { "kind": "label", "text": "Session B — brand-new session" },
-      { "kind": "prompt", "text": "$ la chat --session-id tour-b", "type": true },
-      { "kind": "you", "text": "you> What’s my name? What do I like to drink? What meeting did I have in Shenzhen in May?", "type": true },
-      { "kind": "meta", "text": "[chat] calling search_memory…" },
-      { "kind": "assistant", "text": "You’re Alex Lin; you prefer Americano (dislike latte)." },
-      { "kind": "assistant", "text": "In May 2026 you held a Shenzhen product roadmap meeting and decided to prioritize a personal AI assistant on your machine." },
-      { "kind": "dim", "text": "[via ollama/qwen3.5:4b]" },
-      { "kind": "accent", "text": "Not the current transcript — recalled from on-device Warm / Hot." }
+      {
+        "kind": "label",
+        "text": "Session A"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la chat --session-id tour-a",
+        "type": true
+      },
+      {
+        "kind": "you",
+        "text": "you> Remember: next week I’ll demo LocalAgent’s memory layers to the team.",
+        "type": true
+      },
+      {
+        "kind": "assistant",
+        "text": "assistant> Got it — noted that you’ll demo the memory layers next week."
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "you",
+        "text": "you> /q",
+        "type": true
+      },
+      {
+        "kind": "dim",
+        "text": "Session ended. Memory kept in on-device Warm / Hot."
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "label",
+        "text": "Session B — brand-new session"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la chat --session-id tour-b",
+        "type": true
+      },
+      {
+        "kind": "you",
+        "text": "you> What’s my name? What do I like to drink? What meeting did I have in Shenzhen in May?",
+        "type": true
+      },
+      {
+        "kind": "meta",
+        "text": "[chat] calling search_memory…"
+      },
+      {
+        "kind": "assistant",
+        "text": "You’re Alex Lin; you prefer Americano (dislike latte)."
+      },
+      {
+        "kind": "assistant",
+        "text": "In May 2026 you held a Shenzhen product roadmap meeting and decided to prioritize a personal AI assistant on your machine."
+      },
+      {
+        "kind": "dim",
+        "text": "[via ollama/qwen3.5:4b]"
+      },
+      {
+        "kind": "accent",
+        "text": "Not the current transcript — recalled from on-device Warm / Hot."
+      }
     ],
     "memory.zh": [
-      { "kind": "label", "text": "Session A" },
-      { "kind": "prompt", "text": "$ la chat --session-id tour-a", "type": true },
-      { "kind": "you", "text": "you> Remember: next week I’ll demo LocalAgent’s memory layers to the team.", "type": true },
-      { "kind": "assistant", "text": "assistant> Got it — noted that you’ll demo the memory layers next week." },
-      { "kind": "gap" },
-      { "kind": "you", "text": "you> /q", "type": true },
-      { "kind": "dim", "text": "会话结束。记忆写入本机 Warm / Hot。" },
-      { "kind": "gap" },
-      { "kind": "label", "text": "Session B — 全新会话" },
-      { "kind": "prompt", "text": "$ la chat --session-id tour-b", "type": true },
-      { "kind": "you", "text": "you> What’s my name? What do I like to drink? What meeting did I have in Shenzhen in May?", "type": true },
-      { "kind": "meta", "text": "[chat] calling search_memory…" },
-      { "kind": "assistant", "text": "You’re Alex Lin; you prefer Americano (dislike latte)." },
-      { "kind": "assistant", "text": "In May 2026 you held a Shenzhen product roadmap meeting and decided to prioritize a personal AI assistant on your machine." },
-      { "kind": "dim", "text": "[via ollama/qwen3.5:4b]" },
-      { "kind": "accent", "text": "不是当前 transcript —— 从本机 Warm / Hot 召回。" }
+      {
+        "kind": "label",
+        "text": "Session A"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la chat --session-id tour-a",
+        "type": true
+      },
+      {
+        "kind": "you",
+        "text": "you> Remember: next week I’ll demo LocalAgent’s memory layers to the team.",
+        "type": true
+      },
+      {
+        "kind": "assistant",
+        "text": "assistant> Got it — noted that you’ll demo the memory layers next week."
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "you",
+        "text": "you> /q",
+        "type": true
+      },
+      {
+        "kind": "dim",
+        "text": "会话结束。记忆写入本机 Warm / Hot。"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "label",
+        "text": "Session B — 全新会话"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la chat --session-id tour-b",
+        "type": true
+      },
+      {
+        "kind": "you",
+        "text": "you> What’s my name? What do I like to drink? What meeting did I have in Shenzhen in May?",
+        "type": true
+      },
+      {
+        "kind": "meta",
+        "text": "[chat] calling search_memory…"
+      },
+      {
+        "kind": "assistant",
+        "text": "You’re Alex Lin; you prefer Americano (dislike latte)."
+      },
+      {
+        "kind": "assistant",
+        "text": "In May 2026 you held a Shenzhen product roadmap meeting and decided to prioritize a personal AI assistant on your machine."
+      },
+      {
+        "kind": "dim",
+        "text": "[via ollama/qwen3.5:4b]"
+      },
+      {
+        "kind": "accent",
+        "text": "不是当前 transcript —— 从本机 Warm / Hot 召回。"
+      }
     ],
     "deepread.en": [
-      { "kind": "label", "text": "Document skim" },
-      { "kind": "prompt", "text": "$ la summarize examples/sample-project-notes.md", "type": true },
-      { "kind": "out", "text": "## Summary (≤3 sentences)" },
-      { "kind": "out", "text": "LocalAgent uses Hot / Warm / Cold memory; swap the model, keep the identity. On-device Ollama + qwen3.5:4b runs chat and retrieval." },
-      { "kind": "out", "text": "## Key points" },
-      { "kind": "out", "text": "- **Architecture**: Hot / Warm / Cold — source 〔§Architecture〕" },
-      { "kind": "out", "text": "- **Local**: Ollama + qwen3.5:4b — source 〔§Local run〕" },
-      { "kind": "gap" },
-      { "kind": "dim", "text": "Document chat (not kept by default; /keep to archive)" },
-      { "kind": "you", "text": "sum> How is retrieval weighted?", "type": true },
-      { "kind": "assistant", "text": "Default semantic weight LA_SEMANTIC_WEIGHT=0.75, with BM25 for keywords; indexing and memory extract stay separate on long docs. 〔§Retrieval〕" },
-      { "kind": "gap" },
-      { "kind": "label", "text": "News brief" },
-      { "kind": "prompt", "text": "$ la news sync && la news brief", "type": true },
-      { "kind": "out", "text": "↑↓ select · o open · r deep-read" },
-      { "kind": "accent", "text": "▸ Open-source personal AI agents in 2026" },
-      { "kind": "out", "text": "  Local-first memory stacks, no cloud lock-in" },
-      { "kind": "dim", "text": "  BestBlogs · 2h ago · interest ★★★★" },
-      { "kind": "gap" },
-      { "kind": "you", "text": "(press r) → fetch body, same deep-read chat" },
-      { "kind": "you", "text": "sum> What’s the core claim about on-device memory?", "type": true },
-      { "kind": "assistant", "text": "Identity and long-term memory archives stay on-device: models are swappable; memory must not vanish with a session. 〔§Lead | p.1〕" },
-      { "kind": "accent", "text": "News deep-read = the same DocumentChat as summarize" }
+      {
+        "kind": "label",
+        "text": "Short doc skim"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la summarize examples/sample-project-notes.md",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "## Summary (≤3 sentences)"
+      },
+      {
+        "kind": "out",
+        "text": "LocalAgent uses Hot / Warm / Cold memory; swap the model, keep the identity."
+      },
+      {
+        "kind": "out",
+        "text": "- **Architecture**: Hot / Warm / Cold — 〔§Architecture〕"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "label",
+        "text": "Long book · segmented reading"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la summarize ~/Books/cambridge-china-history.epub",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "## Summary (≤3 sentences)"
+      },
+      {
+        "kind": "out",
+        "text": "A multi-volume survey of Chinese history from antiquity to the modern era…"
+      },
+      {
+        "kind": "label",
+        "text": "Segment browser TUI"
+      },
+      {
+        "kind": "accent",
+        "text": "▸ 1/36  Qin–Han transition · ready"
+      },
+      {
+        "kind": "out",
+        "text": "  Unification, legalism, and the fall of Qin…"
+      },
+      {
+        "kind": "out",
+        "text": "▸ 2/36  Western Han · prefetching…"
+      },
+      {
+        "kind": "dim",
+        "text": "↑↓ browse · Enter chat · s prefetch · --resume"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "you",
+        "text": "sum> What’s the core take on Qin institutions in this volume?",
+        "type": true
+      },
+      {
+        "kind": "assistant",
+        "text": "The text stresses unification and standardization, while linking rapid collapse to harsh rule. 〔§Qin–Han〕"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "label",
+        "text": "News brief"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la news sync && la news brief",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "↑↓ select · o open · r deep-read"
+      },
+      {
+        "kind": "accent",
+        "text": "▸ Open-source personal AI agents in 2026"
+      },
+      {
+        "kind": "dim",
+        "text": "  BestBlogs · 2h ago"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "you",
+        "text": "(press r) → same DocumentChat as summarize",
+        "type": true
+      },
+      {
+        "kind": "accent",
+        "text": "PDF / MOBI / EPUB · long docs get segment TUI"
+      }
     ],
     "deepread.zh": [
-      { "kind": "label", "text": "文档速读" },
-      { "kind": "prompt", "text": "$ la summarize examples/sample-project-notes.md", "type": true },
-      { "kind": "out", "text": "## 总结（最多三句话）" },
-      { "kind": "out", "text": "LocalAgent 采用 Hot / Warm / Cold 三层记忆；换模型不换身份。本机可用 Ollama + qwen3.5:4b 跑通对话与检索。" },
-      { "kind": "out", "text": "## 结构化要点" },
-      { "kind": "out", "text": "- **架构**：Hot / Warm / Cold — 依据：原文 〔§架构决策〕" },
-      { "kind": "out", "text": "- **本地**：Ollama + qwen3.5:4b — 依据：原文 〔§本地运行〕" },
-      { "kind": "gap" },
-      { "kind": "dim", "text": "进入文档对话（默认不入库；/keep 才归档）" },
-      { "kind": "you", "text": "sum> 检索方案和语义权重是怎么定的？", "type": true },
-      { "kind": "assistant", "text": "默认语义权重 LA_SEMANTIC_WEIGHT=0.75，BM25 补关键词；长文档导入时索引与记忆提取分离。 〔§检索方案〕" },
-      { "kind": "gap" },
-      { "kind": "label", "text": "资讯简报" },
-      { "kind": "prompt", "text": "$ la news sync && la news brief", "type": true },
-      { "kind": "out", "text": "↑↓ 选择 · o 打开 · r 精读" },
-      { "kind": "accent", "text": "▸ Open-source personal AI agents in 2026" },
-      { "kind": "out", "text": "  Local-first memory stacks, no cloud lock-in" },
-      { "kind": "dim", "text": "  BestBlogs · 2h ago · interest ★★★★" },
-      { "kind": "gap" },
-      { "kind": "you", "text": "(press r) → 抓正文，进入同一套深聊" },
-      { "kind": "you", "text": "sum> 这篇文章对「本机记忆」的核心主张是什么？", "type": true },
-      { "kind": "assistant", "text": "主张身份与长期记忆留在本机：模型可替换，记忆层不可被会话清空。 〔§导语 | p.1〕" },
-      { "kind": "accent", "text": "news 精读 = summarize 同款 DocumentChat" }
+      {
+        "kind": "label",
+        "text": "短文档速读"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la summarize examples/sample-project-notes.md",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "## 总结（最多三句话）"
+      },
+      {
+        "kind": "out",
+        "text": "LocalAgent 采用 Hot / Warm / Cold 三层记忆；换模型不换身份。"
+      },
+      {
+        "kind": "out",
+        "text": "- **架构**：Hot / Warm / Cold — 〔§架构决策〕"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "label",
+        "text": "长书 · 逐段阅读"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la summarize ~/Books/剑桥中国史.epub",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "## 总结（最多三句话）"
+      },
+      {
+        "kind": "out",
+        "text": "剑桥中国史以断代体例梳理上古至近代的中国史…"
+      },
+      {
+        "kind": "label",
+        "text": "段列表 TUI"
+      },
+      {
+        "kind": "accent",
+        "text": "▸ 1/36  秦汉之际 · 摘要就绪"
+      },
+      {
+        "kind": "out",
+        "text": "  秦统一与制度奠基；楚汉之争与汉初恢复…"
+      },
+      {
+        "kind": "out",
+        "text": "▸ 2/36  西汉盛世 · 摘要中…"
+      },
+      {
+        "kind": "dim",
+        "text": "↑↓ 浏览 · Enter 深聊 · s 预取 · --resume 续聊"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "you",
+        "text": "sum> 第一卷里对秦制评价的核心观点？",
+        "type": true
+      },
+      {
+        "kind": "assistant",
+        "text": "作者强调统一与郡县制的历史意义，同时指出严刑与速亡的关联。 〔§秦汉之际〕"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "label",
+        "text": "资讯简报"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la news sync && la news brief",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "↑↓ 选择 · o 打开 · r 精读"
+      },
+      {
+        "kind": "accent",
+        "text": "▸ Open-source personal AI agents in 2026"
+      },
+      {
+        "kind": "dim",
+        "text": "  BestBlogs · 2h ago"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "you",
+        "text": "(按 r) → 与 summarize 同款 DocumentChat",
+        "type": true
+      },
+      {
+        "kind": "accent",
+        "text": "PDF / MOBI / EPUB · 长文档自动分段浏览"
+      }
     ],
     "aware.en": [
-      { "kind": "prompt", "text": "$ la aware status", "type": true },
-      { "kind": "out", "text": "LocalAgent · Aware" },
-      { "kind": "out", "text": "last tick · never  |  suggestion · 0" },
-      { "kind": "out", "text": "sources: · fs · git · terminal · browser · apps" },
-      { "kind": "dim", "text": "Off by default · per-source opt-in" },
-      { "kind": "gap" },
-      { "kind": "prompt", "text": "$ la aware grant fs terminal browser apps -y", "type": true },
-      { "kind": "out", "text": "[aware] granted: fs · terminal · browser · apps" },
-      { "kind": "dim", "text": "fs watch dirs · browser History dwell · apps focus (no keystrokes)" },
-      { "kind": "gap" },
-      { "kind": "prompt", "text": "$ la aware tick --no-chat", "type": true },
-      { "kind": "out", "text": "[aware] tick · 12 events · 3 episodes" },
-      { "kind": "out", "text": "  suggestion +1（la aware suggestion）" },
-      { "kind": "out", "text": "  · fs · README.md · browser · docs dwell · apps · Cursor" },
-      { "kind": "gap" },
-      { "kind": "prompt", "text": "$ la aware suggestion", "type": true },
-      { "kind": "out", "text": "[aware] suggestion (1)：" },
-      { "kind": "accent", "text": "s1  ingest doc ~/Notes/roadmap.md" },
-      { "kind": "dim", "text": "Never auto-writes Cold / kb/ · approve whitelist only" },
-      { "kind": "gap" },
-      { "kind": "prompt", "text": "$ la aware --no-chat", "type": true },
-      { "kind": "out", "text": "LocalAgent · Aware · overview" },
-      { "kind": "out", "text": "Focus: Cursor · editing README" },
-      { "kind": "out", "text": "Last 3h · fs README · browser docs · Episode: coding 28m" },
-      { "kind": "dim", "text": "selected ≠ viewing · no screen / key capture" },
-      { "kind": "gap" },
-      { "kind": "prompt", "text": "$ la chat", "type": true },
-      { "kind": "you", "text": "you> What was I focused on this afternoon?", "type": true },
-      { "kind": "meta", "text": "[chat] injecting Aware episodes…" },
-      { "kind": "assistant", "text": "Cursor on README + LocalAgent docs; roadmap.md is suggested for ingest — not archived yet." },
-      { "kind": "accent", "text": "Relevant chat pulls Aware context · suggestion ≠ archive" }
+      {
+        "kind": "prompt",
+        "text": "$ la aware status",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "LocalAgent · Aware"
+      },
+      {
+        "kind": "out",
+        "text": "last tick · never  |  suggestion · 0"
+      },
+      {
+        "kind": "out",
+        "text": "sources: · fs · git · terminal · browser · apps"
+      },
+      {
+        "kind": "dim",
+        "text": "Off by default · per-source opt-in"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la aware grant fs terminal browser apps -y",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "[aware] granted: fs · terminal · browser · apps"
+      },
+      {
+        "kind": "dim",
+        "text": "fs watch dirs · browser History dwell · apps focus (no keystrokes)"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la aware tick --no-chat",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "[aware] tick · 12 events · 3 episodes"
+      },
+      {
+        "kind": "out",
+        "text": "  suggestion +1（la aware suggestion）"
+      },
+      {
+        "kind": "out",
+        "text": "  · fs · README.md · browser · docs dwell · apps · Cursor"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la aware suggestion",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "[aware] suggestion (1)："
+      },
+      {
+        "kind": "accent",
+        "text": "s1  ingest doc ~/Notes/roadmap.md"
+      },
+      {
+        "kind": "dim",
+        "text": "Never auto-writes Cold / kb/ · approve whitelist only"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la aware --no-chat",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "LocalAgent · Aware · overview"
+      },
+      {
+        "kind": "out",
+        "text": "Focus: Cursor · editing README"
+      },
+      {
+        "kind": "out",
+        "text": "Last 3h · fs README · browser docs · Episode: coding 28m"
+      },
+      {
+        "kind": "dim",
+        "text": "selected ≠ viewing · no screen / key capture"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la chat",
+        "type": true
+      },
+      {
+        "kind": "you",
+        "text": "you> What was I focused on this afternoon?",
+        "type": true
+      },
+      {
+        "kind": "meta",
+        "text": "[chat] injecting Aware episodes…"
+      },
+      {
+        "kind": "assistant",
+        "text": "Cursor on README + LocalAgent docs; roadmap.md is suggested for ingest — not archived yet."
+      },
+      {
+        "kind": "accent",
+        "text": "Relevant chat pulls Aware context · suggestion ≠ archive"
+      }
     ],
     "aware.zh": [
-      { "kind": "prompt", "text": "$ la aware status", "type": true },
-      { "kind": "out", "text": "LocalAgent · Aware" },
-      { "kind": "out", "text": "上次 tick · 尚未运行  |  suggestion · 0" },
-      { "kind": "out", "text": "授权：· fs · git · terminal · browser · apps" },
-      { "kind": "dim", "text": "默认关闭 · 按源 opt-in" },
-      { "kind": "gap" },
-      { "kind": "prompt", "text": "$ la aware grant fs terminal browser apps -y", "type": true },
-      { "kind": "out", "text": "[aware] 已授权: fs · terminal · browser · apps" },
-      { "kind": "dim", "text": "fs 监视目录 · browser 停留时长 · apps 前台（不记按键）" },
-      { "kind": "gap" },
-      { "kind": "prompt", "text": "$ la aware tick --no-chat", "type": true },
-      { "kind": "out", "text": "[aware] tick · 12 事件 · 3 Episode" },
-      { "kind": "out", "text": "  suggestion 新增 · 1（la aware suggestion）" },
-      { "kind": "out", "text": "  · fs · README.md · browser · docs 停留 · apps · Cursor" },
-      { "kind": "gap" },
-      { "kind": "prompt", "text": "$ la aware suggestion", "type": true },
-      { "kind": "out", "text": "[aware] suggestion (1)：" },
-      { "kind": "accent", "text": "s1  ingest doc ~/Notes/roadmap.md" },
-      { "kind": "dim", "text": "绝不自动写 Cold / kb/ · approve 仅白名单" },
-      { "kind": "gap" },
-      { "kind": "prompt", "text": "$ la aware --no-chat", "type": true },
-      { "kind": "out", "text": "LocalAgent · Aware · 概览" },
-      { "kind": "out", "text": "主注意力：Cursor · 正在改 README" },
-      { "kind": "out", "text": "近 3h · fs README · browser docs · Episode：coding 28m" },
-      { "kind": "dim", "text": "selected ≠ viewing · 不录屏 / 不记按键" },
-      { "kind": "gap" },
-      { "kind": "prompt", "text": "$ la chat", "type": true },
-      { "kind": "you", "text": "you> 我今天下午主要在忙什么？", "type": true },
-      { "kind": "meta", "text": "[chat] 注入 Aware Episode…" },
-      { "kind": "assistant", "text": "下午主要在 Cursor 改 README、看 LocalAgent 文档；roadmap.md 在 suggestion 里，尚未入库。" },
-      { "kind": "accent", "text": "相关对话可注入感知 · suggestion ≠ 归档" }
+      {
+        "kind": "prompt",
+        "text": "$ la aware status",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "LocalAgent · Aware"
+      },
+      {
+        "kind": "out",
+        "text": "上次 tick · 尚未运行  |  suggestion · 0"
+      },
+      {
+        "kind": "out",
+        "text": "授权：· fs · git · terminal · browser · apps"
+      },
+      {
+        "kind": "dim",
+        "text": "默认关闭 · 按源 opt-in"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la aware grant fs terminal browser apps -y",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "[aware] 已授权: fs · terminal · browser · apps"
+      },
+      {
+        "kind": "dim",
+        "text": "fs 监视目录 · browser 停留时长 · apps 前台（不记按键）"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la aware tick --no-chat",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "[aware] tick · 12 事件 · 3 Episode"
+      },
+      {
+        "kind": "out",
+        "text": "  suggestion 新增 · 1（la aware suggestion）"
+      },
+      {
+        "kind": "out",
+        "text": "  · fs · README.md · browser · docs 停留 · apps · Cursor"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la aware suggestion",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "[aware] suggestion (1)："
+      },
+      {
+        "kind": "accent",
+        "text": "s1  ingest doc ~/Notes/roadmap.md"
+      },
+      {
+        "kind": "dim",
+        "text": "绝不自动写 Cold / kb/ · approve 仅白名单"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la aware --no-chat",
+        "type": true
+      },
+      {
+        "kind": "out",
+        "text": "LocalAgent · Aware · 概览"
+      },
+      {
+        "kind": "out",
+        "text": "主注意力：Cursor · 正在改 README"
+      },
+      {
+        "kind": "out",
+        "text": "近 3h · fs README · browser docs · Episode：coding 28m"
+      },
+      {
+        "kind": "dim",
+        "text": "selected ≠ viewing · 不录屏 / 不记按键"
+      },
+      {
+        "kind": "gap"
+      },
+      {
+        "kind": "prompt",
+        "text": "$ la chat",
+        "type": true
+      },
+      {
+        "kind": "you",
+        "text": "you> 我今天下午主要在忙什么？",
+        "type": true
+      },
+      {
+        "kind": "meta",
+        "text": "[chat] 注入 Aware Episode…"
+      },
+      {
+        "kind": "assistant",
+        "text": "下午主要在 Cursor 改 README、看 LocalAgent 文档；roadmap.md 在 suggestion 里，尚未入库。"
+      },
+      {
+        "kind": "accent",
+        "text": "相关对话可注入感知 · suggestion ≠ 归档"
+      }
     ]
   }
 }

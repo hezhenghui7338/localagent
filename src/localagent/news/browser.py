@@ -1,12 +1,12 @@
-"""Interactive news brief browser (↑↓ navigate, o open, r deep-chat)."""
+"""Interactive news brief browser ([/] navigate, Enter deep-chat, o open)."""
 
 from __future__ import annotations
 
 import shutil
 from typing import Any
 
+from localagent import config
 from localagent.i18n import t
-from localagent.news.brief import format_article_detail, format_skim_card
 from localagent.news.mark import mark_article
 from localagent.news.nav import BriefNavState
 from localagent.news.open_url import open_in_browser
@@ -42,12 +42,34 @@ def _truncate(text: str, width: int) -> str:
     return "".join(out)
 
 
-def render_browser_text(state: BriefNavState, *, plain_links: bool = False) -> str:
+def parse_goto_article_no(raw: str, *, total: int) -> int | None:
+    """Parse 1-based article number for goto mode; None if invalid."""
+    text = (raw or "").strip()
+    if not text or not text.isdigit():
+        return None
+    article_no = int(text)
+    if article_no < 1 or article_no > total:
+        return None
+    return article_no
+
+
+def render_browser_text(
+    state: BriefNavState,
+    *,
+    plain_links: bool = False,
+    detail_scroll: int = 0,
+    detail_max_lines: int | None = None,
+) -> str:
     """Pure text render of the browser UI (also used in tests)."""
     del plain_links  # Detail panel keeps bare URL at the bottom; no title links.
     width = _term_width()
     day = state.day or t("news.browser_today")
     help_text = _help_text()
+    max_lines = (
+        detail_max_lines
+        if detail_max_lines is not None
+        else config.SUMMARIZE_BROWSER_DETAIL_LINES
+    )
     lines: list[str] = [
         t("news.browser_header", day=day, pos=state.position_label()),
         "─" * min(width, 60),
@@ -70,79 +92,17 @@ def render_browser_text(state: BriefNavState, *, plain_links: bool = False) -> s
         lines.append("  …")
 
     lines.append("─" * min(width, 60))
-    cur = state.current()
-    assert cur is not None
-    art = cur.article
-
-    if state.detail_mode == "skim" and state.skim_text:
-        lines.append(state.skim_text.rstrip())
-    else:
-        lines.append(
-            format_article_detail(
-                art,
-                mode="summary",
-                reasons=list(cur.reasons) if cur.reasons else None,
-                rule_width=min(width, 60),
-            )
-        )
+    lines.append(
+        state.detail_text_window(scroll=detail_scroll, max_lines=max_lines).rstrip()
+    )
 
     if state.message:
         lines.append("")
         lines.append(f"· {state.message}")
     lines.append("")
     lines.append(help_text)
+    lines.append(t("news.browser_scroll_hint"))
     return "\n".join(lines)
-
-
-def _build_formatted(state: BriefNavState) -> Any:
-    from prompt_toolkit.formatted_text import FormattedText
-
-    # Title links are plain text; users open via `o` / Enter.
-    text = render_browser_text(state, plain_links=True)
-    header_prefix = t("news.browser_header", day="", pos="").split(" · ")[0]
-    help_prefix = _help_text().split("\n", 1)[0][:4]
-    prefix_current = t("news.prefix_current")
-    prefix_skim = t("news.prefix_skim")
-    section_labels = {
-        t("news.section_detail"),
-        t("news.section_viewpoints"),
-        t("news.section_quotes"),
-    }
-    meta_prefixes = (
-        t("news.meta_selected", reasons="").rstrip(),
-        t("news.meta_published", bits="").rstrip(),
-        t("news.meta_id", id="").rstrip(),
-        t("news.meta_url", url="").rstrip(),
-    )
-    fragments: list[tuple[str, str]] = []
-    after_title = False
-    oneliner_done = False
-    for line in text.splitlines(keepends=True):
-        bare = line.rstrip("\n")
-        if bare.startswith(">"):
-            fragments.append(("class:selected", line))
-            after_title = False
-        elif bare.startswith("· "):
-            fragments.append(("class:status", line))
-            after_title = False
-        elif bare.startswith(header_prefix) or bare.startswith(help_prefix):
-            fragments.append(("class:header", line))
-            after_title = False
-        elif bare.startswith(prefix_current) or bare.startswith(prefix_skim):
-            fragments.append(("class:title", line))
-            after_title = True
-            oneliner_done = False
-        elif after_title and not oneliner_done and bare.strip():
-            fragments.append(("class:oneliner", line))
-            oneliner_done = True
-            after_title = False
-        elif bare in section_labels:
-            fragments.append(("class:section", line))
-        elif any(bare.startswith(p) for p in meta_prefixes if p):
-            fragments.append(("class:meta", line))
-        else:
-            fragments.append(("", line))
-    return FormattedText(fragments)
 
 
 def _run_one_session(
@@ -150,9 +110,10 @@ def _run_one_session(
     *,
     store: NewsStore,
 ) -> str:
-    """Run TUI until quit or read. In-app: navigate/open/skim/mark/copy/help."""
+    """Run TUI until quit or read. In-app: navigate/open/mark/copy/help."""
     from prompt_toolkit.application import Application
     from prompt_toolkit.data_structures import Point
+    from prompt_toolkit.filters import Condition
     from prompt_toolkit.key_binding import KeyBindings
     from prompt_toolkit.layout import Layout
     from prompt_toolkit.layout.containers import Window
@@ -161,7 +122,45 @@ def _run_one_session(
 
     result_holder: dict[str, str] = {"action": "quit"}
     scroll_row = [0]
+    detail_scroll = [0]
     line_count = [1]
+    detail_max_lines = config.SUMMARIZE_BROWSER_DETAIL_LINES
+    goto_mode = [False]
+    goto_buffer = [""]
+
+    def _goto_prompt() -> str:
+        return t(
+            "news.browser_goto_prompt",
+            total=state.total,
+            input=goto_buffer[0],
+        )
+
+    def _enter_goto_mode(event: Any) -> None:
+        goto_mode[0] = True
+        goto_buffer[0] = ""
+        state.message = _goto_prompt()
+        event.app.invalidate()
+
+    def _cancel_goto_mode() -> None:
+        goto_mode[0] = False
+        goto_buffer[0] = ""
+
+    def _confirm_goto(event: Any) -> None:
+        article_no = parse_goto_article_no(goto_buffer[0], total=state.total)
+        if article_no is None:
+            state.message = t("news.browser_goto_invalid", total=state.total)
+            event.app.invalidate()
+            return
+        goto_mode[0] = False
+        goto_buffer[0] = ""
+        if state.goto_one_based(article_no):
+            state.message = t(
+                "news.browser_goto_done",
+                current=article_no,
+                total=state.total,
+            )
+            _reset_scroll()
+        event.app.invalidate()
 
     class ScrollableFormattedTextControl(FormattedTextControl):
         """Cursor row drives Window scroll so long briefs can PageDown."""
@@ -183,10 +182,64 @@ def _run_one_session(
             scroll_row[0] = max(0, scroll_row[0] - 1)
 
     def get_text() -> Any:
-        return _build_formatted(state)
+        text = render_browser_text(
+            state,
+            plain_links=True,
+            detail_scroll=detail_scroll[0],
+            detail_max_lines=detail_max_lines,
+        )
+        from prompt_toolkit.formatted_text import FormattedText
+
+        header_prefix = t("news.browser_header", day="", pos="").split(" · ")[0]
+        help_prefix = _help_text()[:4]
+        prefix_skim = t("news.prefix_skim")
+        section_labels = {
+            t("news.section_detail"),
+            t("news.section_viewpoints"),
+            t("news.section_quotes"),
+        }
+        meta_prefixes = (
+            t("news.meta_selected", reasons="").rstrip(),
+            t("news.meta_published", bits="").rstrip(),
+            t("news.meta_id", id="").rstrip(),
+            t("news.meta_url", url="").rstrip(),
+        )
+        fragments: list[tuple[str, str]] = []
+        after_title = False
+        oneliner_done = False
+        for line in text.splitlines(keepends=True):
+            bare = line.rstrip("\n")
+            if bare.startswith(">"):
+                fragments.append(("class:selected", line))
+                after_title = False
+            elif bare.startswith("· "):
+                fragments.append(("class:status", line))
+                after_title = False
+            elif bare.startswith(header_prefix) or bare.startswith(help_prefix):
+                fragments.append(("class:header", line))
+                after_title = False
+            elif bare.startswith(prefix_skim):
+                fragments.append(("class:title", line))
+                after_title = True
+                oneliner_done = False
+            elif after_title and not oneliner_done and bare.strip():
+                fragments.append(("class:oneliner", line))
+                oneliner_done = True
+                after_title = False
+            elif bare in section_labels:
+                fragments.append(("class:section", line))
+            elif any(bare.startswith(p) for p in meta_prefixes if p):
+                fragments.append(("class:meta", line))
+            else:
+                fragments.append(("", line))
+        max_logical = max(0, len(fragments) - 1)
+        if scroll_row[0] > max_logical:
+            scroll_row[0] = max_logical
+        return FormattedText(fragments)
 
     def get_cursor_position() -> Point:
-        y = max(0, min(scroll_row[0], max(0, line_count[0] - 1)))
+        cap = max(0, line_count[0] - 1)
+        y = max(0, min(scroll_row[0], cap))
         return Point(x=0, y=y)
 
     control = ScrollableFormattedTextControl(
@@ -197,10 +250,11 @@ def _run_one_session(
     )
     window = Window(content=control, wrap_lines=True)
     kb = KeyBindings()
+    in_goto_mode = Condition(lambda: goto_mode[0])
 
-    def _exit(action: str) -> None:
+    def _exit(event: Any, action: str) -> None:
         result_holder["action"] = action
-        app.exit()
+        event.app.exit()
 
     def _cur_art():
         item = state.current()
@@ -208,44 +262,98 @@ def _run_one_session(
 
     def _reset_scroll() -> None:
         scroll_row[0] = 0
+        detail_scroll[0] = 0
         window.vertical_scroll = 0
 
-    def _page_down(event: Any) -> None:
-        info = window.render_info
-        if info is not None and info.displayed_lines:
-            scroll_row[0] = max(info.last_visible_line(), scroll_row[0] + 1)
+    def _detail_line_count() -> int:
+        return len(state.detail_text().splitlines())
+
+    def _scroll_up(event: Any) -> None:
+        if goto_mode[0]:
+            return
+        if detail_scroll[0] > 0:
+            detail_scroll[0] -= 1
         else:
-            scroll_row[0] += 10
-        scroll_row[0] = max(0, min(scroll_row[0], max(0, line_count[0] - 1)))
+            scroll_row[0] = max(0, scroll_row[0] - 1)
         event.app.invalidate()
 
-    def _page_up(event: Any) -> None:
-        info = window.render_info
-        if info is not None and info.displayed_lines:
-            scroll_row[0] = max(
-                0, min(info.first_visible_line(), scroll_row[0] - 1)
-            )
+    def _scroll_down(event: Any) -> None:
+        if goto_mode[0]:
+            return
+        total_detail = _detail_line_count()
+        if detail_max_lines > 0 and detail_scroll[0] + detail_max_lines < total_detail:
+            detail_scroll[0] += 1
         else:
-            scroll_row[0] = max(0, scroll_row[0] - 10)
-        # Re-anchor so the cursor row sits near the bottom (prior page).
-        window.vertical_scroll = 0
+            scroll_row[0] = min(scroll_row[0] + 1, max(0, line_count[0] - 1))
         event.app.invalidate()
 
-    @kb.add("up")
-    @kb.add("k")
-    @kb.add("p")
-    def _up(event: Any) -> None:
+    def _item_prev(event: Any) -> None:
+        if goto_mode[0]:
+            return
         state.move(-1)
         _reset_scroll()
         event.app.invalidate()
 
-    @kb.add("down")
-    @kb.add("j")
-    @kb.add("n")
-    def _down(event: Any) -> None:
+    def _item_next(event: Any) -> None:
+        if goto_mode[0]:
+            return
         state.move(1)
         _reset_scroll()
         event.app.invalidate()
+
+    def _page_down(event: Any) -> None:
+        if goto_mode[0]:
+            return
+        total_detail = _detail_line_count()
+        if detail_max_lines > 0 and detail_scroll[0] + detail_max_lines < total_detail:
+            detail_scroll[0] = min(
+                detail_scroll[0] + detail_max_lines,
+                max(0, total_detail - detail_max_lines),
+            )
+        else:
+            info = window.render_info
+            if info is not None and info.displayed_lines:
+                scroll_row[0] = max(info.last_visible_line(), scroll_row[0] + 1)
+            else:
+                scroll_row[0] += 10
+            scroll_row[0] = max(0, min(scroll_row[0], max(0, line_count[0] - 1)))
+        event.app.invalidate()
+
+    def _page_up(event: Any) -> None:
+        if goto_mode[0]:
+            return
+        if detail_scroll[0] > 0:
+            detail_scroll[0] = max(0, detail_scroll[0] - detail_max_lines)
+        else:
+            info = window.render_info
+            if info is not None and info.displayed_lines:
+                scroll_row[0] = max(
+                    0, min(info.first_visible_line(), scroll_row[0] - 1)
+                )
+            else:
+                scroll_row[0] = max(0, scroll_row[0] - 10)
+            window.vertical_scroll = 0
+        event.app.invalidate()
+
+    @kb.add("up")
+    @kb.add("k")
+    def _up(event: Any) -> None:
+        _scroll_up(event)
+
+    @kb.add("down")
+    @kb.add("j")
+    def _down(event: Any) -> None:
+        _scroll_down(event)
+
+    @kb.add("[")
+    @kb.add("<")
+    def _prev_item(event: Any) -> None:
+        _item_prev(event)
+
+    @kb.add("]")
+    @kb.add(">")
+    def _next_item(event: Any) -> None:
+        _item_next(event)
 
     @kb.add("pagedown")
     @kb.add("c-f")
@@ -258,8 +366,42 @@ def _run_one_session(
     def _pgup(event: Any) -> None:
         _page_up(event)
 
-    @kb.add("o")
-    @kb.add("enter")
+    @kb.add("enter", filter=in_goto_mode)
+    def _goto_confirm(event: Any) -> None:
+        _confirm_goto(event)
+
+    @kb.add("enter", filter=~in_goto_mode)
+    def _read(event: Any) -> None:
+        _exit(event, "read")
+
+    @kb.add("g", eager=True)
+    def _goto_start(event: Any) -> None:
+        if goto_mode[0]:
+            return
+        _enter_goto_mode(event)
+
+    for digit in "0123456789":
+
+        @kb.add(digit, filter=in_goto_mode)
+        def _goto_digit(event: Any, *, _digit: str = digit) -> None:
+            goto_buffer[0] += _digit
+            state.message = _goto_prompt()
+            event.app.invalidate()
+
+    @kb.add("backspace", filter=in_goto_mode)
+    def _goto_backspace(event: Any) -> None:
+        goto_buffer[0] = goto_buffer[0][:-1]
+        state.message = _goto_prompt()
+        event.app.invalidate()
+
+    @kb.add("escape", filter=in_goto_mode)
+    @kb.add("c-c", filter=in_goto_mode)
+    def _goto_cancel(event: Any) -> None:
+        _cancel_goto_mode()
+        state.message = t("news.browser_goto_cancelled")
+        event.app.invalidate()
+
+    @kb.add("o", filter=~in_goto_mode)
     def _open(event: Any) -> None:
         art = _cur_art()
         if not art:
@@ -270,28 +412,7 @@ def _run_one_session(
         )
         event.app.invalidate()
 
-    @kb.add("s")
-    def _skim(event: Any) -> None:
-        art = _cur_art()
-        if not art:
-            return
-        store.set_status(art.id, "skimmed")
-        refreshed = store.get(art.id) or art
-        cur = state.current()
-        state.detail_mode = "skim"
-        state.skim_text = format_skim_card(
-            refreshed,
-            reasons=list(cur.reasons) if cur and cur.reasons else None,
-        )
-        state.message = t("news.browser_skim_shown")
-        _reset_scroll()
-        event.app.invalidate()
-
-    @kb.add("r")
-    def _read(_event: Any) -> None:
-        _exit("read")
-
-    @kb.add("b")
+    @kb.add("b", filter=~in_goto_mode)
     def _bookmark(event: Any) -> None:
         art = _cur_art()
         if not art:
@@ -300,7 +421,7 @@ def _run_one_session(
         state.message = msg
         event.app.invalidate()
 
-    @kb.add("x")
+    @kb.add("x", filter=~in_goto_mode)
     def _skip(event: Any) -> None:
         art = _cur_art()
         if not art:
@@ -310,11 +431,11 @@ def _run_one_session(
         state.message = msg
         _reset_scroll()
         if state.empty:
-            _exit("quit")
+            _exit(event, "quit")
             return
         event.app.invalidate()
 
-    @kb.add("c")
+    @kb.add("c", filter=~in_goto_mode)
     def _copy(event: Any) -> None:
         art = _cur_art()
         if not art:
@@ -325,16 +446,16 @@ def _run_one_session(
             state.message = t("news.browser_copy_fail", url=art.url)
         event.app.invalidate()
 
-    @kb.add("?")
+    @kb.add("?", filter=~in_goto_mode)
     def _help(event: Any) -> None:
         state.message = _help_text().replace("\n", " | ")
         event.app.invalidate()
 
-    @kb.add("q")
-    @kb.add("escape")
-    @kb.add("c-c")
-    def _quit(_event: Any) -> None:
-        _exit("quit")
+    @kb.add("q", filter=~in_goto_mode)
+    @kb.add("escape", filter=~in_goto_mode)
+    @kb.add("c-c", filter=~in_goto_mode)
+    def _quit(event: Any) -> None:
+        _exit(event, "quit")
 
     style = Style.from_dict(
         {
@@ -350,8 +471,8 @@ def _run_one_session(
     app = Application(
         layout=Layout(window),
         key_bindings=kb,
-        full_screen=False,
-        mouse_support=True,
+        full_screen=True,
+        mouse_support=False,
         style=style,
     )
     app.run()
@@ -389,6 +510,9 @@ def run_news_browser(
             print(t("news.browser_list_empty"))
             return 0
         try:
+            from localagent.ui.console import prepare_for_input
+
+            prepare_for_input()
             action = _run_one_session(state, store=store)
         except KeyboardInterrupt:
             print()

@@ -311,16 +311,105 @@ def test_render_browser_shows_current_only():
     assert "标题甲" in text
     assert "https://a.example/x" in text
     assert "1/2" in text
-    assert "键位" in text
-    assert "滚动" in text
+    assert "[/] 切换" in text
+    assert "PageDown" in text
+    assert "Enter 深聊" in text
     # Title must not be a markdown link; URL only in footer.
     assert "](https://" not in text
-    assert "【当前】标题甲" in text
+    assert "【速读】标题甲" in text
     assert "一句话:" not in text
     assert text.index("标题甲") < text.index("https://a.example/x")
     assert "入选  兴趣:Agent" in text
     assert "编号  a" in text
     assert "原文  https://a.example/x" in text
+
+
+def test_detail_text_window_truncates_long_detail():
+    from localagent.news.nav import BriefNavState
+    from localagent.news.rank import RankedArticle
+
+    long_detail = " ".join(f"句子{i}。" for i in range(80))
+    rss_summary = f"📌 一句话摘要 摘要。 📝 详细摘要 {long_detail} "
+    items = [
+        RankedArticle(
+            article=Article(
+                id="a",
+                source_id="t",
+                url="https://a.example/x",
+                title="长文",
+                rss_summary=rss_summary,
+            ),
+            score=1,
+            reasons=["test"],
+        ),
+    ]
+    state = BriefNavState(items=items, day="2026-07-17")
+    lines = state.detail_text().splitlines()
+    assert len(lines) > 10
+    window = state.detail_text_window(scroll=0, max_lines=5)
+    assert "下方还有" in window
+    scrolled = state.detail_text_window(scroll=5, max_lines=5)
+    assert "上方还有" in scrolled
+
+
+def test_parse_goto_article_no():
+    from localagent.news.browser import parse_goto_article_no
+
+    assert parse_goto_article_no("3", total=10) == 3
+    assert parse_goto_article_no(" 2 ", total=10) == 2
+    assert parse_goto_article_no("", total=10) is None
+    assert parse_goto_article_no("0", total=10) is None
+    assert parse_goto_article_no("11", total=10) is None
+    assert parse_goto_article_no("abc", total=10) is None
+
+
+def test_goto_one_based():
+    from localagent.news.nav import BriefNavState
+    from localagent.news.rank import RankedArticle
+
+    items = [
+        RankedArticle(
+            article=Article(id="a", source_id="t", url="https://a", title="A"),
+            score=1,
+            reasons=[],
+        ),
+        RankedArticle(
+            article=Article(id="b", source_id="t", url="https://b", title="B"),
+            score=2,
+            reasons=[],
+        ),
+    ]
+    state = BriefNavState(items=items)
+    assert state.goto_one_based(2)
+    assert state.current().article.id == "b"
+    assert not state.goto_one_based(0)
+    assert not state.goto_one_based(99)
+
+
+def test_render_browser_detail_scroll_hint():
+    from localagent.news.browser import render_browser_text
+    from localagent.news.nav import BriefNavState
+    from localagent.news.rank import RankedArticle
+
+    long_detail = " ".join(f"句子{i}。" for i in range(80))
+    rss_summary = f"📌 一句话摘要 摘要。 📝 详细摘要 {long_detail} "
+    items = [
+        RankedArticle(
+            article=Article(
+                id="a",
+                source_id="t",
+                url="https://a.example/x",
+                title="长文",
+                rss_summary=rss_summary,
+            ),
+            score=1,
+            reasons=[],
+        ),
+    ]
+    state = BriefNavState(items=items, day="2026-07-17")
+    rendered = render_browser_text(state, detail_scroll=5, detail_max_lines=5)
+    assert "上方还有" in rendered
+    assert "g 跳转" in rendered
 
 
 def test_parse_bestblogs_rss_summary():

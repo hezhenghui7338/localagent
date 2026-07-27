@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from localagent.i18n import reset_lang_cache
-from localagent.summarize.browser import render_segment_browser_text
+from localagent.i18n import reset_lang_cache, t
+from localagent.summarize.browser import parse_goto_segment_no, render_segment_browser_text
 from localagent.summarize.nav import SegmentNavState
 from localagent.summarize.segment_reader import ReadingProgress, build_segments
 import pytest
@@ -46,3 +46,28 @@ def test_render_segment_browser_prefetch_stopped():
     state = SegmentNavState(progress=progress, filename="empty.md", index=0)
     rendered = render_segment_browser_text(state, prefetch_enabled=False, done_count=0)
     assert "（无分段）" in rendered
+
+
+def test_parse_goto_segment_no():
+    assert parse_goto_segment_no("69", total=110) == 69
+    assert parse_goto_segment_no(" 3 ", total=10) == 3
+    assert parse_goto_segment_no("", total=10) is None
+    assert parse_goto_segment_no("0", total=10) is None
+    assert parse_goto_segment_no("11", total=10) is None
+    assert parse_goto_segment_no("abc", total=10) is None
+
+
+def test_render_shows_goto_message():
+    text = "\n\n".join(f"## [§S{i}]\n" + ("内容。" * 60) for i in range(4))
+    segments = build_segments(text, target_chars=200, segment_max=400, filename="doc.md")
+    progress = ReadingProgress(
+        segments=segments,
+        current_index=0,
+        segment_summaries=["sum0", "", "", ""],
+        segment_statuses=["done", "pending", "pending", "pending"],
+    )
+    state = SegmentNavState(progress=progress, filename="doc.md", index=0)
+    state.message = t("summarize.browser_goto_prompt", total=4, input="2")
+    rendered = render_segment_browser_text(state, prefetch_enabled=True, done_count=1)
+    assert "跳转到段号 (1-4): 2" in rendered
+    assert "g 跳转段" in rendered
