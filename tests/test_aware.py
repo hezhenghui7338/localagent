@@ -150,7 +150,11 @@ def test_stamp_episode_utc_signals_shanghai(monkeypatch: pytest.MonkeyPatch) -> 
     assert ep.signals.get("tz_offset_min") == 480
 
 
-def test_infer_query_window() -> None:
+def test_infer_query_window(monkeypatch) -> None:
+    monkeypatch.setenv("LA_TZ", "Asia/Shanghai")
+    from localagent.tzutil import reset_tz_cache
+
+    reset_tz_cache()
     from localagent.aware.timewin import infer_query_window, period_key
 
     now = infer_query_window("你知道我现在在听什么歌吗")

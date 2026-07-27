@@ -82,12 +82,13 @@ def _print_ingest_result(result) -> None:
 _INGEST_ACTIONS_NEEDING_OCR = frozenset({"doc", "kb", "rebuild", "all"})
 
 
-def _warn_ocr_dependency(prefix: str) -> None:
+def _warn_ocr_dependency(prefix: str, *, stream=None) -> None:
     from localagent.ingest.ocr import ocr_dependency_warning
 
     message = ocr_dependency_warning()
     if message:
-        print(f"[{prefix}] ! {message}")
+        out = stream if stream is not None else sys.stderr
+        print(f"[{prefix}] ! {message}", file=out)
 
 
 def _ensure_ollama_for_chat() -> None:

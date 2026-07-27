@@ -63,7 +63,7 @@ def test_e2e_planner_milestone_multi_step(la_env_planner):
         mock.provider = "ollama"
         mock.model = "test"
 
-        with patch("localagent.models.router.get_model_router", return_value=mock):
+        with patch("localagent.agent.runtime.get_model_router", return_value=mock):
             with patch("localagent.agent.planner.milestone.plan_milestones", return_value=plan):
                 with patch(
                     "localagent.context.engine.fetch_prefetch_blocks",
@@ -115,7 +115,7 @@ def test_e2e_planner_session_resume(la_env_planner):
         mock.provider = "ollama"
         mock.model = "test"
 
-        with patch("localagent.models.router.get_model_router", return_value=mock):
+        with patch("localagent.agent.runtime.get_model_router", return_value=mock):
             with patch(
                 "localagent.context.engine.fetch_prefetch_blocks",
                 return_value=(ContextBlocks(), {}),
