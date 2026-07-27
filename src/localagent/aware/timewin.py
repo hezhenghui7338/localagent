@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from localagent.i18n import t
+from localagent.tzutil import local_now, local_today, to_local_dt
 
 # Common suggestions for help / tab completion (not an exhaustive allow-list).
 SINCE_CHOICES = ("3h", "1d", "1w", "1m", "1y", "2d", "7d")
@@ -93,27 +94,8 @@ def parse_ts(ts: str | datetime | None) -> datetime | None:
 
 
 def to_local(ts: str | datetime | None) -> datetime | None:
-    """Wall-clock datetime for Aware local_day / period / display.
-
-    Timezone-aware inputs keep their embedded offset so historical local_day
-    stays stable across hosts (do not re-project +08:00 dawn into UTC night).
-    Naive inputs are interpreted as already-local wall clock on the host.
-    """
-    if ts is None:
-        return None
-    if isinstance(ts, datetime):
-        dt = ts
-    else:
-        text = str(ts).strip()
-        if not text:
-            return None
-        try:
-            dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=datetime.now().astimezone().tzinfo)
-    return dt
+    """Wall-clock datetime in LA_TZ for local_day / period / display."""
+    return to_local_dt(ts)
 
 
 def period_key(ts: str | datetime | None) -> str:
@@ -242,7 +224,7 @@ def format_clock(
     if local is None:
         return ""
     if with_date is None:
-        ref_local = (ref or datetime.now().astimezone()).astimezone()
+        ref_local = to_local(ref) if ref is not None else local_now()
         with_date = local.date() != ref_local.date()
     if with_date:
         return local.strftime("%m-%d %H:%M")
@@ -258,7 +240,7 @@ def format_span(start: str | datetime | None, end: str | datetime | None) -> str
     if b is None:
         return format_clock(a, with_date=True)
     cross = a.date() != b.date()
-    today = datetime.now().astimezone().date()
+    today = local_today()
     if cross:
         return f"{format_clock(a, with_date=True)}–{format_clock(b, with_date=True)}"
     if a.date() != today:
@@ -279,7 +261,7 @@ def format_period_span(start: str | datetime | None, end: str | datetime | None)
 
 def format_now_local() -> str:
     """Current local wall clock for prompt injection."""
-    return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M")
+    return local_now().strftime("%Y-%m-%d %H:%M")
 
 
 def dominant_period(timestamps: list[Any]) -> str:

@@ -11,7 +11,15 @@ from localagent import config
 from localagent.cli import main
 from localagent.i18n import reset_lang_cache
 from localagent.ingest.loader import explain_load_failure, load_file
-from localagent.ingest.ocr import OcrDocumentResult, OcrPageResult, ocr_install_hint, ocr_metadata_from_result
+from localagent.ingest.ocr import (
+    OcrDocumentResult,
+    OcrPageResult,
+    ocr_available,
+    ocr_dependency_warning,
+    ocr_install_hint,
+    ocr_metadata_from_result,
+    ocr_pdf,
+)
 from localagent.ocr_cmd import run_ocr
 from localagent.summarize.document import SummarizeError, summarize_path
 
@@ -57,7 +65,58 @@ def _fake_ocr_image(_path: Path, **_kwargs) -> OcrDocumentResult:
 
 def test_ocr_install_hint():
     assert "la-localagent[ocr]" in ocr_install_hint()
-    assert "LA_OCR_ENABLED=1" in ocr_install_hint()
+    assert "LA_OCR_ENABLED=1" in ocr_install_hint(enabled=False)
+    assert "LA_OCR_ENABLED=1" not in ocr_install_hint(enabled=True)
+    assert "pymupdf" in ocr_install_hint(enabled=True)
+
+
+def _block_fitz_import(monkeypatch):
+    import builtins
+
+    real_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "fitz":
+            raise ImportError("No module named 'fitz'")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+
+def test_ocr_pdf_missing_fitz_raises(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config, "OCR_ENABLED", True)
+    pdf = tmp_path / "scan.pdf"
+    _empty_pdf(pdf)
+    _block_fitz_import(monkeypatch)
+
+    with pytest.raises(RuntimeError, match="PyMuPDF missing"):
+        ocr_pdf(pdf)
+
+
+def test_ocr_dependency_warning_when_fitz_missing(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config, "OCR_ENABLED", True)
+    monkeypatch.setattr("localagent.ingest.ocr._ensure_engine", lambda: object())
+    _block_fitz_import(monkeypatch)
+
+    warning = ocr_dependency_warning()
+    assert warning is not None
+    assert "PyMuPDF missing" in warning
+    assert "la-localagent[ocr]" in warning
+    assert "LA_OCR_ENABLED=1" not in warning
+    assert ocr_available() is False
+
+
+def test_load_scanned_pdf_missing_fitz_fails_via_ingest(tmp_path: Path, monkeypatch):
+    from localagent.ingest.pipeline import IngestStatus, ingest_file
+
+    monkeypatch.setattr(config, "OCR_ENABLED", True)
+    pdf = tmp_path / "scan.pdf"
+    _empty_pdf(pdf)
+    _block_fitz_import(monkeypatch)
+
+    result = ingest_file(pdf)
+    assert result.status == IngestStatus.FAILED
+    assert "PyMuPDF missing" in result.error
 
 
 def test_explain_load_failure_scanned_pdf_without_ocr(tmp_path: Path, monkeypatch):

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 import tempfile
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from localagent import config
 from localagent.aware.types import AwareEvent, utc_now
+from localagent.tzutil import local_today, to_local_dt
 
 
 def _cursors_path() -> Path:
@@ -125,7 +126,7 @@ def load_events(
 
 
 def events_count_today() -> int:
-    today = date.today().isoformat()
+    today = local_today().isoformat()
     path = _events_path()
     if not path.exists():
         return 0
@@ -145,7 +146,8 @@ def events_count_today() -> int:
             # UTC dates may differ; also accept date part after parse
             try:
                 dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                if dt.astimezone().date().isoformat() == today:
+                local = to_local_dt(dt)
+                if local and local.date().isoformat() == today:
                     count += 1
             except ValueError:
                 continue

@@ -1,0 +1,10 @@
+id: aware_status_smoke
+setup:
+  commands:
+    - ["aware", "status"]
+assertions:
+  hard:
+    - type: contains_any
+      values: ["aware", "Aware", "授权", "grant", "fs"]
+    - type: returncode_zero
+      cmd: ["aware", "status"]

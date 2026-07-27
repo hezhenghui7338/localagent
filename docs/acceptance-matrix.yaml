@@ -1,0 +1,462 @@
+# PRD §6 acceptance matrix — single source of truth for version evaluation.
+# Generated reports: python -m benchmarks.prd.report_matrix
+# Manual checklist: examples/product-tour.zh-CN.md §验收清单
+
+version: 1
+prd_doc: docs/PRD.md
+product_tour: examples/product-tour.zh-CN.md
+
+items:
+  # --- §6.1 Local First (stories 1–3) ---
+  - id: "6.1.install_version"
+    prd_ref: "§6.1"
+    story: [1]
+    pillar: local_first
+    title: "pipx 安装后 la --version 正确"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_ops.py::test_e2e_version
+      - type: manual
+        ref: examples/product-tour.zh-CN.md#11-用户安装一键
+    coverage: partial
+    ci_tier: pr
+    critical: true
+
+  - id: "6.1.dev_install"
+    prd_ref: "§6.1"
+    story: [2]
+    pillar: local_first
+    title: "源码 dev 安装可跑测试"
+    checks:
+      - type: unit
+        test: tests/test_env_config.py
+      - type: manual
+        ref: examples/product-tour.zh-CN.md#12-开发者安装
+    coverage: partial
+    ci_tier: pr
+
+  - id: "6.1.config_providers"
+    prd_ref: "§6.1"
+    story: [3]
+    pillar: local_first
+    title: "la config 可配置多 provider"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_ops.py::test_e2e_config_list
+      - type: e2e
+        test: tests/e2e/test_la_ops.py::test_e2e_config_example
+      - type: e2e
+        test: tests/e2e/test_la_ops.py::test_e2e_chat_invalid_provider
+    coverage: automated
+    ci_tier: pr
+
+  - id: "6.1.setup_chat"
+    prd_ref: "§6.1"
+    story: [1, 2, 3]
+    pillar: local_first
+    title: "la setup / la chat help 可引导"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_ops.py::test_e2e_setup_skip
+      - type: e2e
+        test: tests/e2e/test_la_ops.py::test_e2e_chat_help
+      - type: e2e
+        test: tests/e2e/test_la_ops.py::test_e2e_chat_quit_immediately
+    coverage: automated
+    ci_tier: pr
+
+  # --- §6.2 Memory Forever (stories 4–6) ---
+  - id: "6.2.cross_session_warm"
+    prd_ref: "§6.2"
+    story: [4]
+    pillar: memory_forever
+    title: "Hot/Warm 跨会话可召回"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_journeys.py::test_journey_cross_session_warm_recall
+      - type: e2e_live
+        test: tests/e2e/test_la_live.py::test_e2e_live_cross_session_chat_recall
+    coverage: automated
+    ci_tier: pr
+    critical: true
+
+  - id: "6.2.pending_gate"
+    prd_ref: "§6.2"
+    story: [4]
+    pillar: memory_forever
+    title: "pending 确认门可用"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_pending.py::test_e2e_pending_approve_writes_warm
+      - type: e2e
+        test: tests/e2e/test_la_pending.py::test_e2e_pending_reject_skips_warm
+    coverage: automated
+    ci_tier: pr
+    critical: true
+
+  - id: "6.2.cold_before_warm"
+    prd_ref: "§6.2"
+    story: [5, 6]
+    pillar: memory_forever
+    title: "Cold 先于 Warm；ingest chatgpt/chat 可 rag 命中"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_journeys.py::test_journey_chatgpt_cold_before_warm
+      - type: e2e
+        test: tests/e2e/test_la_journeys.py::test_journey_chat_ingest_cold_searchable
+    coverage: automated
+    ci_tier: pr
+    critical: true
+
+  - id: "6.2.rag_no_warm"
+    prd_ref: "§6.2"
+    story: [6]
+    pillar: memory_forever
+    title: "ingest doc 仅索引 Cold，不产生 Warm"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_journeys.py::test_journey_rag_does_not_create_warm
+    coverage: automated
+    ci_tier: pr
+
+  - id: "6.2.reset_cold"
+    prd_ref: "§6.2"
+    story: [5]
+    pillar: memory_forever
+    title: "reset chatgpt 清除 Cold 归档"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_journeys.py::test_journey_reset_chatgpt_clears_cold_archive
+    coverage: automated
+    ci_tier: pr
+
+  - id: "6.2.chat_persist"
+    prd_ref: "§6.2"
+    story: [4]
+    pillar: memory_forever
+    title: "对话持久化到 data/conversations/"
+    checks:
+      - type: unit
+        test: tests/test_chat.py
+    coverage: partial
+    ci_tier: pr
+
+  - id: "6.2.rerank_optional"
+    prd_ref: "§6.2"
+    story: [4, 6]
+    pillar: memory_forever
+    title: "cross-encoder rerank 可选且 graceful 回退"
+    checks:
+      - type: unit
+        test: tests/test_cold_rerank.py
+      - type: manual
+        ref: docs/PRD.md#62-memory-forever故事-4–6
+    coverage: partial
+    ci_tier: nightly
+
+  - id: "6.2.stm_routing"
+    prd_ref: "§6.2"
+    story: [4]
+    pillar: memory_forever
+    title: "STM 路由/召回门槛"
+    checks:
+      - type: benchmark
+        test: tests/test_stm_benchmark.py
+    coverage: automated
+    ci_tier: pr
+    critical: true
+
+  - id: "6.2.locomo_recall"
+    prd_ref: "§6.2"
+    story: [4, 5, 6]
+    pillar: memory_forever
+    title: "LoCoMo 长期记忆 recall 回归"
+    checks:
+      - type: benchmark
+        script: python -m benchmarks.locomo.ci_smoke
+      - type: benchmark
+        script: python -m benchmarks.locomo.measure_recall
+        tier: nightly
+    coverage: automated
+    ci_tier: pr
+    critical: true
+
+  # --- §6.3 Actions Automated (stories 7–22) ---
+  - id: "6.3.websearch"
+    prd_ref: "§6.3"
+    story: [7]
+    pillar: actions_automated
+    title: "联网搜索默认 ddgs；不写 Warm"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_websearch.py::test_e2e_websearch_without_tavily_key_does_not_write_warm
+      - type: e2e
+        test: tests/e2e/test_la_websearch.py::test_e2e_websearch_ddgs_smoke_or_skip
+    coverage: automated
+    ci_tier: pr
+
+  - id: "6.3.safety_hard_block"
+    prd_ref: "§6.3"
+    story: [9]
+    pillar: actions_automated
+    title: "危险命令硬拦截"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_safety.py::test_e2e_safety_blocks_rm_rf_root
+      - type: e2e
+        test: tests/e2e/test_la_safety.py::test_e2e_safety_agent_blocks_rm_rf_root
+    coverage: automated
+    ci_tier: pr
+    critical: true
+
+  - id: "6.3.safety_approval"
+    prd_ref: "§6.3"
+    story: [8, 9]
+    pillar: actions_automated
+    title: "工具确认门与无审批拒绝"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_safety.py::test_e2e_safety_denies_without_approval_callback
+    coverage: automated
+    ci_tier: pr
+
+  - id: "6.3.safety_hallucination"
+    prd_ref: "§6.3"
+    story: [8]
+    pillar: actions_automated
+    title: "声称写入未调用 write_file 时重试/报错"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_safety.py::test_e2e_safety_write_hallucination_retries
+    coverage: automated
+    ci_tier: pr
+
+  - id: "6.3.no_intent_precheck"
+    prd_ref: "§6.3"
+    story: [7, 8]
+    pillar: actions_automated
+    title: "不向用户做意图预检追问"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_safety.py::test_e2e_safety_no_intent_precheck_before_tools
+    coverage: automated
+    ci_tier: pr
+    critical: true
+
+  - id: "6.3.workspace"
+    prd_ref: "§6.3"
+    story: [8, 16]
+    pillar: actions_automated
+    title: "LA workspace 摘要与托管待办"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_ops.py::test_e2e_workspace_summary
+      - type: e2e
+        test: tests/e2e/test_la_ops.py::test_e2e_workspace_managed_tasks
+    coverage: automated
+    ci_tier: pr
+
+  - id: "6.3.audit"
+    prd_ref: "§6.3"
+    story: [10]
+    pillar: actions_automated
+    title: "LA audit token/费用与 HTML 报告"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_journeys.py::test_journey_audit_report_html
+      - type: e2e
+        test: tests/e2e/test_la_ops.py::test_e2e_audit_summary
+    coverage: automated
+    ci_tier: pr
+
+  - id: "6.3.summarize"
+    prd_ref: "§6.3"
+    story: [11]
+    pillar: actions_automated
+    title: "la summarize 速读卡；启发式含 〔§/p.〕；默认不入库"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_journeys.py::test_journey_summarize_default_not_kept
+      - type: e2e
+        test: tests/e2e/test_la_journeys.py::test_journey_summarize_keep_rag_searchable
+      - type: manual
+        ref: examples/product-tour.zh-CN.md#故事-6b
+    coverage: automated
+    ci_tier: pr
+
+  - id: "6.3.ocr"
+    prd_ref: "§6.3"
+    story: [10]
+    pillar: actions_automated
+    title: "la ocr 输出原文；未安装时有清晰错误"
+    checks:
+      - type: unit
+        test: tests/test_ocr.py
+      - type: manual
+        ref: examples/product-tour.zh-CN.md#故事-10bocr
+    coverage: partial
+    ci_tier: pr
+
+  - id: "6.3.news"
+    prd_ref: "§6.3"
+    story: [12]
+    pillar: actions_automated
+    title: "la news sync/brief 含原文链接"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_journeys.py::test_journey_news_sync_and_brief
+      - type: unit
+        test: tests/test_news.py::test_brief_contains_clickable_urls
+      - type: manual
+        ref: examples/product-tour.zh-CN.md#故事-6c
+    coverage: automated
+    ci_tier: pr
+
+  - id: "6.3.polish"
+    prd_ref: "§6.3"
+    story: [13]
+    pillar: actions_automated
+    title: "la polish 识别 Brief + 主推/备选"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_journeys.py::test_journey_polish_heuristic_report
+      - type: e2e
+        test: tests/e2e/test_la_perf.py::test_perf_polish_offline
+      - type: manual
+        ref: examples/product-tour.zh-CN.md#故事-6d
+    coverage: automated
+    ci_tier: pr
+
+  - id: "6.3.aware"
+    prd_ref: "§6.3"
+    story: [13]
+    pillar: actions_automated
+    title: "Aware opt-in；suggestion 不自动写 Cold/kb"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_journeys.py::test_journey_aware_grant_tick_no_auto_kb
+      - type: e2e
+        test: tests/e2e/test_la_journeys.py::test_journey_aware_ungranted_skips_collection
+      - type: unit
+        test: tests/test_aware.py::test_tick_skips_without_grant
+      - type: manual
+        ref: examples/product-tour.zh-CN.md#故事-6e
+    coverage: automated
+    ci_tier: pr
+
+  - id: "6.3.action_receipt"
+    prd_ref: "§6.3"
+    story: [14, 17]
+    pillar: actions_automated
+    title: "Action receipt 含工具与路径摘要"
+    checks:
+      - type: unit
+        test: tests/test_approval.py::test_action_receipt_helpers
+      - type: unit
+        test: tests/test_agent_runtime.py
+    coverage: partial
+    ci_tier: pr
+
+  - id: "6.3.approve_once"
+    prd_ref: "§6.3"
+    story: [15]
+    pillar: actions_automated
+    title: "Session approve-once 同类安全操作少确认"
+    checks:
+      - type: unit
+        test: tests/test_approval.py
+    coverage: partial
+    ci_tier: pr
+
+  - id: "6.3.daily_status"
+    prd_ref: "§6.3"
+    story: [16]
+    pillar: actions_automated
+    title: "Daily Actions + la status 数据层摘要"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_perf.py::test_perf_daily_status
+      - type: unit
+        test: tests/test_daily_status.py
+    coverage: automated
+    ci_tier: pr
+
+  - id: "6.3.observability"
+    prd_ref: "§6.3"
+    story: [17, 18]
+    pillar: actions_automated
+    title: "Turn status 行与 trace/audit 可观测"
+    checks:
+      - type: unit
+        test: tests/test_agent_runtime.py
+      - type: manual
+        ref: docs/TDD.md
+    coverage: partial
+    ci_tier: nightly
+
+  - id: "6.3.milestone_planner"
+    prd_ref: "§6.3"
+    story: [19]
+    pillar: actions_automated
+    title: "Milestone planner 多步 receipt ✓/○"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_planner.py::test_e2e_planner_milestone_multi_step
+      - type: e2e
+        test: tests/e2e/test_la_planner.py::test_e2e_planner_validation_blocks_false_done
+    coverage: automated
+    ci_tier: pr
+
+  - id: "6.3.session_work_resume"
+    prd_ref: "§6.3"
+    story: [20]
+    pillar: actions_automated
+    title: "同 session 继续/下一步续跑 milestone"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_planner.py::test_e2e_planner_session_resume
+    coverage: automated
+    ci_tier: pr
+
+  - id: "6.3.mcp"
+    prd_ref: "§6.3"
+    story: [21]
+    pillar: actions_automated
+    title: "MCP 配置后 la mcp list 可见"
+    checks:
+      - type: e2e
+        test: tests/e2e/test_la_mcp.py::test_e2e_mcp_list_disabled
+    coverage: partial
+    ci_tier: pr
+
+  - id: "6.3.remember_shortcut"
+    prd_ref: "§6.3"
+    story: [22]
+    pillar: actions_automated
+    title: "chat 内「记住 xxx」直写记忆"
+    checks:
+      - type: unit
+        test: tests/test_memory_recall_priority.py::test_explicit_remember_writes_memory_and_pins_profile
+      - type: e2e
+        test: tests/e2e/test_la_ops.py::test_journey_remember_text_searchable
+    coverage: partial
+    ci_tier: pr
+
+  - id: "6.3.eval_scenarios"
+    prd_ref: "§6.3"
+    story: [4, 7, 8, 13]
+    pillar: actions_automated
+    title: "场景化 eval（hard + LLM judge）"
+    checks:
+      - type: benchmark
+        script: python -m benchmarks.eval run --tier smoke
+        tier: pr
+      - type: benchmark
+        script: python -m benchmarks.eval run --tier full
+        tier: nightly
+    coverage: automated
+    ci_tier: pr
+
+manual_checklist:
+  - ref: examples/product-tour.zh-CN.md#验收清单
+    stories: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]

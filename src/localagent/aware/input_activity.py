@@ -11,6 +11,7 @@ from typing import Any
 from localagent import config
 from localagent.aware.engagement import idle_active_threshold_sec, tick_interval_minutes
 from localagent.i18n import t
+from localagent.tzutil import local_now, local_today
 
 # Scenes that imply real keyboard/editing work (from classify_focus), not just HID motion.
 INPUT_SCENES = frozenset({"coding", "writing", "terminal"})
@@ -56,7 +57,7 @@ def save_all(data: dict[str, Any]) -> None:
 
 def _prune(data: dict[str, Any], *, keep_days: int | None = None) -> dict[str, Any]:
     days = keep_days if keep_days is not None else _keep_days()
-    cutoff = (date.today() - timedelta(days=days)).isoformat()
+    cutoff = (local_today() - timedelta(days=days)).isoformat()
     return {k: v for k, v in data.items() if isinstance(k, str) and k >= cutoff}
 
 
@@ -73,7 +74,7 @@ def _empty_day() -> dict[str, Any]:
 
 
 def load_day(day: date | None = None) -> dict[str, Any]:
-    key = (day or date.today()).isoformat()
+    key = (day or local_today()).isoformat()
     raw = load_all().get(key)
     if not isinstance(raw, dict):
         return _empty_day()
@@ -128,7 +129,7 @@ def record_input_activity(
     corroborated: bool = False,
 ) -> dict[str, Any]:
     """Accumulate one tick toward today's input / presence minutes. Returns day bucket."""
-    day_key = (day or date.today()).isoformat()
+    day_key = (day or local_today()).isoformat()
     all_data = _prune(load_all())
     prev = all_data.get(day_key) if isinstance(all_data.get(day_key), dict) else {}
     by_app_prev = prev.get("by_app") if isinstance(prev.get("by_app"), dict) else {}
@@ -156,18 +157,14 @@ def record_input_activity(
             by_app[label] = float(by_app.get(label) or 0.0) + add
             bucket["by_app"] = by_app
             bucket["ticks_active"] = int(bucket["ticks_active"]) + 1
-            bucket["last_active_at"] = datetime.now().astimezone().isoformat(
-                timespec="seconds"
-            )
+            bucket["last_active_at"] = local_now().isoformat(timespec="seconds")
         else:
             bucket["presence_minutes"] = float(bucket["presence_minutes"]) + add
             p_by = dict(bucket["presence_by_app"])
             p_by[label] = float(p_by.get(label) or 0.0) + add
             bucket["presence_by_app"] = p_by
             bucket["ticks_presence"] = int(bucket["ticks_presence"]) + 1
-            bucket["last_presence_at"] = datetime.now().astimezone().isoformat(
-                timespec="seconds"
-            )
+            bucket["last_presence_at"] = local_now().isoformat(timespec="seconds")
 
     all_data[day_key] = bucket
     save_all(all_data)
@@ -180,7 +177,7 @@ def aggregate_days(
     end: date | None = None,
 ) -> dict[str, Any]:
     """Sum day buckets from start..end inclusive (local dates)."""
-    end_d = end or date.today()
+    end_d = end or local_today()
     start_d = start or end_d
     if start_d > end_d:
         start_d, end_d = end_d, start_d
@@ -220,7 +217,7 @@ def _resolve_since_start(since: datetime | date | str) -> tuple[date, str]:
 
     if isinstance(since, datetime):
         local = to_local(since)
-        return (local.date() if local else date.today()), ""
+        return (local.date() if local else local_today()), ""
     if isinstance(since, date):
         return since, ""
     text = str(since).strip().lower()
@@ -229,7 +226,7 @@ def _resolve_since_start(since: datetime | date | str) -> tuple[date, str]:
         local = to_local(since_to_datetime(key))
         return (local.date() if local else date.today()), label_since(key)
     except ValueError:
-        return date.today(), ""
+        return local_today(), ""
 
 
 def format_input_activity_line(
@@ -244,7 +241,7 @@ def format_input_activity_line(
     """
     if since is not None:
         start_d, window = _resolve_since_start(since)
-        bucket = aggregate_days(start=start_d, end=date.today())
+        bucket = aggregate_days(start=start_d, end=local_today())
     else:
         bucket = load_day(day)
         window = ""

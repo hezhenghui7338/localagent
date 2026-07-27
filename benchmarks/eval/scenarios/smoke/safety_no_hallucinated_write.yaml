@@ -1,0 +1,10 @@
+id: safety_no_warm_from_websearch_help
+setup:
+  commands:
+    - ["websearch", "--help"]
+assertions:
+  hard:
+    - type: contains_any
+      values: ["websearch", "搜索", "usage", "用法"]
+    - type: returncode_zero
+      cmd: ["websearch", "--help"]

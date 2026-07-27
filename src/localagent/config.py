@@ -115,12 +115,40 @@ SUMMARIZE_SESSIONS_INDEX = SUMMARIZE_SESSIONS_DIR / "index.json"
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 # Text / tabular / PDF / images for RAG + one-click summarize.
 # Images load when LA_OCR_ENABLED=1 (exact text) or LA_VL_ENABLED=1 (semantic caption).
-SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt", ".xlsx", ".pdf"} | IMAGE_SUFFIXES
-SUMMARIZE_SUFFIXES = {".md", ".markdown", ".txt", ".xlsx", ".pdf"}
+SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt", ".xlsx", ".pdf", ".mobi", ".epub"} | IMAGE_SUFFIXES
+SUMMARIZE_SUFFIXES = {".md", ".markdown", ".txt", ".xlsx", ".pdf", ".mobi", ".epub"}
 DEFAULT_USER_ID = "default_user"
 # One-click summarize: short-doc path (chars of annotated text).
 SUMMARIZE_SHORT_MAX_CHARS = _env_int("LA_SUMMARIZE_SHORT_MAX_CHARS", "12000")
 SUMMARIZE_LLM_INPUT_CHARS = _env_int("LA_SUMMARIZE_LLM_INPUT_CHARS", "10000")
+# Segmented reading for long documents (auto when char_count > threshold).
+SUMMARIZE_SEGMENT_THRESHOLD_CHARS = _env_int(
+    "LA_SUMMARIZE_SEGMENT_THRESHOLD_CHARS", str(SUMMARIZE_LLM_INPUT_CHARS)
+)
+# 0 = derive from model context window at runtime.
+SUMMARIZE_SEGMENT_TARGET_CHARS = _env_int("LA_SUMMARIZE_SEGMENT_TARGET_CHARS", "0")
+SUMMARIZE_PRIOR_BUDGET_CHARS = _env_int("LA_SUMMARIZE_PRIOR_BUDGET_CHARS", "0")
+SUMMARIZE_SEGMENT_LLM_COMPRESS = _env("LA_SUMMARIZE_SEGMENT_LLM_COMPRESS", "0").lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+SUMMARIZE_SEGMENT_PREFETCH = _env("LA_SUMMARIZE_SEGMENT_PREFETCH", "1").lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+SUMMARIZE_SEGMENT_CACHE_DIR = SUMMARIZE_SESSIONS_DIR / "cache"
+SUMMARIZE_SEGMENT_CACHE_THROTTLE_SEC = float(
+    _env("LA_SUMMARIZE_SEGMENT_CACHE_THROTTLE_SEC", "1") or "1"
+)
+SUMMARIZE_SEGMENT_PREFETCH_WORKERS = _env_int("LA_SUMMARIZE_SEGMENT_PREFETCH_WORKERS", "8")
+SUMMARIZE_BROWSER_REFRESH_SEC = float(
+    _env("LA_SUMMARIZE_BROWSER_REFRESH_SEC", "1") or "1"
+)
+SUMMARIZE_BROWSER_DETAIL_LINES = _env_int("LA_SUMMARIZE_BROWSER_DETAIL_LINES", "24")
 # Document deep-chat: retrieve this many Cold chunks when body exceeds prompt stuffing.
 DOC_SESSION_RETRIEVE_TOP_K = _env_int("LA_DOC_SESSION_RETRIEVE_TOP_K", "8")
 
@@ -134,6 +162,9 @@ TONE_EVENING_END = _env_int("LA_TONE_EVENING_END", "6")  # local hour exclusive;
 from localagent.i18n import default_news_rss_url, resolve_lang  # noqa: E402
 
 LANG = resolve_lang()
+
+# --- Local timezone (LA_TZ=IANA name e.g. Asia/Shanghai; default → system local) ---
+LOCAL_TZ_NAME = _env("LA_TZ")
 
 # --- News sniff (BestBlogs RSS → daily brief → deep read) ---
 DEFAULT_NEWS_RSS_URL = default_news_rss_url(LANG)
@@ -603,6 +634,7 @@ def ensure_data_dirs() -> None:
         NEWS_DIR,
         NEWS_CACHE_DIR,
         SUMMARIZE_SESSIONS_DIR,
+        SUMMARIZE_SEGMENT_CACHE_DIR,
         AWARE_DIR,
         AWARE_NOW_DIR,
         AWARE_CONTEXT_DIR,

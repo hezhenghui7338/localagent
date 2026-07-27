@@ -18,8 +18,15 @@ class LoadedDoc:
     metadata: dict = field(default_factory=dict)
 
 
-def _load_txt(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
+def _load_txt(path: Path) -> tuple[str, dict]:
+    from localagent.ingest.encoding import decode_text_bytes
+
+    raw = path.read_bytes()
+    text, encoding, confidence = decode_text_bytes(raw)
+    return text, {
+        "text_encoding": encoding,
+        "encoding_confidence": confidence,
+    }
 
 
 def _load_xlsx(path: Path) -> str:
@@ -123,6 +130,16 @@ def explain_load_failure(path: Path) -> str:
             return f"图片 OCR 失败或内容为空: {path}"
         return f"图片 VL 描述失败或内容为空: {path}"
 
+    if suffix == ".mobi":
+        from localagent.ingest.ebook import explain_mobi_load_failure
+
+        return explain_mobi_load_failure(path)
+
+    if suffix == ".epub":
+        from localagent.ingest.ebook import explain_epub_load_failure
+
+        return explain_epub_load_failure(path)
+
     return f"无法读取文件内容: {path}"
 
 
@@ -159,11 +176,20 @@ def load_file(path: Path) -> LoadedDoc | None:
 
     extra_meta: dict = {}
     if suffix in {".md", ".markdown", ".txt"}:
-        text = _load_txt(path)
+        text, txt_meta = _load_txt(path)
+        extra_meta.update(txt_meta)
     elif suffix == ".xlsx":
         text = _load_xlsx(path)
     elif suffix == ".pdf":
         text, extra_meta = _load_pdf(path)
+    elif suffix == ".mobi":
+        from localagent.ingest.ebook import load_mobi
+
+        text, extra_meta = load_mobi(path)
+    elif suffix == ".epub":
+        from localagent.ingest.ebook import load_epub
+
+        text, extra_meta = load_epub(path)
     elif suffix in IMAGE_SUFFIXES:
         text, extra_meta = _load_image(path)
     else:

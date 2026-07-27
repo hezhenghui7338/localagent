@@ -57,6 +57,12 @@ def _cmd_aware(args: argparse.Namespace) -> int:
     return cmd_aware(args)
 
 
+def _cmd_eval(args: argparse.Namespace) -> int:
+    from localagent.eval_cmd import cmd_eval
+
+    return cmd_eval(args)
+
+
 def cmd_mcp(args: argparse.Namespace) -> int:
     from localagent.mcp_cmd import cmd_mcp as run_mcp_cmd
 
@@ -71,6 +77,17 @@ def _print_ingest_result(result) -> None:
         f"  {result.tag} {result.filename}: "
         f"chunks={result.knowledge_chunk_count}"
     )
+
+
+_INGEST_ACTIONS_NEEDING_OCR = frozenset({"doc", "kb", "rebuild", "all"})
+
+
+def _warn_ocr_dependency(prefix: str) -> None:
+    from localagent.ingest.ocr import ocr_dependency_warning
+
+    message = ocr_dependency_warning()
+    if message:
+        print(f"[{prefix}] ! {message}")
 
 
 def _ensure_ollama_for_chat() -> None:
@@ -196,7 +213,7 @@ def cmd_summarize(args: argparse.Namespace) -> int:
     )
     from localagent.summarize.repl import (
         rebuild_result_from_disk,
-        run_document_chat,
+        enter_summarize_interactive,
         should_enter_document_chat,
     )
     from localagent.summarize.sessions import (
@@ -230,6 +247,9 @@ def cmd_summarize(args: argparse.Namespace) -> int:
     keep = bool(getattr(args, "keep", False))
     provider = getattr(args, "provider", None) or "auto"
     out_path = getattr(args, "out", None)
+    no_ui = bool(getattr(args, "no_ui", False))
+    no_prefetch = bool(getattr(args, "no_prefetch", False))
+    refresh_cache = bool(getattr(args, "refresh_segments", False))
 
     # Resume by session id
     if resume_id:
@@ -247,6 +267,9 @@ def cmd_summarize(args: argparse.Namespace) -> int:
             provider=provider,
             heuristic=heuristic,
             keep=keep,
+            no_ui=no_ui,
+            no_prefetch=no_prefetch,
+            refresh_cache=refresh_cache,
         )
 
     if not paths_raw:
@@ -269,6 +292,9 @@ def cmd_summarize(args: argparse.Namespace) -> int:
                 provider=provider,
                 heuristic=heuristic,
                 keep=keep,
+                no_ui=no_ui,
+                no_prefetch=no_prefetch,
+                refresh_cache=refresh_cache,
             )
 
     results_md: list[str] = []
@@ -277,7 +303,7 @@ def cmd_summarize(args: argparse.Namespace) -> int:
     for source in paths:
         print(t("summarize.file", path=source))
         try:
-            result = summarize_path(source, keep=keep, use_llm=not heuristic)
+            result = summarize_path(source, keep=keep, use_llm=not heuristic, refresh_cache=refresh_cache)
         except KeyboardInterrupt:
             print(t("summarize.interrupted"))
             return 130
@@ -333,11 +359,14 @@ def cmd_summarize(args: argparse.Namespace) -> int:
 
     if should_enter_document_chat(no_chat=no_chat) and last_result is not None and len(paths) == 1:
         sid = new_summarize_session_id()
-        return run_document_chat(
+        return enter_summarize_interactive(
             last_result,
             provider=provider,
             summarize_session_id=sid,
             conversation_session_id=sid,
+            no_ui=no_ui,
+            no_prefetch=no_prefetch,
+            use_llm=not heuristic,
         )
 
     return 1 if failures else 0
@@ -356,6 +385,8 @@ def cmd_ocr(args: argparse.Namespace) -> int:
     keep = bool(getattr(args, "keep", False))
     as_json = bool(getattr(args, "json", False))
     out_path = getattr(args, "out", None)
+
+    _warn_ocr_dependency("ocr")
 
     try:
         result = run_ocr(raw_path, keep=keep)
@@ -385,13 +416,16 @@ def _summarize_resume_one(
     provider: str,
     heuristic: bool,
     keep: bool,
+    no_ui: bool = False,
+    no_prefetch: bool = False,
+    refresh_cache: bool = False,
 ) -> int:
     from localagent.i18n import t
     from localagent.summarize.document import summarize_path
     from localagent.summarize.repl import (
         _history_from_conversation,
+        enter_summarize_interactive,
         rebuild_result_from_disk,
-        run_document_chat,
     )
     from localagent.summarize.sessions import file_mtime
 
@@ -399,7 +433,7 @@ def _summarize_resume_one(
     history = _history_from_conversation(record.conversation_session_id)
     if abs(current_mtime - float(record.mtime or 0.0)) > 1e-6:
         print(t("summarize.file_updated"))
-        result = summarize_path(source, keep=keep or record.kept, use_llm=not heuristic)
+        result = summarize_path(source, keep=keep or record.kept, use_llm=not heuristic, refresh_cache=refresh_cache)
         if record.kept and not result.kept:
             result.kept = True
             result.keep_target = Path(record.keep_target) if record.keep_target else result.keep_target
@@ -412,6 +446,13 @@ def _summarize_resume_one(
             keep_target=record.keep_target,
             page_count=record.page_count,
             char_count=record.char_count,
+            segment_mode=bool(record.segment_mode),
+            current_segment_index=record.current_segment_index,
+            segment_summaries=record.segment_summaries,
+            compressed_prior=record.compressed_prior,
+            segment_statuses=record.segment_statuses,
+            prefetch_enabled=record.prefetch_enabled,
+            provider=provider,
         )
         if keep and not result.kept:
             from localagent.ingest.add_file import add_file
@@ -430,12 +471,15 @@ def _summarize_resume_one(
 
     if not history:
         history = None
-    return run_document_chat(
+    return enter_summarize_interactive(
         result,
         provider=provider,
         summarize_session_id=record.id,
         conversation_session_id=record.conversation_session_id,
         history=history,
+        no_ui=no_ui,
+        no_prefetch=no_prefetch,
+        use_llm=not heuristic,
     )
 
 
@@ -492,6 +536,7 @@ def cmd_polish(args: argparse.Namespace) -> int:
         scene = None
     tone = (getattr(args, "tone", None) or "").strip() or None
     want_copy = not bool(getattr(args, "no_copy", False))
+    heuristic = bool(getattr(args, "heuristic", False))
 
     with ActivityIndicator("polish", t("polish.status_working")) as activity:
         try:
@@ -500,6 +545,7 @@ def cmd_polish(args: argparse.Namespace) -> int:
                 scene=scene,
                 tone=tone,
                 on_status=activity.update,
+                use_llm=not heuristic,
             )
         except KeyboardInterrupt:
             print(t("polish.interrupted"))
@@ -838,6 +884,7 @@ def cmd_ingest_status(_args: argparse.Namespace) -> int:
     print(f"  ChatGPT 导入: {_ingest_index_count(config.CHATGPT_IMPORT_INDEX_FILE)}")
     print(f"  Warm 条数:    {get_memory_store().count()}")
     print(f"  Hot 画像:     {'已配置' if _core_profile_configured() else '未配置'}")
+    _warn_ocr_dependency("ingest status")
     print("\n下一步:")
     print("  LA ingest chat|chatgpt|doc|kb|text|all")
     print("  LA ingest rebuild · LA ingest reset <source>")
@@ -888,6 +935,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         args.reset_source = (getattr(args, "path_or_text", None) or ["all"])[0]
         return cmd_ingest_reset(args)
     if action == "rebuild":
+        _warn_ocr_dependency("ingest rebuild")
         reporter = ConsoleProgressReporter(prefix="ingest rebuild")
         try:
             report = run_ingest("rebuild", force=True, reporter=reporter)
@@ -928,6 +976,8 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         paths = files or path_or_text
 
     prefix = f"ingest {action}"
+    if action in _INGEST_ACTIONS_NEEDING_OCR:
+        _warn_ocr_dependency(prefix)
     reporter = ConsoleProgressReporter(prefix=prefix)
     try:
         report = run_ingest(
@@ -2454,7 +2504,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_summarize = sub.add_parser(
         "summarize",
         help=H("<path…> [--no-chat] [--keep] [--resume]  文档速读；默认进入文档对话", "<path…> [--no-chat] [--keep] [--resume]  doc skim; enter doc chat by default"),
-        description=H("针对本地文档的速读与文档对话（与 la chat「和助手聊」不同）。\n  默认：打印速读卡后进入 sum> 文档对话（TTY）。\n  --no-chat：仅速读（可多文件），不进入对话。\n支持 .txt / .md / .pdf / .xlsx；图片请用 la ocr。\n默认不入库；会话内 /keep 或 --keep 收藏到知识库（不每次追问）。\n  la summarize --list                 # 最近文档对话\n  la summarize <path> --resume        # 续聊\n", "Local document skim and doc chat (unlike la chat with the assistant).\n  Default: print skim card then enter sum> doc chat (TTY).\n  --no-chat: skim only (multi-file ok), no chat.\nSupports .txt / .md / .pdf / .xlsx; use la ocr for images.\nNot ingested by default; /keep or --keep bookmarks to knowledge (no prompt each time).\n  la summarize --list                 # recent doc chats\n  la summarize <path> --resume        # resume\n"),
+        description=H("针对本地文档的速读与文档对话（与 la chat「和助手聊」不同）。\n  默认：打印速读卡后进入 sum> 文档对话（TTY）。\n  --no-chat：仅速读（可多文件），不进入对话。\n支持 .txt / .md / .pdf / .xlsx / .mobi / .epub；图片请用 la ocr。\n默认不入库；会话内 /keep 或 --keep 收藏到知识库（不每次追问）。\n  la summarize --list                 # 最近文档对话\n  la summarize <path> --resume        # 续聊\n", "Local document skim and doc chat (unlike la chat with the assistant).\n  Default: print skim card then enter sum> doc chat (TTY).\n  --no-chat: skim only (multi-file ok), no chat.\nSupports .txt / .md / .pdf / .xlsx / .mobi / .epub; use la ocr for images.\nNot ingested by default; /keep or --keep bookmarks to knowledge (no prompt each time).\n  la summarize --list                 # recent doc chats\n  la summarize <path> --resume        # resume\n"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_summarize.add_argument(
@@ -2514,6 +2564,31 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=H("强制使用本地启发式摘要（不调用模型；便于离线/测试）", "force local heuristic summary (no model; offline/testing)"),
     )
+    p_summarize.add_argument(
+        "--no-ui",
+        action="store_true",
+        help=H(
+            "逐段阅读时不进入 TUI 段列表，回退 sum> REPL（脚本/CI）",
+            "skip segment TUI browser; fall back to sum> REPL (scripts/CI)",
+        ),
+    )
+    p_summarize.add_argument(
+        "--no-prefetch",
+        action="store_true",
+        help=H(
+            "不启动后台分段摘要（仅同步摘要已访问段）；并发上限见 LA_SUMMARIZE_SEGMENT_PREFETCH_WORKERS",
+            "disable background segment prefetch (sync summarize visited segments only); "
+            "concurrency cap: LA_SUMMARIZE_SEGMENT_PREFETCH_WORKERS",
+        ),
+    )
+    p_summarize.add_argument(
+        "--refresh-segments",
+        action="store_true",
+        help=H(
+            "忽略段摘要磁盘缓存，强制重新摘要",
+            "ignore on-disk segment summary cache and regenerate",
+        ),
+    )
     p_summarize.set_defaults(func=cmd_summarize)
 
     p_ocr = sub.add_parser(
@@ -2524,13 +2599,13 @@ def build_parser() -> argparse.ArgumentParser:
             "  la ocr screenshot.png\n"
             "  la ocr scan.pdf --out /tmp/scan.txt\n"
             "  la ocr menu.png --keep\n"
-            "图片请用 la ocr；la summarize 仅支持 .txt / .md / .pdf / .xlsx。\n"
+            "图片请用 la ocr；la summarize 仅支持 .txt / .md / .pdf / .xlsx / .mobi / .epub。\n"
             "需 LA_OCR_ENABLED=1 且 pip install 'la-localagent[ocr]'。",
             "Extract visible text from images or PDFs (RapidOCR / PP-OCRv6); no LLM, no summarize doc chat.\n"
             "  la ocr screenshot.png\n"
             "  la ocr scan.pdf --out /tmp/scan.txt\n"
             "  la ocr menu.png --keep\n"
-            "Use la ocr for images; la summarize supports .txt / .md / .pdf / .xlsx only.\n"
+            "Use la ocr for images; la summarize supports .txt / .md / .pdf / .xlsx / .mobi / .epub only.\n"
             "Requires LA_OCR_ENABLED=1 and pip install 'la-localagent[ocr]'.",
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -2688,6 +2763,11 @@ def build_parser() -> argparse.ArgumentParser:
         help=H("只打印概览，不进入 aware> 感知对话", "print overview only; no aware> chat"),
     )
     p_aware.add_argument(
+        "--heuristic",
+        action="store_true",
+        help=H("强制启发式总结（不调用模型；便于离线/测试）", "force heuristic summary (no model; offline/testing)"),
+    )
+    p_aware.add_argument(
         "--provider",
         default="auto",
         help=H("感知对话模型路径（默认 auto）", "aware chat model path (default auto)"),
@@ -2758,6 +2838,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-chat",
         action="store_true",
         help=H("只打印 tick 结果，不进入 aware> 感知对话", "print tick result only; no aware> chat"),
+    )
+    p_aware_tick.add_argument(
+        "--heuristic",
+        action="store_true",
+        help=H("强制启发式总结（不调用模型；便于离线/测试）", "force heuristic summary (no model; offline/testing)"),
     )
     p_aware_tick.add_argument(
         "--provider",
@@ -2836,6 +2921,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=H("不写入剪贴板（脚本/管道场景）", "do not write clipboard (scripts/pipes)"),
     )
+    p_polish.add_argument(
+        "--heuristic",
+        action="store_true",
+        help=H("强制启发式润色（不调用模型；便于离线/测试）", "force heuristic polish (no model; offline/testing)"),
+    )
     p_polish.set_defaults(func=cmd_polish)
 
     p_mcp = sub.add_parser(
@@ -2866,6 +2956,67 @@ def build_parser() -> argparse.ArgumentParser:
     p_mcp_serve.add_argument("--port", type=int, default=8765, help=H("HTTP 端口", "HTTP port"))
     p_mcp_serve.set_defaults(func=cmd_mcp, mcp_action="serve")
     p_mcp.set_defaults(func=cmd_mcp, mcp_action="list")
+
+    p_eval = sub.add_parser(
+        "eval",
+        help=H("版本评估（PRD 矩阵 / 场景 eval / 发版报告）", "version evaluation (PRD matrix / scenarios / release report)"),
+    )
+    eval_sub = p_eval.add_subparsers(dest="eval_action", metavar="action")
+    p_eval_report = eval_sub.add_parser(
+        "report",
+        help=H("生成统一 eval 报告", "generate unified eval report"),
+    )
+    p_eval_report.add_argument(
+        "--tier",
+        default="release",
+        choices=["pr", "release", "nightly"],
+        help=H("评估层级", "evaluation tier"),
+    )
+    p_eval_report.add_argument("--out", required=True, help=H("输出路径 (.html/.md/.json)", "output path"))
+    p_eval_report.add_argument(
+        "--format",
+        default="html",
+        choices=["html", "md", "json"],
+        help=H("报告格式", "report format"),
+    )
+    p_eval_report.add_argument(
+        "--quick",
+        action="store_true",
+        help=H("跳过重复 pytest，仅聚合当前结果", "skip redundant pytest, aggregate current results"),
+    )
+    p_eval_report.set_defaults(func=_cmd_eval)
+
+    p_eval_matrix = eval_sub.add_parser(
+        "matrix",
+        help=H("PRD 验收矩阵报告", "PRD acceptance matrix report"),
+    )
+    p_eval_matrix.add_argument("--out", default=None, help=H("Markdown 输出路径", "Markdown output path"))
+    p_eval_matrix.add_argument(
+        "--fail-on-critical",
+        action="store_true",
+        help=H("关键项缺失时 exit 1", "exit 1 on critical gaps"),
+    )
+    p_eval_matrix.add_argument(
+        "--sync-catalog",
+        action="store_true",
+        help=H("同步 test-catalog-review.md 映射段", "sync test-catalog PRD mapping section"),
+    )
+    p_eval_matrix.set_defaults(func=_cmd_eval)
+
+    p_eval_scenarios = eval_sub.add_parser(
+        "scenarios",
+        help=H("运行场景 eval", "run scenario eval"),
+    )
+    p_eval_scenarios.add_argument(
+        "--tier",
+        default="smoke",
+        choices=["smoke", "full"],
+        help=H("场景集", "scenario tier"),
+    )
+    p_eval_scenarios.add_argument("--report", default=None, help=H("JSON 报告路径", "JSON report path"))
+    p_eval_scenarios.set_defaults(func=_cmd_eval)
+
+    p_eval.set_defaults(func=_cmd_eval, eval_action="report")
 
     return parser
 

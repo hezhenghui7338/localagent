@@ -1,0 +1,10 @@
+id: memory_cross_session_smoke
+setup:
+  commands:
+    - ["ingest", "text", "用户叫林晓，日常偏好美式咖啡。"]
+assertions:
+  hard:
+    - type: memory_search_hits
+      marker: "林晓"
+    - type: memory_search_hits
+      marker: "美式"

@@ -11,11 +11,12 @@ from localagent.news.store import (
     ready_already_notified,
     today_synced,
 )
+from localagent.tzutil import local_now
 
 
 def past_sync_time(*, now: datetime | None = None) -> bool:
     """True when local clock is at/after configured auto-sync time."""
-    now = now or datetime.now()
+    now = now or local_now()
     profile = load_news_profile()
     hour = profile.auto_sync_hour if config.NEWS_AUTO_SYNC else config.NEWS_AUTO_SYNC_HOUR
     minute = (

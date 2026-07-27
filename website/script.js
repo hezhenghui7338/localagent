@@ -3,7 +3,7 @@
   const STORAGE_KEY = "la-site-lang-v3";
   const LEGACY_STORAGE_KEYS = ["la-site-lang", "la-site-lang-v2"];
   const INSTALL_CMD =
-    'pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.6.0"\nla';
+    'pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.7.0"\nla';
 
   const DEMO_IDS = ["setup", "memory", "deepread", "aware"];
   /** Demos without MP4 assets — always use steps mode. */
@@ -75,7 +75,7 @@
         "默认关闭；浏览器选中 ≠ 正在看；不录屏、不记按键内容。",
       "install.eyebrow": "快速开始",
       "install.title": "一行命令，装上就聊",
-      "install.lead": "需要 Python 3.10+ 与 pipx。当前版本 v0.6.0。",
+      "install.lead": "需要 Python 3.10+ 与 pipx。当前版本 v0.7.0。",
       "install.copy": "复制",
       "install.copied": "已复制",
       "install.hint":
@@ -90,7 +90,7 @@
       "contact.lead":
         "不是又一个 Chat 客户端——栖居在你电脑里的 AI。问题、建议或合作，欢迎来信。",
       "contact.emailLabel": "邮箱",
-      "footer.line": "LocalAgent · MIT · v0.6.0",
+      "footer.line": "LocalAgent · MIT · v0.7.0",
       title: "LocalAgent — 栖居在你电脑里的 AI",
       description:
         "LocalAgent — 栖居在你电脑里的 AI。本地优先，真记得你，把事办完。",
@@ -160,7 +160,7 @@
         "Off by default. Browser selected ≠ viewing. No screen capture, no keystroke content.",
       "install.eyebrow": "Quick start",
       "install.title": "One command, then chat",
-      "install.lead": "Needs Python 3.10+ and pipx. Current version v0.6.0.",
+      "install.lead": "Needs Python 3.10+ and pipx. Current version v0.7.0.",
       "install.copy": "Copy",
       "install.copied": "Copied",
       "install.hint":
@@ -175,7 +175,7 @@
       "contact.lead":
         "Not another chat client — the AI that lives on your computer. Questions, ideas, or collaboration welcome.",
       "contact.emailLabel": "Email",
-      "footer.line": "LocalAgent · MIT · v0.6.0",
+      "footer.line": "LocalAgent · MIT · v0.7.0",
       title: "LocalAgent — The AI that lives on your computer",
       description:
         "LocalAgent — The AI that lives on your computer. Local First. Memory Forever. Actions Automated.",
@@ -188,9 +188,9 @@
       setup: [
         {
           lines: [
-            { kind: "prompt", text: "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.6.0\"" },
+            { kind: "prompt", text: "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.7.0\"" },
             { kind: "prompt", text: "$ la --version" },
-            { kind: "out", text: "la-localagent 0.6.0" },
+            { kind: "out", text: "la-localagent 0.7.0" },
           ],
         },
         {
@@ -398,9 +398,9 @@
       setup: [
         {
           lines: [
-            { kind: "prompt", text: "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.6.0\"" },
+            { kind: "prompt", text: "$ pipx install \"git+https://github.com/hezhenghui7338/localagent.git@v0.7.0\"" },
             { kind: "prompt", text: "$ la --version" },
-            { kind: "out", text: "la-localagent 0.6.0" },
+            { kind: "out", text: "la-localagent 0.7.0" },
           ],
         },
         {

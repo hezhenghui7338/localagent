@@ -17,10 +17,10 @@
 
 ## <img src="assets/icons/quick-start.svg" alt="" width="28" valign="middle"> 快速开始
 
-Python 3.10+ · macOS / Linux / Windows · [pipx](https://pipx.pypa.io/) · 当前 **v0.6.0**
+Python 3.10+ · macOS / Linux / Windows · [pipx](https://pipx.pypa.io/) · 当前 **v0.7.0**
 
 ```bash
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.6.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.7.0"
 la
 ```
 
@@ -113,15 +113,15 @@ la
 
 ```bash
 # pin 版本（推荐）
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.6.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.7.0"
 # 或跟踪默认分支 / 用 pip
 # pipx install "git+https://github.com/hezhenghui7338/localagent.git"
-# pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.6.0"
+# pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.7.0"
 
 la --version
 # 升级到新 tag：先卸再装
 pipx uninstall la-localagent
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.6.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.7.0"
 # --force 且报 venv 已存在时：UV_VENV_CLEAR=1 pipx install --force "…"
 # 跟踪默认分支：pipx upgrade la-localagent
 ```
@@ -138,7 +138,7 @@ la config --provider ollama --base_url "http://localhost:11434" --model qwen3.5:
 
 **Windows：** 用 PowerShell / cmd，并确保 [pipx](https://pipx.pypa.io/) 在 `PATH` 中。`la setup` 优先用 `winget` 安装 Ollama，否则打开 [ollama.com/download](https://ollama.com/download)。装完请重开终端，使 `ollama` 进入 `PATH`。（WSL 内可当 Linux 用；主路径为原生 Windows。）
 
-> PyPI 发布后：`pipx install la-localagent==0.6.0`
+> PyPI 发布后：`pipx install la-localagent==0.7.0`
 
 ### 开发者安装
 
@@ -690,7 +690,18 @@ src/localagent/
 4. 同步官网（`website/index.html`、`website/script.js`、`website/demos/scenes.json`）与双语 `examples/product-tour*.md`
 5. 若 setup 演示 MP4 内嵌了安装命令，用 `website/demos/render.sh` 重渲（步骤演示以 `scenes.json` 为准）
 
-GitHub Actions CI 跑 `uv run pytest`（单元+集成，含 STM；排除 `e2e` / `e2e_live`；**pytest-xdist** `-n auto` 并行），另有独立 **e2e-offline** job（先并行 e2e，再串行跑 `test_la_perf` 时长预算）。实机 Ollama 测试仅本机运行。
+GitHub Actions CI 跑 `uv run pytest`（单元+集成，含 STM；排除 `e2e` / `e2e_live`；**pytest-xdist** `-n auto` 并行），另有 **e2e-offline** 与 **prd-smoke**（PRD 矩阵 + LoCoMo tiny + 场景 eval smoke）。**nightly** workflow 跑完整 eval 报告。实机 Ollama 测试仅本机运行。
+
+**版本评估**（PRD §6 + 基准 + 发版签收）：
+
+```bash
+python -m benchmarks.prd.report_matrix --fail-on-critical --out reports/prd-matrix.md
+python -m benchmarks.locomo.ci_smoke
+python -m benchmarks.eval run --tier smoke
+la eval report --tier release --out reports/release-eval.html
+```
+
+发版前请完成 [`examples/product-tour.zh-CN.md`](examples/product-tour.zh-CN.md#验收清单) 人工勾选（L3）。
 
 ```bash
 # 单元 + 集成测试（隔离临时目录，不依赖 Ollama；含 STM；默认并行）

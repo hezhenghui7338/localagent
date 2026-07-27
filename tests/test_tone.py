@@ -77,6 +77,19 @@ def test_postscript_chat_zh_when_late(monkeypatch):
     assert evening_postscript_block(surface="chat", now=_local(10)) == ""
 
 
+def test_evening_late_uses_la_tz(monkeypatch):
+    from localagent.tzutil import reset_tz_cache
+
+    monkeypatch.setenv("LA_TZ", "Asia/Shanghai")
+    reset_tz_cache()
+    monkeypatch.setattr("localagent.config.TONE_EVENING_START", 23)
+    monkeypatch.setattr("localagent.config.TONE_EVENING_END", 6)
+    utc_23_sh = datetime(2026, 7, 25, 15, 0, tzinfo=timezone.utc)
+    assert evening_late(utc_23_sh) is True
+    utc_10_sh = datetime(2026, 7, 25, 2, 0, tzinfo=timezone.utc)
+    assert evening_late(utc_10_sh) is False
+
+
 def test_postscript_aware_en_when_late(monkeypatch):
     monkeypatch.setenv("LA_LANG", "en")
     reset_lang_cache()

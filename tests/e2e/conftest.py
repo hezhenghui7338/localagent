@@ -38,6 +38,7 @@ def la_env(la_data_dir: Path) -> dict[str, str]:
         "LA_MEMORY_RERANK": "0",
         "LA_COLD_RERANK": "0",
         "LA_MCP_ENABLED": "0",
+        "LA_OCR_ENABLED": "0",
         "LA_VALIDATION_LLM": "0",
         # Avoid hanging on slow/unavailable Ollama embeddings during ingest/search.
         "LA_MEM0_EMBEDDER_PROVIDER": "hash",

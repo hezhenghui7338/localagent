@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 from localagent import config
+from localagent.tzutil import local_today
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS articles (
@@ -74,7 +75,7 @@ def _utc_now() -> str:
 
 
 def _today_local() -> str:
-    return date.today().isoformat()
+    return local_today().isoformat()
 
 
 @dataclass

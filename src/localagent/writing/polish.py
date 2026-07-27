@@ -11,7 +11,10 @@ from typing import Any, Callable
 from localagent.i18n import t
 from localagent.writing.scenes import (
     SCENE_BIZ,
+    SCENE_EMAIL,
     SCENE_IDS,
+    SCENE_MOMENTS,
+    SCENE_RESUME,
     ScenePack,
     get_scene_pack,
     heuristic_scene,
@@ -146,12 +149,41 @@ def _chat_json(
     return _extract_json(reply or "")
 
 
+def _heuristic_taste_brief(
+    draft: str,
+    *,
+    scene: str | None,
+    tone: str | None,
+    profile: str,
+) -> TasteBrief:
+    """Scene/attitude from heuristics only (no LLM)."""
+    forced = normalize_scene(scene)
+    heur_scene, heur_conf = heuristic_scene(draft)
+    sid = forced or heur_scene
+    pack = get_scene_pack(sid)
+    attitude = pack.default_attitude
+    if tone:
+        attitude = f"{attitude}；用户要求: {tone}"
+    unspecified = t("polish.unspecified")
+    return TasteBrief(
+        scene=pack.id,
+        audience=unspecified,
+        attitude=attitude,
+        risks="避免越界承诺与指责",
+        preserve=[],
+        confidence=1.0 if forced else heur_conf,
+        profile_note=profile,
+        low_confidence=not forced and heur_conf < 0.45,
+    )
+
+
 def detect_taste(
     text: str,
     *,
     scene: str | None = None,
     tone: str | None = None,
     on_status: StatusFn | None = None,
+    use_llm: bool = True,
 ) -> TasteBrief:
     """Infer scene / audience / attitude. Forced ``scene`` skips auto-detect."""
     draft = (text or "").strip()
@@ -162,6 +194,9 @@ def detect_taste(
     profile = _profile_snippet()
     heur_scene, heur_conf = heuristic_scene(draft)
     unspecified = t("polish.unspecified")
+
+    if not use_llm:
+        return _heuristic_taste_brief(draft, scene=scene, tone=tone, profile=profile)
 
     prompt = (
         "你是写作场合顾问。根据草稿判断场景与应有态度。"
@@ -251,6 +286,80 @@ def _pack_rules_block(pack: ScenePack) -> str:
     rules = "\n".join(f"- {r}" for r in pack.hard_rules)
     banned = "、".join(pack.banned_phrases)
     return f"场景规则（{pack.label}）:\n{rules}\n禁用套话: {banned}"
+
+
+def _heuristic_variant(
+    draft: str,
+    brief: TasteBrief,
+    pack: ScenePack,
+    *,
+    variant: str,
+) -> str:
+    """Template rewrite without LLM; never invent facts or numbers."""
+    text = draft.strip()
+    if pack.id == SCENE_EMAIL:
+        if variant == "primary":
+            if not any(text.startswith(g) for g in ("您好", "你好", "Hi", "Dear", "尊敬")):
+                text = f"您好，{text}"
+            if not any(w in text for w in ("谢谢", "感谢", "此致")):
+                text = text.rstrip("。！？") + "，谢谢。"
+        elif variant == "softer":
+            text = _heuristic_variant(draft, brief, pack, variant="primary")
+            if "方便的话" not in text:
+                text = text.replace("您好，", "您好，方便的话，", 1)
+            text = text.replace("希望", "如能").replace("请", "麻烦")
+        else:
+            text = _heuristic_variant(draft, brief, pack, variant="primary")
+            for old, new in (
+                ("方便的话，", ""),
+                ("如有可能，", ""),
+                ("有点着急", "希望尽快"),
+            ):
+                text = text.replace(old, new)
+    elif pack.id == SCENE_RESUME:
+        if variant == "firmer":
+            text = text.replace("负责", "主导").replace("参与", "负责")
+    elif pack.id == SCENE_MOMENTS:
+        if variant == "primary" and len(text) > 80:
+            text = text[:77] + "…"
+    else:
+        if variant == "primary" and len(text) > 120:
+            for sep in ("。", "！", "？", "\n"):
+                if sep in text:
+                    text = text.split(sep, 1)[0] + sep
+                    break
+        elif variant == "softer":
+            if not text.endswith(("～", "~", "。")):
+                text = text.rstrip("。！？") + "～"
+        elif variant == "firmer":
+            text = text.replace("吗？", "？").replace("吧。", "。")
+    return text.strip()
+
+
+def rewrite_heuristic(
+    text: str,
+    brief: TasteBrief,
+    *,
+    tone: str | None = None,
+) -> PolishResult:
+    """Offline rewrite: three sendable variants without calling a model."""
+    _ = tone
+    draft = (text or "").strip()
+    if not draft:
+        raise PolishError(t("polish.empty_draft"))
+    pack = get_scene_pack(brief.scene)
+    primary = _heuristic_variant(draft, brief, pack, variant="primary")
+    softer = _heuristic_variant(draft, brief, pack, variant="softer")
+    firmer = _heuristic_variant(draft, brief, pack, variant="firmer")
+    return PolishResult(
+        brief=brief,
+        primary=primary,
+        softer=softer or primary,
+        firmer=firmer or primary,
+        changes=t("polish.heuristic_changes"),
+        soft_label=pack.soft_label,
+        firm_label=pack.firm_label,
+    )
 
 
 def rewrite(
@@ -345,10 +454,15 @@ def polish_text(
     scene: str | None = None,
     tone: str | None = None,
     on_status: StatusFn | None = None,
+    use_llm: bool = True,
 ) -> PolishResult:
     """Full pipeline: detect taste → rewrite."""
-    brief = detect_taste(text, scene=scene, tone=tone, on_status=on_status)
-    return rewrite(text, brief, tone=tone, on_status=on_status)
+    brief = detect_taste(
+        text, scene=scene, tone=tone, on_status=on_status, use_llm=use_llm
+    )
+    if use_llm:
+        return rewrite(text, brief, tone=tone, on_status=on_status)
+    return rewrite_heuristic(text, brief, tone=tone)
 
 
 def copy_variant(result: PolishResult, choice: str) -> tuple[str, str] | None:
@@ -457,4 +571,5 @@ __all__ = [
     "is_skip_choice",
     "polish_text",
     "rewrite",
+    "rewrite_heuristic",
 ]

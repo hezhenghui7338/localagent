@@ -17,10 +17,10 @@
 
 ## <img src="assets/icons/quick-start.svg" alt="" width="28" valign="middle"> Quick start
 
-Python 3.10+ · macOS / Linux / Windows · [pipx](https://pipx.pypa.io/) · current **v0.6.0**
+Python 3.10+ · macOS / Linux / Windows · [pipx](https://pipx.pypa.io/) · current **v0.7.0**
 
 ```bash
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.6.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.7.0"
 la
 ```
 
@@ -113,15 +113,15 @@ If GitHub is slow/blocked, use a proxy first (heavy deps; install can take a whi
 
 ```bash
 # pin a tag (recommended)
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.6.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.7.0"
 # or track default branch / use pip
 # pipx install "git+https://github.com/hezhenghui7338/localagent.git"
-# pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.6.0"
+# pip install "git+https://github.com/hezhenghui7338/localagent.git@v0.7.0"
 
 la --version
 # upgrade to a new tag: uninstall then reinstall
 pipx uninstall la-localagent
-pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.6.0"
+pipx install "git+https://github.com/hezhenghui7338/localagent.git@v0.7.0"
 # if --force fails with “venv already exists”: UV_VENV_CLEAR=1 pipx install --force "…"
 # tracking default branch: pipx upgrade la-localagent
 ```
@@ -138,7 +138,7 @@ la config --provider ollama --base_url "http://localhost:11434" --model qwen3.5:
 
 **Windows:** use PowerShell or cmd after [pipx](https://pipx.pypa.io/) is on `PATH`. `la setup` installs Ollama via `winget` when available, otherwise opens [ollama.com/download](https://ollama.com/download). Restart the terminal after installing Ollama so `ollama` is on `PATH`. (WSL works as Linux; native Windows is the supported path.)
 
-> After PyPI publish: `pipx install la-localagent==0.6.0`
+> After PyPI publish: `pipx install la-localagent==0.7.0`
 
 ### Developer install
 
@@ -675,7 +675,26 @@ On each release, sync all of the following (missing any one drifts user-facing v
 4. Sync website (`website/index.html`, `website/script.js`, `website/demos/scenes.json`) and both `examples/product-tour*.md`
 5. If setup demo MP4s embed the install line, re-render via `website/demos/render.sh` (step demo uses `scenes.json`)
 
-GitHub Actions CI runs `uv run pytest` (unit + integration, including STM; excludes `e2e` / `e2e_live`; **pytest-xdist** `-n auto`) and a separate **e2e-offline** job (parallel e2e, then serial `test_la_perf` duration budgets). Live Ollama tests stay local-only.
+GitHub Actions CI runs `uv run pytest` (unit + integration, including STM; excludes `e2e` / `e2e_live`; **pytest-xdist** `-n auto`), **e2e-offline**, and **prd-smoke** (PRD matrix + LoCoMo tiny + scenario eval). Nightly workflow runs full scenario eval and unified report. Live Ollama tests stay local-only.
+
+**Version evaluation** (PRD §6 + benchmarks + release sign-off):
+
+```bash
+# PRD acceptance matrix report
+python -m benchmarks.prd.report_matrix --fail-on-critical --out reports/prd-matrix.md
+
+# LoCoMo tiny CI smoke (compare to baseline_tiny.json)
+python -m benchmarks.locomo.ci_smoke
+
+# Scenario eval (smoke for PR, full for nightly)
+python -m benchmarks.eval run --tier smoke
+
+# Unified release report (HTML / Markdown / JSON)
+la eval report --tier release --out reports/release-eval.html
+python -m benchmarks.report --tier release --out reports/release-eval.html --format html
+```
+
+Before tagging a release, complete the manual checklist in [`examples/product-tour.zh-CN.md`](examples/product-tour.zh-CN.md#验收清单) (L3 sign-off).
 
 ```bash
 # Unit + integration tests (temp dirs; no Ollama required; includes STM; parallel by default)

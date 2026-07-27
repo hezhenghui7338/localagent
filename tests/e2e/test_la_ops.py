@@ -255,3 +255,19 @@ def test_e2e_cross_memory_and_rag_isolation(la_env, tmp_path: Path):
     payload = json.loads(q.stdout)
     texts = " ".join(str(item.get("text") or item) for item in payload)
     assert "UNIQUE_COLD_TOKEN_XYZ" not in texts or "Warm" in texts
+
+
+REMEMBER_MARKER = "E2ERememberMarker2026"
+
+
+def test_journey_remember_text_searchable(la_env):
+    """Story 22 proxy: explicit text ingest persists and is searchable (chat path in unit tests)."""
+    wrote = run_la(
+        ["ingest", "text", f"请记住：我的项目代号是 {REMEMBER_MARKER}。"],
+        env=la_env,
+        timeout=30,
+    )
+    assert wrote.returncode == 0, wrote.stdout + wrote.stderr
+    search = run_la(["memory", "search", REMEMBER_MARKER], env=la_env, timeout=30)
+    assert search.returncode == 0
+    assert REMEMBER_MARKER in search.stdout

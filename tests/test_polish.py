@@ -252,3 +252,30 @@ def test_clipboard_copy_text_mocked():
 def test_get_scene_pack_resume_hard_rules():
     pack = get_scene_pack("resume")
     assert any("禁止编造" in r for r in pack.hard_rules)
+
+
+def test_polish_text_heuristic_email_report():
+    draft = "您好，上次说的方案这周能给一下吗？我们这边有点着急。"
+    result = polish_text(draft, scene="email", use_llm=False)
+    report = result.format_report()
+    assert "【识别】" in report
+    assert "【主推】" in report
+    assert "【备选" in report
+    assert "上周" not in result.primary or "方案" in result.primary
+    assert result.primary != result.softer or result.primary != result.firmer
+
+
+def test_polish_text_heuristic_resume_preserves_numbers():
+    draft = "负责电商后台，主导库存优化项目，提升履约效率 15%。"
+    result = polish_text(draft, scene="resume", use_llm=False)
+    assert "15%" in result.primary
+    assert "15%" in result.softer
+    assert "15%" in result.firmer
+    assert "【识别】" in result.format_report()
+
+
+def test_detect_taste_heuristic_skips_llm():
+    with patch("localagent.writing.polish._chat_json") as mock_chat:
+        brief = detect_taste("尊敬的张总：您好，关于上周邮件主题", scene="email", use_llm=False)
+        mock_chat.assert_not_called()
+    assert brief.scene == SCENE_EMAIL

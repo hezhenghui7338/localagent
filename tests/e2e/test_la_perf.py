@@ -201,13 +201,11 @@ def test_perf_summarize_heuristic(la_env, tmp_path: Path):
 
 
 def test_perf_polish_offline(la_env):
-    """Offline contract: empty polish prints usage and exits quickly (no model call)."""
-    args = ["polish"]
+    """Offline contract: heuristic polish completes without model call."""
+    args = ["polish", "--no-copy", "--heuristic", "--scene", "email", "催一下进度"]
     result = run_la(args, env=la_env, budget=_budget(args), timeout=20)
-    assert result.returncode == 1
-    out = (result.stdout + result.stderr).lower()
-    assert "用法" in result.stdout or "usage" in out
-    assert "polish" in out
+    assert result.returncode == 0
+    assert "【主推】" in result.stdout
 
 
 # --- P2: batch / background ---

@@ -77,4 +77,12 @@ def collect_memory_health() -> MemoryHealth:
 
     if health.missing_kb_files:
         health.notes.append(t("audit.health_note_ingest"))
+
+    if config.OCR_ENABLED:
+        from localagent.ingest.ocr import ocr_dependency_warning
+
+        ocr_warn = ocr_dependency_warning()
+        if ocr_warn:
+            health.notes.append(ocr_warn)
+
     return health

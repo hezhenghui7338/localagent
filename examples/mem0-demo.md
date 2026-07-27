@@ -4,7 +4,7 @@
 
 | 能力 | 命令 | 说明 |
 |------|------|------|
-| **Retain** | `LA memory add` | 写入事实；默认 `infer=False`，由 LA enrich 做标题/标签 |
+| **Retain** | `LA ingest text` | 写入事实；落盘 → Cold → Warm，由 LA enrich 做标题/标签 |
 | **Semantic Recall** | `LA memory search` | Mem0 向量检索 + 本地时间重排 |
 | **Reflect** | `LA memory reflect` | search top-k + LA LLM 归纳（模拟跨记忆推理） |
 
@@ -34,10 +34,10 @@ bash examples/mem0-demo.sh
 
 ```bash
 export LA_DATA_DIR=/tmp/la-mem0-demo
-LA memory reset --keep-knowledge
+LA memory reset
 
-LA memory add "2026年5月，架构评审后放弃 SQLite，改用 Mem0 作为 Warm 层记忆引擎"
-LA memory add "2026年7月，最终决定采用 Mem0：更轻、更快，reflect 由 search + 本地 LLM 模拟"
+LA ingest text "2026年5月，架构评审后放弃 SQLite，改用 Mem0 作为 Warm 层记忆引擎"
+LA ingest text "2026年7月，最终决定采用 Mem0：更轻、更快，reflect 由 search + 本地 LLM 模拟"
 
 LA memory search "记忆引擎选型"
 LA memory reflect "记忆引擎选型经历了怎样的变化？"
