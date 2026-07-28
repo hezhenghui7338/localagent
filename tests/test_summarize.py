@@ -561,3 +561,77 @@ def test_llm_summarize_passes_model_choice(tmp_path: Path, monkeypatch: pytest.M
     assert "*摘要 via ollama/qwen3:8b*" in result.markdown
     assert result.source is not None
     assert result.source.via == "llm"
+
+
+_VALID_LLM_CARD = (
+    "## 总结（最多三句话）\n"
+    "一句话。\n\n"
+    "## 结构化要点\n"
+    "- **点**：内容 — 依据：原文 〔§安装〕\n"
+)
+
+
+def test_llm_summarize_retries_ollama_after_primary_failure(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from localagent.models.router import ChatResult
+    from localagent.summarize.document import _llm_summarize
+    from localagent.summarize.model_choice import SummarizeModelChoice
+
+    calls: list[str | None] = []
+
+    class FakeRouter:
+        def is_ollama_available(self) -> bool:
+            return True
+
+        def chat_with_meta(self, messages, **kwargs):
+            calls.append(kwargs.get("prefer"))
+            if kwargs.get("prefer") == "openrouter":
+                raise RuntimeError("cloud down")
+            return ChatResult(
+                text=_VALID_LLM_CARD,
+                provider="ollama",
+                model="qwen3:8b",
+            )
+
+    monkeypatch.setattr(
+        "localagent.models.router.get_model_router",
+        lambda: FakeRouter(),
+    )
+    text, source = _llm_summarize(
+        "## [§安装]\n内容。",
+        filename="t.md",
+        model_choice=SummarizeModelChoice(provider="openrouter"),
+    )
+    assert text
+    assert source is not None
+    assert source.provider == "ollama"
+    assert calls == ["openrouter", "ollama"]
+
+
+def test_llm_summarize_no_heuristic_after_ollama_retries_exhausted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from localagent.summarize.document import SUMMARIZE_OLLAMA_RETRIES
+
+    calls: list[int] = []
+
+    class FakeRouter:
+        def is_ollama_available(self) -> bool:
+            return True
+
+        def chat_with_meta(self, messages, **kwargs):
+            calls.append(1)
+            raise RuntimeError("all down")
+
+    monkeypatch.setattr(
+        "localagent.models.router.get_model_router",
+        lambda: FakeRouter(),
+    )
+    path = _md_doc(tmp_path)
+    result = summarize_path(path, keep=False, use_llm=True)
+    assert "本地启发式" not in result.markdown
+    assert result.markdown == ""
+    assert "模型摘要失败" in result.warnings
+    assert len(calls) == 1 + SUMMARIZE_OLLAMA_RETRIES

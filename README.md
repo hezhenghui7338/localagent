@@ -452,7 +452,7 @@ See [`.env.example`](.env.example). Common variables:
 | `LA_SUMMARIZE_SHORT_MAX_CHARS` | Summarize short-path char cap (default 12000); above → segmented reading |
 | `LA_SUMMARIZE_SEGMENT_THRESHOLD_CHARS` | Segment-mode threshold (defaults to `LA_SUMMARIZE_LLM_INPUT_CHARS`) |
 | `LA_SUMMARIZE_SEGMENT_PREFETCH` | Background segment prefetch (default 1); `--no-prefetch` disables |
-| `LA_SUMMARIZE_SEGMENT_PREFETCH_WORKERS` | Prefetch worker count (default 8) |
+| `LA_SUMMARIZE_SEGMENT_PREFETCH_WORKERS` | Prefetch worker count (default 8; 1 for Ollama when unset) |
 | `LA_DOC_SESSION_RETRIEVE_TOP_K` | Top-k chunks for long/cross-segment doc chat (default 8) |
 | `LA_LOG_LEVEL` | Diagnostic log level: `INFO` (default) / `DEBUG` / `WARNING` … |
 

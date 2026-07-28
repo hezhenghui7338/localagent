@@ -488,8 +488,6 @@ def summarize_segment(
     )
 
     prep, _, _ = _prepare_for_summarize(seg.text, translate)
-    markdown: str | None = None
-    source = SegmentSource(via="heuristic")
     if use_llm:
         llm_text, llm_source = _llm_summarize(
             prep,
@@ -497,10 +495,11 @@ def summarize_segment(
             translate=None,
             model_choice=model_choice,
         )
-        if llm_text:
-            markdown = llm_text
-            source = llm_source or SegmentSource(via="llm")
-    if not markdown:
+        if not llm_text:
+            return "", SegmentSource(via="failed")
+        markdown = llm_text
+        source = llm_source or SegmentSource(via="llm")
+    else:
         markdown = _heuristic_summary(prep, filename=filename)
         source = SegmentSource(via="heuristic")
     markdown, _warnings = ensure_citations(markdown)
@@ -613,6 +612,8 @@ def init_reading_progress(
         compressed_prior="",
     )
     progress.init_statuses()
+    if use_llm and not first_summary.strip():
+        progress.set_segment_status(0, "failed")
     if resolved is not None:
         save_segment_cache(
             resolved,

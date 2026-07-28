@@ -46,6 +46,8 @@ _HEADING_POINTS = re.compile(r"^##\s*结构化要点")
 _HEADING_NOTE = re.compile(r"^##\s*需要注意")
 _HEADING_ASK = re.compile(r"^##\s*你可以接着问")
 
+SUMMARIZE_OLLAMA_RETRIES = 3
+
 
 class SummarizeError(ValueError):
     """User-facing summarize failure."""
@@ -284,6 +286,17 @@ def count_summary_sentences(markdown: str) -> int:
     return len(sentences)
 
 
+def _llm_result_to_summary(result) -> tuple[str | None, SegmentSource | None]:
+    text = _strip_fence(result.text or "")
+    if not text or "##" not in text:
+        return None, None
+    return text, SegmentSource(
+        provider=result.provider,
+        model=result.model,
+        via="llm",
+    )
+
+
 def _llm_summarize(
     annotated: str,
     *,
@@ -300,25 +313,41 @@ def _llm_summarize(
     clipped = annotated[: config.SUMMARIZE_LLM_INPUT_CHARS]
     clipped, _, _ = apply_translate_for_summarize(clipped, translate)
     choice = model_choice or SummarizeModelChoice()
+    router = get_model_router()
+    messages = [ChatMessage(role="user", content=_prompt(clipped, filename=filename))]
+
     try:
-        result = get_model_router().chat_with_meta(
-            [ChatMessage(role="user", content=_prompt(clipped, filename=filename))],
+        result = router.chat_with_meta(
+            messages,
             temperature=0.2,
             prefer=choice.prefer,
             model=choice.model_override,
             usage_command="summarize",
         )
+        text, source = _llm_result_to_summary(result)
+        if text:
+            return text, source
     except Exception:
+        pass
+
+    if not router.is_ollama_available():
         return None, None
-    text = _strip_fence(result.text or "")
-    if not text or "##" not in text:
-        return None, None
-    source = SegmentSource(
-        provider=result.provider,
-        model=result.model,
-        via="llm",
-    )
-    return text, source
+
+    for _ in range(SUMMARIZE_OLLAMA_RETRIES):
+        try:
+            result = router.chat_with_meta(
+                messages,
+                temperature=0.2,
+                prefer="ollama",
+                usage_command="summarize",
+            )
+            text, source = _llm_result_to_summary(result)
+            if text:
+                return text, source
+        except Exception:
+            continue
+
+    return None, None
 
 
 def _prepare_for_summarize(
@@ -435,7 +464,7 @@ def summarize_loaded(
             from localagent.summarize.translate import needs_translation
 
             translated = needs_translation(annotated_for_card, translate)
-        if not markdown:
+        if not markdown and not use_llm:
             prep, trans_warnings, translated = _prepare_for_summarize(
                 annotated_for_card, translate
             )
@@ -485,20 +514,28 @@ def summarize_loaded(
                         doc_source = retry_source
 
     if not markdown:
-        prep, trans_warnings, was_translated = _prepare_for_summarize(
-            annotated_for_card, translate
-        )
-        warnings.extend(trans_warnings)
-        translated = translated or was_translated
-        markdown = _heuristic_summary(prep, filename=doc.filename)
-        doc_source = SegmentSource(via="heuristic")
-        if not segment_mode:
-            warnings.append("模型摘要不可用，已使用本地启发式摘要")
+        if not use_llm:
+            prep, trans_warnings, was_translated = _prepare_for_summarize(
+                annotated_for_card, translate
+            )
+            warnings.extend(trans_warnings)
+            translated = translated or was_translated
+            markdown = _heuristic_summary(prep, filename=doc.filename)
+            doc_source = SegmentSource(via="heuristic")
+            if not segment_mode:
+                warnings.append("模型摘要不可用，已使用本地启发式摘要")
+        elif not segment_mode:
+            from localagent.i18n import t
 
-    markdown, cite_warnings = ensure_citations(markdown)
-    warnings.extend(cite_warnings)
-    if doc_source is not None and not segment_mode:
-        markdown = append_source_footer(markdown, doc_source)
+            warnings.append(t("summarize.llm_failed"))
+
+    if markdown:
+        markdown, cite_warnings = ensure_citations(markdown)
+        warnings.extend(cite_warnings)
+        if doc_source is not None and not segment_mode:
+            markdown = append_source_footer(markdown, doc_source)
+    else:
+        markdown = ""
 
     page_count = doc.metadata.get("page_count")
     if isinstance(page_count, int):

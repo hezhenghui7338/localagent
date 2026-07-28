@@ -685,18 +685,18 @@ def _run_one_session(
             elif result is not None:
                 progress.set_segment_status(idx, "running")
                 try:
-                    summary = summarize_segment(
+                    summary, source = summarize_segment(
                         progress.segments[idx],
                         filename=result.filename,
                         use_llm=use_llm,
                         translate=getattr(result, "translate", None),
                     )
                 except Exception:
-                    summary = ""
+                    summary, source = "", None
                 if summary.strip():
-                    while len(progress.segment_summaries) <= idx:
-                        progress.segment_summaries.append("")
-                    progress.segment_summaries[idx] = summary
+                    from localagent.summarize.segment_reader import set_segment_summary
+
+                    set_segment_summary(progress, idx, summary, source)
                     progress.set_segment_status(idx, "done")
                     if idx == state.index:
                         result.markdown = summary.strip()

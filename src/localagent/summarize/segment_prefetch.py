@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
@@ -12,7 +13,6 @@ from localagent import config
 from localagent.summarize.segment_reader import (
     ReadingProgress,
     set_segment_summary,
-    summarize_segment,
 )
 
 if TYPE_CHECKING:
@@ -22,6 +22,30 @@ if TYPE_CHECKING:
 SegmentUpdateCallback = Callable[[int, str], None]
 PersistCallback = Callable[[], None]
 CompleteCallback = Callable[[], None]
+
+_DEFAULT_CLOUD_PREFETCH_WORKERS = 8
+
+
+def resolve_segment_prefetch_workers(
+    model_choice: SummarizeModelChoice | None = None,
+    *,
+    max_workers: int | None = None,
+) -> int:
+    """Resolve prefetch concurrency: arg > env > provider default (Ollama=1, else 8)."""
+    if max_workers is not None:
+        return max(1, int(max_workers))
+    if os.getenv("LA_SUMMARIZE_SEGMENT_PREFETCH_WORKERS"):
+        return max(1, int(os.getenv("LA_SUMMARIZE_SEGMENT_PREFETCH_WORKERS", "8")))
+    from localagent.models.router import get_model_router
+    from localagent.summarize.model_choice import SummarizeModelChoice
+
+    choice = model_choice or SummarizeModelChoice()
+    provider = choice.provider
+    if provider == config.DEFAULT_MODEL_PROVIDER:
+        provider = get_model_router().resolve_effective_provider(provider)
+    if provider == "ollama":
+        return 1
+    return _DEFAULT_CLOUD_PREFETCH_WORKERS
 
 
 @dataclass
@@ -60,8 +84,9 @@ class SegmentPrefetchWorker:
         self.provider = self.model_choice.provider
         self.use_llm = use_llm
         self.translate = translate if translate is not None else getattr(result, "translate", None)
-        self.max_workers = max(
-            1, int(max_workers or config.SUMMARIZE_SEGMENT_PREFETCH_WORKERS)
+        self.max_workers = resolve_segment_prefetch_workers(
+            self.model_choice,
+            max_workers=max_workers,
         )
         self.on_update = on_update
         self.on_persist = on_persist
@@ -184,7 +209,9 @@ class SegmentPrefetchWorker:
         if progress is None:
             return None
         try:
-            summary, source = summarize_segment(
+            from localagent.summarize.segment_reader import summarize_segment as summarize_segment_fn
+
+            summary, source = summarize_segment_fn(
                 progress.segments[index],
                 filename=self.result.filename,
                 use_llm=self.use_llm,
@@ -291,7 +318,7 @@ class SegmentPrefetchWorker:
             if idx in blocked:
                 continue
             status = progress.segment_status_at(idx)
-            if status in {"pending", "failed"}:
+            if status == "pending":
                 return idx
             from localagent.summarize.segment_reader import is_stale_running
 

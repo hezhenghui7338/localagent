@@ -50,7 +50,7 @@ class SummarizeModelChoice:
 class SegmentSource:
     provider: str = ""
     model: str = ""
-    via: str = "heuristic"  # llm | heuristic
+    via: str = "heuristic"  # llm | heuristic | failed
 
     @classmethod
     def from_dict(cls, data: dict | None) -> SegmentSource | None:
@@ -71,9 +71,11 @@ class SegmentSource:
 
 
 def format_source_label(source: SegmentSource) -> str:
-    if source.via == "heuristic":
+    if source.via in {"heuristic", "failed"}:
         from localagent.i18n import t
 
+        if source.via == "failed":
+            return t("summarize.source_failed")
         return t("summarize.source_heuristic")
     if source.model:
         return f"{source.provider}/{source.model}"
@@ -82,6 +84,9 @@ def format_source_label(source: SegmentSource) -> str:
 
 def append_source_footer(markdown: str, source: SegmentSource) -> str:
     from localagent.i18n import t
+
+    if source.via == "failed":
+        return (markdown or "").rstrip()
 
     body = (markdown or "").rstrip()
     if source.via == "heuristic":

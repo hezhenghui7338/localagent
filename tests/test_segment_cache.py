@@ -15,6 +15,7 @@ from localagent.summarize.segment_cache import (
     save_segment_cache,
     ThrottledSegmentCacheWriter,
 )
+from localagent.summarize.model_choice import SegmentSource
 from localagent.summarize.segment_reader import (
     ReadingProgress,
     build_segments,
@@ -122,9 +123,9 @@ def test_init_reading_progress_uses_cache(
     source.write_text(text, encoding="utf-8")
     calls: list[int] = []
 
-    def fake_summarize(segment, *, filename="", use_llm=True):
+    def fake_summarize(segment, *, filename="", use_llm=True, **kwargs):
         calls.append(segment.index)
-        return f"sum{segment.index}"
+        return f"sum{segment.index}", SegmentSource(via="llm")
 
     monkeypatch.setattr(
         "localagent.summarize.segment_reader.summarize_segment",

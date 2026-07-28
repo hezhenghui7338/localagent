@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from localagent.i18n import reset_lang_cache, t
+from localagent.summarize.model_choice import SegmentSource
 from localagent.summarize.browser import render_segment_browser_text
 from localagent.summarize.document import SummarizeResult
 from localagent.summarize.nav import SegmentNavState
@@ -132,10 +133,14 @@ def test_render_header_shows_failed_count():
     assert "1 失败" in text
 
 
+def _fake_prefetch_summary(segment, *, filename="", use_llm=True, **kwargs):
+    return f"sum{segment.index}", SegmentSource(via="llm")
+
+
 def test_prefetch_retry_segment_reschedules_failed(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
-        "localagent.summarize.segment_prefetch.summarize_segment",
-        lambda segment, *, filename="", use_llm=True: f"sum{segment.index}",
+        "localagent.summarize.segment_reader.summarize_segment",
+        _fake_prefetch_summary,
     )
     progress = _progress(statuses=["done", "failed", "pending"], summaries=["sum0", "", ""])
     result = SummarizeResult(
@@ -149,10 +154,9 @@ def test_prefetch_retry_segment_reschedules_failed(monkeypatch: pytest.MonkeyPat
     )
     worker = SegmentPrefetchWorker(result, use_llm=False, max_workers=1)
     assert worker.retry_segment(1) is True
-    worker.start()
     deadline = time.time() + 5.0
     while time.time() < deadline:
-        if progress.summary_ready(1):
+        if progress.segment_status_at(1) == "done":
             break
         time.sleep(0.02)
     worker.stop(join_timeout=3.0)
@@ -160,10 +164,37 @@ def test_prefetch_retry_segment_reschedules_failed(monkeypatch: pytest.MonkeyPat
     assert progress.segment_summaries[1] == "sum1"
 
 
+def test_prefetch_marks_failed_when_summarize_returns_empty(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        "localagent.summarize.segment_reader.summarize_segment",
+        lambda segment, **kwargs: ("", SegmentSource(via="failed")),
+    )
+    progress = _progress(statuses=["done", "pending"], summaries=["sum0", ""])
+    result = SummarizeResult(
+        markdown="sum0",
+        path=Path("/tmp/t.md"),
+        filename="t.md",
+        char_count=1000,
+        annotated_text="x",
+        segment_mode=True,
+        reading_progress=progress,
+    )
+    worker = SegmentPrefetchWorker(result, use_llm=True, max_workers=1)
+    worker.start()
+    deadline = time.time() + 5.0
+    while time.time() < deadline:
+        if progress.segment_status_at(1) == "failed":
+            break
+        time.sleep(0.02)
+    worker.stop(join_timeout=3.0)
+    assert progress.segment_status_at(1) == "failed"
+    assert progress.segment_summaries[1] == ""
+
+
 def test_prefetch_picks_up_stale_running_from_cache(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
-        "localagent.summarize.segment_prefetch.summarize_segment",
-        lambda segment, *, filename="", use_llm=True: f"sum{segment.index}",
+        "localagent.summarize.segment_reader.summarize_segment",
+        _fake_prefetch_summary,
     )
     progress = _progress(statuses=["done", "running"], summaries=["sum0", ""])
     apply_cache_to_progress(
@@ -183,7 +214,7 @@ def test_prefetch_picks_up_stale_running_from_cache(monkeypatch: pytest.MonkeyPa
     worker.start()
     deadline = time.time() + 5.0
     while time.time() < deadline:
-        if progress.summary_ready(1):
+        if progress.segment_status_at(1) == "done":
             break
         time.sleep(0.02)
     worker.stop(join_timeout=3.0)

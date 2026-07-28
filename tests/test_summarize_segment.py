@@ -284,3 +284,30 @@ def test_summarize_segment_passes_model_choice(monkeypatch: pytest.MonkeyPatch):
     assert calls[0]["model"] == "gpt-4o-mini"
     assert "*摘要 via openrouter/gpt-4o-mini*" in markdown
     assert source.via == "llm"
+
+
+def test_summarize_segment_returns_empty_when_llm_fails(monkeypatch: pytest.MonkeyPatch):
+    from localagent.summarize.segment_reader import DocumentSegment, summarize_segment
+
+    class FakeRouter:
+        def is_ollama_available(self) -> bool:
+            return False
+
+        def chat_with_meta(self, messages, **kwargs):
+            raise RuntimeError("down")
+
+    monkeypatch.setattr(
+        "localagent.models.router.get_model_router",
+        lambda: FakeRouter(),
+    )
+    seg = DocumentSegment(
+        index=0,
+        heading="§一",
+        text="## [§一]\n段落内容。",
+        char_count=20,
+        cite_range="§一",
+    )
+    markdown, source = summarize_segment(seg, filename="t.md", use_llm=True)
+    assert markdown == ""
+    assert source.via == "failed"
+    assert "本地启发式" not in markdown

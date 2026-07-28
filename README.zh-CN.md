@@ -227,7 +227,7 @@ la summarize book.epub --deep-translate --no-chat   # 外文先译后速读（�
 la summarize doc.pdf -p ollama -m qwen3:8b          # 指定本次摘要模型（不写配置）
 ```
 
-每段摘要末尾会标注实际使用的 provider/model，例如 `*摘要 via ollama/qwen3:8b*`（离线启发式则为 `*摘要 via 本地启发式*`）。
+每段摘要末尾会标注实际使用的 provider/model，例如 `*摘要 via ollama/qwen3:8b*`（离线启发式则为 `*摘要 via 本地启发式*`）。模型不可用时会对本地 Ollama 最多重试 3 次；仍失败则显示失败（可用 `R` 重试），不会静默回退启发式。显式离线/测试请用 `--heuristic`。
 
 - 支持：`.txt` / `.md` / `.markdown` / `.pdf` / `.xlsx` / `.mobi` / `.epub`（**不含图片**——图片请用 `la ocr`）
 - 外文文档：`--deep-translate` 在摘要前将原文译为目标语言（默认中文，`--translate-to` / `LA_SUMMARIZE_TRANSLATE_TARGET`）；需 `pip install 'la-localagent[translate]'`
@@ -465,7 +465,7 @@ source .venv/bin/activate   # 或: source ~/.zshrc
 | `LA_SUMMARIZE_SHORT_MAX_CHARS`          | 一键总结短路径字数上限（默认 12000）；超出且允许长文则进入逐段阅读 |
 | `LA_SUMMARIZE_SEGMENT_THRESHOLD_CHARS`  | 分段模式阈值（默认同 `LA_SUMMARIZE_LLM_INPUT_CHARS`） |
 | `LA_SUMMARIZE_SEGMENT_PREFETCH`         | 后台并行段摘要（默认 1）；`--no-prefetch` 关闭 |
-| `LA_SUMMARIZE_SEGMENT_PREFETCH_WORKERS` | 段摘要并发路数（默认 8） |
+| `LA_SUMMARIZE_SEGMENT_PREFETCH_WORKERS` | 段摘要并发路数（默认 8；使用 Ollama 且未设此项时为 1） |
 | `LA_DOC_SESSION_RETRIEVE_TOP_K`         | 长文/跨段深聊每轮检索片段数（默认 8） |
 | `LA_LOG_LEVEL`                          | 诊断日志级别：`INFO`（默认）/ `DEBUG` / `WARNING` …           |
 
