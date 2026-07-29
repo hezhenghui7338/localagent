@@ -224,6 +224,21 @@ def cmd_summarize(args: argparse.Namespace) -> int:
         new_summarize_session_id,
     )
 
+    from localagent.summarize.translate import (
+        TranslateDependencyError,
+        resolve_translate_config,
+    )
+
+    try:
+        translate = resolve_translate_config(
+            deep_translate=True if getattr(args, "deep_translate", False) else None,
+            translate_to=getattr(args, "translate_to", None),
+            translate_from=getattr(args, "translate_from", None),
+        )
+    except Exception as exc:
+        print(t("summarize.error", exc=exc))
+        return 1
+
     if getattr(args, "list", False):
         rows = list_sessions(limit=int(getattr(args, "limit", 20) or 20))
         if not rows:
@@ -247,6 +262,14 @@ def cmd_summarize(args: argparse.Namespace) -> int:
     heuristic = bool(getattr(args, "heuristic", False))
     keep = bool(getattr(args, "keep", False))
     provider = getattr(args, "provider", None) or "auto"
+    model_name = (getattr(args, "model", None) or "").strip()
+    from localagent.summarize.model_choice import SummarizeModelChoice
+
+    try:
+        model_choice = SummarizeModelChoice.from_cli(provider=provider, model=model_name or None)
+    except ValueError as exc:
+        print(t("summarize.error", exc=exc))
+        return 1
     out_path = getattr(args, "out", None)
     no_ui = bool(getattr(args, "no_ui", False))
     no_prefetch = bool(getattr(args, "no_prefetch", False))
@@ -267,12 +290,14 @@ def cmd_summarize(args: argparse.Namespace) -> int:
             source,
             record=record,
             provider=provider,
+            model_choice=model_choice,
             heuristic=heuristic,
             keep=keep,
             no_ui=no_ui,
             no_prefetch=no_prefetch,
             refresh_cache=refresh_cache,
             retry_failed=retry_failed,
+            translate=translate,
         )
 
     if not paths_raw:
@@ -301,11 +326,14 @@ def cmd_summarize(args: argparse.Namespace) -> int:
                 paths[0],
                 record=record,
                 provider=provider,
+                model_choice=model_choice,
                 heuristic=heuristic,
                 keep=keep,
                 no_ui=no_ui,
                 no_prefetch=no_prefetch,
                 refresh_cache=refresh_cache,
+                retry_failed=retry_failed,
+                translate=translate,
             )
 
     results_md: list[str] = []
@@ -314,10 +342,22 @@ def cmd_summarize(args: argparse.Namespace) -> int:
     for source in paths:
         print(t("summarize.file", path=source))
         try:
-            result = summarize_path(source, keep=keep, use_llm=not heuristic, refresh_cache=refresh_cache, retry_failed=retry_failed)
+            result = summarize_path(
+                source,
+                keep=keep,
+                use_llm=not heuristic,
+                refresh_cache=refresh_cache,
+                retry_failed=retry_failed,
+                translate=translate,
+                model_choice=model_choice,
+            )
         except KeyboardInterrupt:
             print(t("summarize.interrupted"))
             return 130
+        except TranslateDependencyError as exc:
+            print(t("summarize.error", exc=exc))
+            failures += 1
+            continue
         except (DocumentTooLongError, SummarizeError) as exc:
             print(t("summarize.error", exc=exc))
             failures += 1
@@ -351,6 +391,12 @@ def cmd_summarize(args: argparse.Namespace) -> int:
                 )
             meta_bits.append(" · ".join(ocr_bits))
         meta_bits.append(t("summarize.llm") if result.used_llm else t("summarize.heuristic"))
+        if result.source is not None:
+            from localagent.summarize.model_choice import format_source_label
+
+            meta_bits.append(t("summarize.meta_via", label=format_source_label(result.source)))
+        if result.translated and result.translate_target:
+            meta_bits.append(t("summarize.translated", target=result.translate_target))
         print(f"[summarize] {' · '.join(meta_bits)}")
         if result.warnings:
             for warning in result.warnings:
@@ -373,6 +419,7 @@ def cmd_summarize(args: argparse.Namespace) -> int:
         return enter_summarize_interactive(
             last_result,
             provider=provider,
+            model_choice=model_choice,
             summarize_session_id=sid,
             conversation_session_id=sid,
             no_ui=no_ui,
@@ -425,15 +472,18 @@ def _summarize_resume_one(
     *,
     record,
     provider: str,
+    model_choice=None,
     heuristic: bool,
     keep: bool,
     no_ui: bool = False,
     no_prefetch: bool = False,
     refresh_cache: bool = False,
     retry_failed: bool = False,
+    translate=None,
 ) -> int:
     from localagent.i18n import t
     from localagent.summarize.document import summarize_path
+    from localagent.summarize.translate import TranslateDependencyError
     from localagent.summarize.repl import (
         _history_from_conversation,
         enter_summarize_interactive,
@@ -445,7 +495,19 @@ def _summarize_resume_one(
     history = _history_from_conversation(record.conversation_session_id)
     if abs(current_mtime - float(record.mtime or 0.0)) > 1e-6:
         print(t("summarize.file_updated"))
-        result = summarize_path(source, keep=keep or record.kept, use_llm=not heuristic, refresh_cache=refresh_cache, retry_failed=retry_failed)
+        try:
+            result = summarize_path(
+                source,
+                keep=keep or record.kept,
+                use_llm=not heuristic,
+                refresh_cache=refresh_cache,
+                retry_failed=retry_failed,
+                translate=translate,
+                model_choice=model_choice,
+            )
+        except TranslateDependencyError as exc:
+            print(t("summarize.error", exc=exc))
+            return 1
         if record.kept and not result.kept:
             result.kept = True
             result.keep_target = Path(record.keep_target) if record.keep_target else result.keep_target
@@ -465,6 +527,7 @@ def _summarize_resume_one(
             segment_statuses=record.segment_statuses,
             prefetch_enabled=record.prefetch_enabled,
             provider=provider,
+            model_choice=model_choice,
         )
         if keep and not result.kept:
             from localagent.ingest.add_file import add_file
@@ -491,6 +554,7 @@ def _summarize_resume_one(
                     filename=result.filename,
                     char_count=result.char_count,
                     budget=budget,
+                    translate=translate,
                 )
                 print(t("summarize.retry_failed_reset", count=len(reset)))
 
@@ -507,12 +571,14 @@ def _summarize_resume_one(
     return enter_summarize_interactive(
         result,
         provider=provider,
+        model_choice=model_choice,
         summarize_session_id=record.id,
         conversation_session_id=record.conversation_session_id,
         history=history,
         no_ui=no_ui,
         no_prefetch=no_prefetch,
         use_llm=not heuristic,
+        book_chat_entered=bool(record.book_chat_entered),
     )
 
 
@@ -2615,8 +2681,18 @@ def build_parser() -> argparse.ArgumentParser:
         "-p",
         default="auto",
         help=H(
-            f"文档对话模型路径: auto（默认）, {', '.join(config.VALID_PROVIDERS)}",
-            f"doc-chat model path: auto (default), {', '.join(config.VALID_PROVIDERS)}",
+            f"摘要/对话模型路径: auto（默认）, {', '.join(config.VALID_PROVIDERS)}",
+            f"summarize/chat model path: auto (default), {', '.join(config.VALID_PROVIDERS)}",
+        ),
+    )
+    p_summarize.add_argument(
+        "--model",
+        "-m",
+        default=None,
+        metavar="MODEL",
+        help=H(
+            "本次会话摘要模型（仅当前 summarize 生效，不写配置）",
+            "model for this summarize session only (not persisted to config)",
         ),
     )
     p_summarize.add_argument(
@@ -2655,6 +2731,32 @@ def build_parser() -> argparse.ArgumentParser:
         help=H(
             "重置所有失败段并重新摘要（保留已成功段；可与 --resume 联用）",
             "reset failed segments and retry (keep successful ones; use with --resume)",
+        ),
+    )
+    p_summarize.add_argument(
+        "--deep-translate",
+        action="store_true",
+        help=H(
+            "摘要前将非中文原文译为目标语言（需 pip install 'la-localagent[translate]'）",
+            "translate non-Chinese source before summarize (requires pip install 'la-localagent[translate]')",
+        ),
+    )
+    p_summarize.add_argument(
+        "--translate-to",
+        metavar="LANG",
+        default=None,
+        help=H(
+            "翻译目标语言（默认 zh；见 LA_SUMMARIZE_TRANSLATE_TARGET）",
+            "translation target language (default zh; see LA_SUMMARIZE_TRANSLATE_TARGET)",
+        ),
+    )
+    p_summarize.add_argument(
+        "--translate-from",
+        metavar="LANG",
+        default=None,
+        help=H(
+            "源语言（默认 auto 自动检测；见 LA_SUMMARIZE_TRANSLATE_SOURCE）",
+            "source language (default auto-detect; see LA_SUMMARIZE_TRANSLATE_SOURCE)",
         ),
     )
     p_summarize.set_defaults(func=cmd_summarize)

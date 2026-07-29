@@ -805,6 +805,19 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "summarize.ocr_conf": "avg_conf={conf}",
         "summarize.llm": "LLM",
         "summarize.heuristic": "启发式",
+        "summarize.meta_via": "via {label}",
+        "summarize.source_heuristic": "本地启发式",
+        "summarize.source_failed": "摘要失败",
+        "summarize.llm_failed": "模型摘要失败",
+        "summarize.source_footer_llm": "*摘要 via {label}*",
+        "summarize.source_footer_heuristic": "*摘要 via 本地启发式*",
+        "summarize.model_session_current": "[model] 当前会话摘要模型: {model}",
+        "summarize.model_session_hint": "[model] 输入 /model <名称> 仅影响本次 summarize 摘要（不写配置）",
+        "summarize.model_session_set": "[model] 已切换会话摘要模型: {model}",
+        "summarize.translating": "[summarize] 正在翻译…",
+        "summarize.translate_skipped_chinese": "[summarize] 检测到中文原文，已跳过翻译",
+        "summarize.translate_failed": "翻译失败: {error}",
+        "summarize.translated": "已翻译→{target}",
         "ocr.usage": "[ocr] 用法: la ocr <path> [--out FILE] [--keep] [--json]",
         "ocr.error": "[ocr] error: {exc}",
         "ocr.interrupted": "\n[ocr] 已中断",
@@ -895,6 +908,25 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "summarize.help_prev": "  /prev, /p        回到上一段",
         "summarize.help_goto": "  /goto N, /g N    跳转到第 N 段",
         "summarize.help_progress": "  /progress        显示逐段阅读进度",
+        "summarize.help_book": "  /book            全书对话（基于各段摘要）",
+        "summarize.help_book_enter": "  /book            进入全书对话模式",
+        "summarize.help_segment_mode": "  /segment         回到逐段阅读模式",
+        "summarize.book_mode_on": (
+            "[summarize] 全书对话 · {done}/{total} 段摘要已就绪"
+        ),
+        "summarize.book_mode_entered": "[summarize] 已进入全书对话模式（book>）",
+        "summarize.segment_mode_entered": "[summarize] 已回到逐段阅读模式（sum>）",
+        "summarize.book_partial_hint": (
+            "[summarize] 部分段摘要仍在生成中，回答可能不完整"
+        ),
+        "summarize.book_no_summaries": "[summarize] 尚无段摘要，请稍候",
+        "summarize.book_auto_enter": (
+            "[summarize] 全部段摘要已完成，进入全书对话…"
+        ),
+        "summarize.book_enter_manual": "[summarize] 进入全书对话…",
+        "summarize.book_chat_done": "全书对话结束 · 继续 ↑↓ 浏览",
+        "summarize.status_scope_book": "[summarize] 模式: 全书对话",
+        "summarize.status_scope_segment": "[summarize] 模式: 逐段阅读",
         "summarize.segment_not_ready": "[summarize] 该段摘要尚未就绪，请稍候",
         "summarize.browser_header": (
             "[summarize] 逐段阅读 · {filename} · {done}/{total} 已摘要"
@@ -903,7 +935,7 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
             "[summarize] 逐段阅读 · {filename} · {done}/{total} 已摘要 · {failed} 失败"
         ),
         "summarize.browser_help": (
-            "[/] 切换段 · ↑↓ 滚动详情 · g 跳转段 · Enter 深聊 · r 重新摘要 · s 暂停摘要 · q 退出 · ? 帮助"
+            "[/] 切换段 · ↑↓ 滚动详情 · g 跳转段 · Enter 深聊 · b 全书对话 · r 重新摘要 · s 暂停摘要 · q 退出 · ? 帮助"
         ),
         "summarize.browser_scroll_hint": "PageDown/Space 翻页 · [/] 切换段",
         "summarize.browser_detail_above": "（上方还有 {n} 行）",
@@ -1878,6 +1910,19 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "summarize.ocr_conf": "avg_conf={conf}",
         "summarize.llm": "LLM",
         "summarize.heuristic": "heuristic",
+        "summarize.meta_via": "via {label}",
+        "summarize.source_heuristic": "local heuristic",
+        "summarize.source_failed": "summary failed",
+        "summarize.llm_failed": "Model summary failed",
+        "summarize.source_footer_llm": "*Summary via {label}*",
+        "summarize.source_footer_heuristic": "*Summary via local heuristic*",
+        "summarize.model_session_current": "[model] Session summarize model: {model}",
+        "summarize.model_session_hint": "[model] /model <name> affects this summarize session only (not saved to config)",
+        "summarize.model_session_set": "[model] Session summarize model set: {model}",
+        "summarize.translating": "[summarize] Translating…",
+        "summarize.translate_skipped_chinese": "[summarize] Chinese source detected; translation skipped",
+        "summarize.translate_failed": "Translation failed: {error}",
+        "summarize.translated": "translated→{target}",
         "ocr.usage": "[ocr] Usage: la ocr <path> [--out FILE] [--keep] [--json]",
         "ocr.error": "[ocr] error: {exc}",
         "ocr.interrupted": "\n[ocr] Interrupted",
@@ -1984,6 +2029,25 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
         "summarize.help_prev": "  /prev, /p        Go to previous segment",
         "summarize.help_goto": "  /goto N, /g N    Jump to segment N",
         "summarize.help_progress": "  /progress        Show segmented read progress",
+        "summarize.help_book": "  /book            Full-book chat (from segment summaries)",
+        "summarize.help_book_enter": "  /book            Enter full-book chat mode",
+        "summarize.help_segment_mode": "  /segment         Return to segment read mode",
+        "summarize.book_mode_on": (
+            "[summarize] Full-book chat · {done}/{total} segment summaries ready"
+        ),
+        "summarize.book_mode_entered": "[summarize] Entered full-book chat (book>)",
+        "summarize.segment_mode_entered": "[summarize] Back to segment read mode (sum>)",
+        "summarize.book_partial_hint": (
+            "[summarize] Some segment summaries still generating; answers may be incomplete"
+        ),
+        "summarize.book_no_summaries": "[summarize] No segment summaries yet; please wait",
+        "summarize.book_auto_enter": (
+            "[summarize] All segment summaries done — entering full-book chat…"
+        ),
+        "summarize.book_enter_manual": "[summarize] Entering full-book chat…",
+        "summarize.book_chat_done": "Full-book chat ended · continue ↑↓ browsing",
+        "summarize.status_scope_book": "[summarize] Mode: full-book chat",
+        "summarize.status_scope_segment": "[summarize] Mode: segment read",
         "summarize.segment_not_ready": "[summarize] Segment summary not ready yet; please wait",
         "summarize.browser_header": (
             "[summarize] Segmented read · {filename} · {done}/{total} summarized"
@@ -1992,7 +2056,7 @@ _MESSAGES: dict[Lang, dict[str, str]] = {
             "[summarize] Segmented read · {filename} · {done}/{total} summarized · {failed} failed"
         ),
         "summarize.browser_help": (
-            "[/] change segment · ↑↓ scroll detail · g goto segment · Enter chat · r retry summary · s toggle prefetch · q quit · ? help"
+            "[/] change segment · ↑↓ scroll detail · g goto segment · Enter chat · b full-book chat · r retry summary · s toggle prefetch · q quit · ? help"
         ),
         "summarize.browser_scroll_hint": "PageDown/Space page · [/] change segment",
         "summarize.browser_detail_above": "({n} lines above)",

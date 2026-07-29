@@ -15,6 +15,7 @@ from localagent.summarize.segment_cache import (
     save_segment_cache,
     ThrottledSegmentCacheWriter,
 )
+from localagent.summarize.model_choice import SegmentSource
 from localagent.summarize.segment_reader import (
     ReadingProgress,
     build_segments,
@@ -122,9 +123,9 @@ def test_init_reading_progress_uses_cache(
     source.write_text(text, encoding="utf-8")
     calls: list[int] = []
 
-    def fake_summarize(segment, *, filename="", use_llm=True):
+    def fake_summarize(segment, *, filename="", use_llm=True, **kwargs):
         calls.append(segment.index)
-        return f"sum{segment.index}"
+        return f"sum{segment.index}", SegmentSource(via="llm")
 
     monkeypatch.setattr(
         "localagent.summarize.segment_reader.summarize_segment",
@@ -172,6 +173,22 @@ def test_throttled_writer_flushes(cache_home: Path):
     md_path = writer.flush()
     assert md_path is not None
     assert md_path.exists()
+
+
+def test_apply_cache_to_progress_restores_book_context(cache_home: Path):
+    progress = _progress(total=2)
+    progress.segment_summaries = []
+    progress.segment_statuses = []
+    data = {
+        "segment_summaries": ["a", "b"],
+        "segment_statuses": ["done", "pending"],
+        "book_context": "## 全书阅读进度\n已完成 1/2 段摘要",
+        "book_context_done_count": 1,
+    }
+    done = apply_cache_to_progress(progress, data)
+    assert done == 2
+    assert progress.book_context.startswith("## 全书阅读进度")
+    assert progress.book_context_done_count == 1
 
 
 def test_apply_cache_to_progress(cache_home: Path):

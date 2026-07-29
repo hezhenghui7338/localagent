@@ -37,6 +37,7 @@ class SummarizeSessionRecord:
     segment_statuses: list[str] = field(default_factory=list)
     prefetch_enabled: bool = True
     cache_path: str = ""
+    book_chat_entered: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SummarizeSessionRecord:
@@ -69,6 +70,7 @@ class SummarizeSessionRecord:
             segment_statuses=statuses,
             prefetch_enabled=bool(data.get("prefetch_enabled", True)),
             cache_path=str(data.get("cache_path") or ""),
+            book_chat_entered=bool(data.get("book_chat_entered")),
         )
 
 
@@ -159,11 +161,21 @@ def count_kept_sessions() -> int:
     return sum(1 for item in (_load_index().get("sessions") or []) if item.get("kept"))
 
 
+def mark_book_chat_entered(session_id: str) -> None:
+    """Record that full-book chat was entered (avoids repeat auto-enter)."""
+    record = get_session(session_id)
+    if record is None:
+        return
+    record.book_chat_entered = True
+    upsert_session(record)
+
+
 def record_from_result(
     result: Any,
     *,
     session_id: str,
     conversation_session_id: str | None = None,
+    book_chat_entered: bool | None = None,
 ) -> SummarizeSessionRecord:
     path = Path(result.path)
     progress = getattr(result, "reading_progress", None)
@@ -183,6 +195,10 @@ def record_from_result(
 
         _, md_path = cache_paths(path)
         cache_path = str(md_path)
+    existing = get_session(session_id)
+    entered = book_chat_entered
+    if entered is None:
+        entered = bool(existing.book_chat_entered) if existing else False
     return SummarizeSessionRecord(
         id=session_id,
         path=str(path.resolve()),
@@ -202,4 +218,5 @@ def record_from_result(
         segment_statuses=statuses,
         prefetch_enabled=prefetch_enabled,
         cache_path=cache_path,
+        book_chat_entered=entered,
     )

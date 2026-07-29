@@ -13,6 +13,7 @@
 #   timeout    请求超时秒数，默认 120
 #
 # ollama 专用: think, num_predict, num_ctx, keep_alive, chat_timeout, chat_stream
+# 逐段阅读切割（可选）: reading_target_chars, reading_max_chars
 # cursor 专用: cwd, max_retries
 
 - provider: ollama
@@ -27,6 +28,8 @@
   # auto 首包超时（秒）；也可用 .env 的 LA_OLLAMA_CHAT_TIMEOUT 覆盖
   chat_timeout: 12
   chat_stream: true
+  reading_target_chars: 1000
+  reading_max_chars: 1200
 
 # - provider: aiping
 #   base_url: https://aiping.cn/api/v1
@@ -51,3 +54,5 @@
   model: composer-2.5
   timeout: 120
   max_retries: 2
+  reading_target_chars: 3500
+  reading_max_chars: 4200

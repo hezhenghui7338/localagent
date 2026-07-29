@@ -144,6 +144,15 @@ SUMMARIZE_SEGMENT_LLM_COMPRESS = _env("LA_SUMMARIZE_SEGMENT_LLM_COMPRESS", "0").
     "yes",
     "on",
 )
+# Full-book chat context (0 = derive from prior_budget * 2 or ctx 25%).
+SUMMARIZE_BOOK_CONTEXT_BUDGET_CHARS = _env_int("LA_SUMMARIZE_BOOK_CONTEXT_BUDGET_CHARS", "0")
+_book_llm_compress_raw = _env("LA_SUMMARIZE_BOOK_LLM_COMPRESS", "")
+SUMMARIZE_BOOK_LLM_COMPRESS: bool | None = (
+    _book_llm_compress_raw.lower() in ("1", "true", "yes", "on")
+    if _book_llm_compress_raw.strip()
+    else None
+)
+SUMMARIZE_BOOK_GROUP_MIN = _env_int("LA_SUMMARIZE_BOOK_GROUP_MIN", "8")
 SUMMARIZE_SEGMENT_PREFETCH = _env("LA_SUMMARIZE_SEGMENT_PREFETCH", "1").lower() in (
     "1",
     "true",
@@ -159,6 +168,21 @@ SUMMARIZE_BROWSER_REFRESH_SEC = float(
     _env("LA_SUMMARIZE_BROWSER_REFRESH_SEC", "1") or "1"
 )
 SUMMARIZE_BROWSER_DETAIL_LINES = _env_int("LA_SUMMARIZE_BROWSER_DETAIL_LINES", "24")
+# Optional deep-translate before summarize (--deep-translate / la-localagent[translate]).
+SUMMARIZE_DEEP_TRANSLATE = _env("LA_SUMMARIZE_DEEP_TRANSLATE", "0").lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+SUMMARIZE_TRANSLATE_TARGET = _env("LA_SUMMARIZE_TRANSLATE_TARGET", "zh")
+SUMMARIZE_TRANSLATE_SOURCE = _env("LA_SUMMARIZE_TRANSLATE_SOURCE", "auto")
+SUMMARIZE_TRANSLATE_CHUNK_CHARS = _env_int("LA_SUMMARIZE_TRANSLATE_CHUNK_CHARS", "4500")
+# Unified chunking (RAG + section modes).
+RAG_CHUNK_SIZE = _env_int("LA_RAG_CHUNK_SIZE", "512")
+RAG_CHUNK_OVERLAP = _env_int("LA_RAG_CHUNK_OVERLAP", "64")
+CHUNK_SECTION_TARGET = _env_int("LA_CHUNK_SECTION_TARGET", "1500")
+CHUNK_SECTION_MAX = _env_int("LA_CHUNK_SECTION_MAX", "4000")
 # Document deep-chat: retrieve this many Cold chunks when body exceeds prompt stuffing.
 DOC_SESSION_RETRIEVE_TOP_K = _env_int("LA_DOC_SESSION_RETRIEVE_TOP_K", "8")
 
